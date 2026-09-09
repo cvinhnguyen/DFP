@@ -80,9 +80,26 @@ services:
     networks:
       - dfp
 
+  # Local open source model, for the cost comparison the client asked for.
+  # Not started by default because the model download is over a gigabyte.
+  # Start it with:  docker compose --profile local-llm up -d
+  # Then pull a model:  docker compose exec ollama ollama pull llama3.2:1b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dfp-ollama
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - dfp
+
 volumes:
   postgres_data:
   n8n_data:
+  ollama_data:
 
 networks:
   dfp:
