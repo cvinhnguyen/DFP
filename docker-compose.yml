@@ -1,0 +1,89 @@
+# Newsletter automation, local development environment.
+# Runs n8n and PostgreSQL together on one internal network.
+#
+# Setup:
+#   cp .env.example .env      then edit .env
+#   docker compose up -d
+#
+# n8n:      http://localhost:5678
+# Postgres: localhost:5432    database "newsletter"
+#
+# Both ports are bound to 127.0.0.1, so nothing is reachable from outside
+# your machine.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: dfp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dfp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-newsletter}
+      # Finnish collation so sorting handles a, o and a with rings correctly.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Scripts here run once, the first time the volume is created.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dfp} -d ${POSTGRES_DB:-newsletter}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - dfp
+
+  n8n:
+    image: n8nio/n8n:2.38.1
+    container_name: dfp-n8n
+    restart: unless-stopped
+    # Wait for Postgres to actually accept connections, not just start.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # n8n keeps its own workflows and credentials in a separate database
+      # on the same server. It never touches the newsletter tables.
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-dfp}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+      # Encrypts stored credentials. Keep the same value in every .env or
+      # saved credentials become unreadable. Do not regenerate it casually.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env}
+
+      # Schedule triggers use this, so keep it on Finnish time.
+      GENERIC_TIMEZONE: ${TIMEZONE:-Europe/Helsinki}
+      TZ: ${TIMEZONE:-Europe/Helsinki}
+
+      # n8n stores the full payload of every execution, which will include
+      # article text. Prune it so old content does not sit here forever.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: ${N8N_EXECUTION_RETENTION_HOURS:-720}
+
+      # No usage data sent to n8n.
+      N8N_DIAGNOSTICS_ENABLED: "false"
+
+      # Needed later for the Telegram trigger. Leave as localhost until you
+      # run a tunnel, then put the public https URL here.
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - dfp
+
+volumes:
+  postgres_data:
+  n8n_data:
+
+networks:
+  dfp:
+    driver: bridge
