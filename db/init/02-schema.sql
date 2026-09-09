@@ -78,7 +78,11 @@ CREATE TABLE items (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX items_canonical_url_idx ON items (canonical_url);
+-- Unique so that ON CONFLICT works: n8n's Postgres upsert needs a unique
+-- constraint to match on. Two items with the same canonical URL are the same
+-- article. Duplicates across different URLs are handled by duplicate_of.
+-- NULLs do not conflict, so items not yet canonicalised are fine.
+CREATE UNIQUE INDEX items_canonical_url_idx ON items (canonical_url);
 CREATE INDEX items_published_at_idx  ON items (published_at DESC);
 CREATE INDEX items_status_idx        ON items (status);
 CREATE INDEX items_section_idx       ON items (section);
