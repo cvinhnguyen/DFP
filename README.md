@@ -50,9 +50,24 @@ user and password from your `.env`.
 
 ## Tables
 
-Defined in `db/init/02-schema.sql`. Sprint 1 has `users`, `sources`,
-`items`, `summaries`, `llm_usage` and `collection_runs`. Signals and
-newsletter tables come later.
+Defined in `db/init/02-schema.sql`, with the AI configuration tables in
+`03-llm.sql` and the signal tables in `04-signals.sql`. Sprint 1 has `users`,
+`sources`, `items`, `summaries`, `llm_usage`, `collection_runs`, `signals` and
+`signal_items`. The newsletter tables come later.
+
+The init scripts only run when the Postgres volume is first created, so if you
+already have data, apply a new one by hand instead of wiping the volume:
+
+```bash
+docker compose exec -T postgres psql -U $POSTGRES_USER -d newsletter \
+  < db/init/04-signals.sql
+```
+
+`signals` and `signal_items` hold what the trend detection finds. A signal
+must link to at least one article, enforced by a trigger that runs at commit,
+so write the signal and its links in one statement. There is a worked example
+at the bottom of `db/init/04-signals.sql`. Re-running detection on the same day
+updates the existing signal rather than adding a copy.
 
 The important ones for the crawler:
 
