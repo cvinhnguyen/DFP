@@ -108,7 +108,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// The shape every caller gets back. Keep this stable.\nconst r = $('Call model').first().json;\nconst logged = $input.first().json || {};\n\nreturn [{\n  json: {\n    text: r.text,\n    provider: r.provider,\n    model: r.model,\n    tokens_in: r.tokens_in,\n    tokens_out: r.tokens_out,\n    cost_eur: logged.estimated_cost_eur ?? null,\n    duration_ms: r.duration_ms,\n    cached: r.cached,\n  }\n}];\n"
+        "jsCode": "// The shape every caller gets back. Keep this stable.\n//\n// task and item_id are echoed straight back from what the caller sent. A\n// caller gets one item out of this workflow and loses whatever it was holding,\n// so without these it has the model's answer and nothing to match it against.\n// Join on item_id, or reach back to your own earlier node.\nconst r = $('Call model').first().json;\nconst req = $('Prepare request').first().json;\nconst logged = $input.first().json || {};\n\nreturn [{\n  json: {\n    task: req.task,\n    item_id: req.item_id,\n    text: r.text,\n    provider: r.provider,\n    model: r.model,\n    tokens_in: r.tokens_in,\n    tokens_out: r.tokens_out,\n    cost_eur: logged.estimated_cost_eur ?? null,\n    duration_ms: r.duration_ms,\n    cached: r.cached,\n  }\n}];"
       },
       "id": "result",
       "name": "Return result",
