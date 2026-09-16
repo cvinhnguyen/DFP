@@ -1,0 +1,193 @@
+{
+  "name": "My workflow 3",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a1e4b296-f24e-43a1-9580-02f5bb59cf76",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    id,\n    id AS item_id,\n    title,\n    excerpt,\n    published_at,\n    publisher,\n    source_language,\n    section,\n    source_url,\n    'signal_detection' AS task,\n    'Identify whether this article contains a weak signal or an emerging trend relevant to digital learning, education, or educational technology. Give a short reason for your decision.' AS system_prompt,\n    CONCAT(\n        'Title: ', title,\n        '\\nPublication date: ', published_at,\n        '\\nPublisher: ', publisher,\n        '\\nSection: ', section,\n        '\\nLanguage: ', source_language,\n        '\\nDescription: ', COALESCE(excerpt, 'Not available')\n    ) AS user_text\nFROM items\nWHERE published_at IS NOT NULL\nORDER BY published_at DESC\nLIMIT 10;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "524a8468-6336-4519-8048-10768700cdc3",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "7I3Mn9JfKcTjBfuc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const llm = item.json;\n\n  return {\n    json: {\n      item_id: String(llm.item_id),\n      task: llm.task,\n      signal_result: llm.text,\n      provider: llm.provider,\n      model: llm.model,\n      tokens_in: llm.tokens_in,\n      tokens_out: llm.tokens_out,\n      cost_eur: llm.cost_eur,\n      duration_ms: llm.duration_ms,\n      cached: llm.cached\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        224
+      ],
+      "id": "cb4b17f2-a686-4276-99af-de2c12468e03",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "item_id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1008,
+        0
+      ],
+      "id": "23e633c1-8fae-49b1-b9f3-9d5e45c94bac",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "DMsUEd1GzR7ANMOk",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/DMsUEd1GzR7ANMOk",
+          "cachedResultName": "LLM call"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        512,
+        192
+      ],
+      "id": "c155721a-ff23-49c0-a058-aa3a4acdfe0f",
+      "name": "Call 'LLM call'"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH s AS (\n    INSERT INTO signals (\n        topic, kind, reason, period_start, period_end,\n        score, workflow\n    )\n    VALUES ($1, $2, $3, $4::date, $5::date, $6::numeric, $7)\n    ON CONFLICT (lower(topic), detected_on, kind)\n    DO UPDATE SET\n        reason = EXCLUDED.reason,\n        score = EXCLUDED.score,\n        period_end = EXCLUDED.period_end,\n        updated_at = now()\n    RETURNING id\n)\nINSERT INTO signal_items (signal_id, item_id)\nSELECT s.id, unnest($8::bigint[])\nFROM s\nON CONFLICT DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [ $json.title, \"weak_signal\", $json.signal_result, $json.published_at, $json.published_at, 1, \"signal_detection\", \"{\" + $json.item_id + \"}\" ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1232,
+        0
+      ],
+      "id": "73927eca-d430-42a9-b1b5-2d0ef45f6191",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "7I3Mn9JfKcTjBfuc",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Call 'LLM call'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Call 'LLM call'": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d0748e64-46aa-4ed3-b095-f6185027bcc2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bbe7412092457ee93068b21187c4cd84fdee498f4eff4df5417ceab4f271670c"
+  },
+  "nodeGroups": [],
+  "id": "SG2X1CCtMzSAkQ3i",
+  "tags": []
+}
