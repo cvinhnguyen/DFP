@@ -71,6 +71,12 @@ sentence would hand the same half sentence to every later caller. `llm_usage`
 records it too, so we can see whether the cap is set too low instead of
 guessing.
 
+`workflows/ingest-api.json` is the write path for collected items:
+`POST /webhook/ingest` with a batch, and it answers accepted or rejected per
+item. Workflows should post there rather than writing to `items` directly, so
+one workflow with a bug cannot fill the shared database. See
+`docs/ingest-api.md`.
+
 `workflows/signal-detection.json` fills `signals` and `signal_items`. It asks
 the model, per article, whether the article points at something new or
 growing, and keeps only the ones it says yes to. Articles that name the same

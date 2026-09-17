@@ -1,0 +1,132 @@
+{
+  "name": "Ingest API",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "w1",
+      "name": "POST /ingest",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "c1",
+      "name": "Read batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// The caller posts { \"items\": [ ... ] }. n8n wraps a webhook body, so unwrap\n// it once here. Everything else is left to the database, which is the only\n// thing that knows which sources exist.\nconst body = $input.first().json.body || {};\nconst items = Array.isArray(body.items) ? body.items : null;\n\nif (!items) {\n  return [{ json: { items: '[]', count: 0,\n                    error: 'Body must be JSON shaped { \"items\": [ ... ] }.' } }];\n}\nif (items.length > 200) {\n  return [{ json: { items: '[]', count: items.length,\n                    error: `Batch of ${items.length} items is too large. Send at most 200.` } }];\n}\nreturn [{ json: { items: JSON.stringify(items), count: items.length } }];"
+      }
+    },
+    {
+      "id": "p1",
+      "name": "Store batch",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The whole batch in one statement. A loop would let one bad item abort the\n-- rest, and the point of this endpoint is that it cannot.\n--\n-- Every item the caller sent gets an answer, including duplicates, so the\n-- response lines up with the request rather than silently being shorter.\nWITH input AS (\n    SELECT a.ord, x.*\n      FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS a(elem, ord),\n           LATERAL jsonb_to_record(a.elem) AS x(\n               source_id       int,\n               url             text,\n               title           text,\n               publisher       text,\n               published_at    timestamptz,\n               excerpt         text,\n               raw_text        text,\n               source_language text,\n               section         text\n           )\n),\n-- Postgres refuses to touch the same row twice in one statement, so the same\n-- URL sent twice has to be caught here rather than by ON CONFLICT.\nnumbered AS (\n    SELECT i.*, row_number() OVER (PARTITION BY i.url ORDER BY i.ord) AS seen\n      FROM input i\n),\nchecked AS (\n    SELECT n.*,\n           CASE\n             WHEN n.url IS NULL OR btrim(n.url) = ''\n               THEN 'url is required'\n             WHEN n.title IS NULL OR btrim(n.title) = ''\n               THEN 'title is required'\n             WHEN NOT EXISTS (SELECT 1 FROM sources s\n                               WHERE s.id = n.source_id AND s.active)\n               THEN 'unknown or inactive source_id'\n             WHEN n.seen > 1\n               THEN 'duplicate of an earlier item in this batch'\n           END AS reject_reason\n      FROM numbered n\n),\nstored AS (\n    INSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                       published_at, excerpt, raw_text, source_language,\n                       section, status, fetched_at)\n    SELECT c.source_id, c.url, c.url, c.title, c.publisher, c.published_at,\n           c.excerpt, c.raw_text,\n           -- fall back to whatever language the source publishes in\n           coalesce(c.source_language,\n                    (SELECT s.language FROM sources s WHERE s.id = c.source_id)),\n           c.section, 'new', now()\n      FROM checked c\n     WHERE c.reject_reason IS NULL\n    ON CONFLICT (canonical_url) DO UPDATE\n       SET title        = EXCLUDED.title,\n           publisher    = EXCLUDED.publisher,\n           excerpt      = EXCLUDED.excerpt,\n           raw_text     = EXCLUDED.raw_text,\n           published_at = EXCLUDED.published_at,\n           fetched_at   = now()\n    RETURNING id, canonical_url\n)\nSELECT c.ord,\n       c.url,\n       c.reject_reason IS NULL AS accepted,\n       c.reject_reason         AS reason,\n       s.id                    AS item_id\n  FROM checked c\n  LEFT JOIN stored s\n         ON s.canonical_url = c.url AND c.reject_reason IS NULL\n ORDER BY c.ord;",
+        "options": {
+          "queryReplacement": "={{ [ $json.items ] }}"
+        }
+      }
+    },
+    {
+      "id": "c2",
+      "name": "Build response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// One line per item the caller sent, in the order they sent them, so a caller\n// can match answers to what it submitted without guessing.\nconst req = $('Read batch').first().json;\n\nif (req.error) {\n  return [{ json: { statusCode: 400, body: { error: req.error } } }];\n}\n\nconst rows = $input.all().map(i => i.json).filter(r => r && r.url !== undefined);\nconst results = rows.map(r => r.accepted\n  ? { url: r.url, accepted: true, item_id: r.item_id }\n  : { url: r.url, accepted: false, reason: r.reason });\n\nreturn [{ json: {\n  statusCode: 200,\n  body: {\n    received: req.count,\n    accepted: results.filter(r => r.accepted).length,\n    rejected: results.filter(r => !r.accepted).length,\n    results,\n  },\n}}];"
+      }
+    },
+    {
+      "id": "r1",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "POST /ingest": {
+      "main": [
+        [
+          {
+            "node": "Read batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read batch": {
+      "main": [
+        [
+          {
+            "node": "Store batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store batch": {
+      "main": [
+        [
+          {
+            "node": "Build response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
