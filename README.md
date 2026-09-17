@@ -71,6 +71,13 @@ sentence would hand the same half sentence to every later caller. `llm_usage`
 records it too, so we can see whether the cap is set too low instead of
 guessing.
 
+`workflows/signal-detection.json` fills `signals` and `signal_items`. It asks
+the model, per article, whether the article points at something new or
+growing, and keeps only the ones it says yes to. Articles that name the same
+topic become one signal carrying all of them, which is what makes "this came
+up in six articles" visible. How far back it reads is `signal_window_days` in
+`app_settings`.
+
 `signals` and `signal_items` hold what the trend detection finds. A signal
 must link to at least one article, enforced by a trigger that runs at commit,
 so write the signal and its links in one statement. There is a worked example

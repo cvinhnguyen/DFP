@@ -1,0 +1,192 @@
+{
+  "name": "Signal detection",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a1e4b296-f24e-43a1-9580-02f5bb59cf76",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "id": "g1",
+      "name": "Get articles",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "-- Items skipped on purpose before the AI step are left out, and so is\n-- anything without a publication date, because frequency over time needs one.\n-- The window is configuration, not a number typed in here.\nSELECT i.id AS item_id,\n       i.title,\n       i.published_at,\n       coalesce(s.text, i.excerpt, '') AS body\n  FROM items i\n  LEFT JOIN summaries s\n         ON s.item_id = i.id AND s.language = i.source_language\n WHERE i.status <> 'filtered_out'\n   AND i.published_at IS NOT NULL\n   AND i.published_at >= now() - make_interval(days => (\n         SELECT value::int FROM app_settings WHERE key = 'signal_window_days'))\n ORDER BY i.published_at DESC;"
+      }
+    },
+    {
+      "id": "b1",
+      "name": "Build request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Ask for JSON rather than prose. A sentence saying \"no weak signal here\" reads\n// exactly like one saying there is, once it has been stored as the reason.\nconst SYSTEM = \"You help a Finnish eLearning association find weak signals in the news it collects.\\nAnswer with JSON only, no markdown fence, exactly this shape:\\n{\\\"is_signal\\\": true|false, \\\"topic\\\": \\\"<one or two word topic in Finnish>\\\", \\\"reason\\\": \\\"<one sentence in Finnish>\\\", \\\"score\\\": <0.0 to 1.0>}\\nis_signal is true only when the article points at something new or growing in\\ndigital learning, education or educational technology.\\nRoutine announcements, ticket prices, registration links and event logistics are not signals.\\nThe topic has to be one or two words, lower case, and as general as you can make\\nit. Articles about the same theme must come back with the same topic word, so\\nreuse a plain existing term such as tekoäly, oppimisanalytiikka, saavutettavuus,\\netäopetus or työelämätaidot rather than inventing a longer phrase of your own.\";\n\n// Three articles cannot show a trend, and asking anyway invites the model to\n// invent one. Returning nothing also means no calls are paid for.\nconst MIN_ARTICLES = 5;\nconst articles = $input.all();\nif (articles.length < MIN_ARTICLES) {\n  console.log(`Only ${articles.length} articles in the window, too few to look for trends.`);\n  return [];\n}\n\nreturn articles.map(a => ({\n  json: {\n    task: 'signal_detection',\n    item_id: a.json.item_id,\n    system_prompt: SYSTEM,\n    user_text: `Title: ${a.json.title}\\nPublished: ${a.json.published_at}\\n\\n${a.json.body}`,\n  },\n}));"
+      }
+    },
+    {
+      "id": "c1",
+      "name": "Call LLM call",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        0
+      ],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "DMsUEd1GzR7ANMOk",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/DMsUEd1GzR7ANMOk",
+          "cachedResultName": "LLM call"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "r1",
+      "name": "Read answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Keep only what the model called a signal. Without this every article is\n// stored as a weak signal, including the ones it rejected, and the rejection\n// itself ends up saved as the justification.\n//\n// item_id comes back from the shared workflow, so the answer stays attached to\n// the article it was about without matching on position.\nconst out = [];\nfor (const item of $input.all()) {\n  const r = item.json;\n  let a;\n  try {\n    a = JSON.parse(String(r.text || '').replace(/```(?:json)?/g, '').trim());\n  } catch (e) {\n    console.log(`Item ${r.item_id}: answer was not JSON, skipped.`);\n    continue;\n  }\n  if (!a || a.is_signal !== true || !a.topic) continue;\n  out.push({ json: {\n    item_id: r.item_id,\n    topic: String(a.topic).trim(),\n    reason: String(a.reason || '').trim(),\n    score: Number(a.score) || 0,\n  }});\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "gr1",
+      "name": "Group by topic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// A weak signal is a topic, not an article. Articles naming the same topic\n// become one signal carrying all of them, which is what lets an editor see\n// that something came up five times rather than once.\nconst byTopic = new Map();\nfor (const item of $input.all()) {\n  const s = item.json;\n  const key = s.topic.toLowerCase();\n  const g = byTopic.get(key) || { topic: s.topic, reason: s.reason, score: 0, item_ids: [] };\n  if (!g.item_ids.includes(s.item_id)) g.item_ids.push(s.item_id);\n  // keep the reason from the article that scored highest\n  if (s.score > g.score) { g.score = s.score; g.reason = s.reason; }\n  byTopic.set(key, g);\n}\nreturn [...byTopic.values()].map(g => ({ json: g }));"
+      }
+    },
+    {
+      "id": "s1",
+      "name": "Save signal",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1300,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The signal and its article links go in one statement, so the database check\n-- that every signal is traceable to an article is satisfied at commit.\n-- Re-running on the same day updates the existing signal instead of adding a\n-- copy. The period is the window that was analysed, not one article's date.\nWITH s AS (\n    INSERT INTO signals (topic, kind, reason, period_start, period_end, score, workflow)\n    SELECT $1, 'weak_signal', $2,\n           (current_date - make_interval(days => (\n              SELECT value::int FROM app_settings WHERE key = 'signal_window_days')))::date,\n           current_date,\n           $3::numeric, 'signal-detection'\n    ON CONFLICT (lower(topic), detected_on, kind) DO UPDATE\n       SET reason       = EXCLUDED.reason,\n           score        = EXCLUDED.score,\n           period_start = EXCLUDED.period_start,\n           period_end   = EXCLUDED.period_end,\n           updated_at   = now()\n    RETURNING id\n)\nINSERT INTO signal_items (signal_id, item_id)\nSELECT s.id, unnest($4::bigint[]) FROM s\nON CONFLICT DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [ $json.topic, $json.reason, $json.score, '{' + $json.item_ids.join(',') + '}' ] }}"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get articles": {
+      "main": [
+        [
+          {
+            "node": "Build request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request": {
+      "main": [
+        [
+          {
+            "node": "Call LLM call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM call": {
+      "main": [
+        [
+          {
+            "node": "Read answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read answer": {
+      "main": [
+        [
+          {
+            "node": "Group by topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group by topic": {
+      "main": [
+        [
+          {
+            "node": "Save signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d0748e64-46aa-4ed3-b095-f6185027bcc2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bbe7412092457ee93068b21187c4cd84fdee498f4eff4df5417ceab4f271670c"
+  },
+  "nodeGroups": [],
+  "id": "SG2X1CCtMzSAkQ3i",
+  "tags": []
+}
