@@ -13,18 +13,35 @@
       "name": "When clicking ‘Execute workflow’"
     },
     {
+      "id": "src-1",
+      "name": "Get sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        180,
+        0
+      ],
       "parameters": {
-        "url": "https://eoppimiskeskus.fi/en/news/",
+        "operation": "executeQuery",
+        "query": "-- Which pages to collect from. Kept in the database so adding or\n-- switching off a source needs no change to this workflow.\nSELECT url FROM sources WHERE active ORDER BY id;",
+        "options": {}
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        224,
+        400,
         0
       ],
       "id": "12d30b20-dc7e-4b42-b0d0-c07595f96161",
-      "name": "HTTP Request"
+      "name": "HTTP Request",
+      "retryOnFail": true,
+      "maxTries": 2
     },
     {
       "parameters": {
@@ -55,24 +72,24 @@
       "type": "n8n-nodes-base.html",
       "typeVersion": 1.2,
       "position": [
-        448,
+        620,
         0
       ],
       "id": "6fde9953-df4e-4846-b51a-d70bc2d9c2db",
       "name": "HTML"
     },
     {
-      "parameters": {
-        "jsCode": "const data = $input.first().json;\n\nconst titles = data.titles || [];\nconst urls = data.urls || [];\nconst dates = data.dates || [];\n\nreturn titles.map((title, index) => ({\n  json: {\n    title: title,\n    url: urls[index] || \"\",\n    date: dates[index] || \"\"\n  }\n}));"
-      },
+      "id": "find-1",
+      "name": "Find articles",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        672,
+        840,
         0
       ],
-      "id": "2a25c0e5-ede3-449f-9190-9e5b106bcc6c",
-      "name": "Code in JavaScript"
+      "parameters": {
+        "jsCode": "// One input item per source page. Flatten them into one item per article.\n// titles, urls and dates come from the same page, so their positions line up.\nreturn $input.all().flatMap(page => {\n  const titles = page.json.titles || [];\n  const urls   = page.json.urls   || [];\n  const dates  = page.json.dates  || [];\n  return titles.map((title, i) => ({\n    json: { title, url: urls[i] || '', date: dates[i] || '' }\n  }));\n});"
+      }
     },
     {
       "parameters": {
@@ -82,11 +99,14 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        896,
+        1060,
         0
       ],
       "id": "29cdd89b-3a67-45dc-8604-4c2085551361",
-      "name": "HTTP Request1"
+      "name": "HTTP Request1",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -104,273 +124,60 @@
       "type": "n8n-nodes-base.html",
       "typeVersion": 1.2,
       "position": [
-        1120,
+        1280,
         0
       ],
       "id": "d3cd00e4-f152-46cf-85b7-034423bc519a",
-      "name": "HTML1"
+      "name": "HTML1",
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
-      "parameters": {
-        "jsCode": "const contentItems = $input.all();\nconst articleItems = $(\"Code in JavaScript\").all();\n\nreturn contentItems.map((item, index) => ({\n  json: {\n    title: articleItems[index]?.json?.title || \"\",\n    url: articleItems[index]?.json?.url || \"\",\n    date: articleItems[index]?.json?.date || \"\",\n    content: item.json.content || \"\"\n  }\n}));"
-      },
+      "id": "clean-1",
+      "name": "Clean article",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
+        1500,
         0
       ],
-      "id": "20197efb-d3aa-4c46-994c-09c5cea172e6",
-      "name": "Code in JavaScript1"
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Runs once per article.\n//\n// $('Find articles').item is the listing row this text came from, linked by\n// n8n itself. Matching by array position instead would break the moment one\n// article fails to load: every later article would shift up one place and be\n// saved under the wrong title, with nothing to show it had happened.\nconst src = $('Find articles').item.json;\nconst raw = $json.content || '';\n\n// The publisher's own opening paragraph, before the line breaks are lost.\n// The dashboard shows this when an item has no summary yet, and the filter\n// matches keywords on it without paying for an AI call.\nconst text = raw.replace(/\\s+/g, ' ').trim();\nconst looksLikeProse = s => s.length > 40 && !/^\\[?https?:/.test(s);\nconst excerpt = (raw.split('\\n').map(s => s.trim()).find(looksLikeProse) || text)\n                  .slice(0, 300);\n\n// A date we cannot read should leave the field empty, not stop the run.\nlet publishedAt = null;\nif (src.date) {\n  const d = DateTime.fromFormat(src.date.trim(), 'd.M.yyyy');\n  if (d.isValid) publishedAt = d.toISO();\n}\n\nreturn { json: { title: src.title, url: src.url, published_at: publishedAt,\n                 excerpt, text } };"
+      }
     },
     {
-      "parameters": {
-        "jsCode": "return $input.all().map(item => {\n  const data = item.json;\n\n  let cleanContent = data.content || \"\";\n\n  cleanContent = cleanContent\n    .replace(/\\n/g, \" \")\n    .replace(/\\r/g, \" \")\n    .replace(/\\t/g, \" \")\n    .replace(/\\s+/g, \" \")\n    .trim();\n\n  return {\n    json: {\n      title: data.title,\n      url: data.url,\n      date: data.date,\n      content: cleanContent\n    }\n  };\n});"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1568,
-        0
-      ],
-      "id": "ac38330b-90bc-4b34-bfca-180790594239",
-      "name": "Code in JavaScript2"
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "type": "n8n-nodes-base.convertToFile",
-      "typeVersion": 1.1,
-      "position": [
-        2016,
-        0
-      ],
-      "id": "5dfcd137-63f7-4188-82c6-6ff649089f78",
-      "name": "Convert to File"
-    },
-    {
-      "parameters": {
-        "operation": "upsert",
-        "schema": {
-          "__rl": true,
-          "value": "public",
-          "mode": "list",
-          "cachedResultName": "public"
-        },
-        "table": {
-          "__rl": true,
-          "value": "items",
-          "mode": "list",
-          "cachedResultName": "items"
-        },
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "canonical_url": "={{$json.url}}",
-            "publisher": "eOppimiskeskus",
-            "source_id": 1,
-            "source_url": "={{$json.url}}",
-            "title": "={{$json.title}}",
-            "raw_text": "={{$json.content}}",
-            "published_at": "={{ DateTime.fromFormat($json.date, 'd.M.yyyy').toISO() }}",
-            "fetched_at": "={{ $now.toISO() }}",
-            "source_language": "={{ $json.url.includes('/en/') ? 'en' : 'fi' }}",
-            "status": "new"
-          },
-          "matchingColumns": [
-            "canonical_url"
-          ],
-          "schema": [
-            {
-              "id": "id",
-              "displayName": "id",
-              "required": false,
-              "defaultMatch": true,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "source_id",
-              "displayName": "source_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "publisher",
-              "displayName": "publisher",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "source_url",
-              "displayName": "source_url",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "canonical_url",
-              "displayName": "canonical_url",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "title",
-              "displayName": "title",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "author",
-              "displayName": "author",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "excerpt",
-              "displayName": "excerpt",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "raw_text",
-              "displayName": "raw_text",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "published_at",
-              "displayName": "published_at",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "fetched_at",
-              "displayName": "fetched_at",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "source_language",
-              "displayName": "source_language",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "section",
-              "displayName": "section",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "status",
-              "displayName": "status",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "duplicate_of",
-              "displayName": "duplicate_of",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "captured_by",
-              "displayName": "captured_by",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": false,
-              "removed": false
-            },
-            {
-              "id": "created_at",
-              "displayName": "created_at",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": false,
-              "removed": false
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": false
-        },
-        "options": {}
-      },
+      "id": "save-1",
+      "name": "Save article",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        1792,
+        1720,
         0
       ],
-      "id": "b380db89-2558-4104-88c0-1bb3beeed411",
-      "name": "Insert or update rows in a table"
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- source_id and source_language are looked up from the sources table rather\n-- than hardcoded, so pointing the crawler at another section needs no edit\n-- here. An article that could not be fetched arrives with no text, and the\n-- length check drops it instead of storing an empty row.\nINSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                   published_at, excerpt, raw_text, source_language, status)\nSELECT s.id, $1, $1, $2, 'Suomen eOppimiskeskus ry', $3::timestamptz, $4, $5,\n       s.language, 'new'\n  FROM sources s\n WHERE s.active\n   AND s.language = CASE WHEN $1 LIKE '%/en/%' THEN 'en' ELSE 'fi' END\n   AND length($5) > 100\nON CONFLICT (canonical_url) DO UPDATE\n   SET title        = EXCLUDED.title,\n       excerpt      = EXCLUDED.excerpt,\n       raw_text     = EXCLUDED.raw_text,\n       published_at = EXCLUDED.published_at,\n       fetched_at   = now();",
+        "options": {
+          "queryReplacement": "={{ [ $json.url, $json.title, $json.published_at, $json.excerpt, $json.text ] }}"
+        }
+      }
     }
   ],
   "pinData": {},
   "connections": {
     "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get sources": {
       "main": [
         [
           {
@@ -396,14 +203,14 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Find articles",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code in JavaScript": {
+    "Find articles": {
       "main": [
         [
           {
@@ -429,45 +236,18 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript1",
+            "node": "Clean article",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code in JavaScript1": {
+    "Clean article": {
       "main": [
         [
           {
-            "node": "Code in JavaScript2",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code in JavaScript2": {
-      "main": [
-        [
-          {
-            "node": "Insert or update rows in a table",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Convert to File": {
-      "main": [
-        []
-      ]
-    },
-    "Insert or update rows in a table": {
-      "main": [
-        [
-          {
-            "node": "Convert to File",
+            "node": "Save article",
             "type": "main",
             "index": 0
           }
