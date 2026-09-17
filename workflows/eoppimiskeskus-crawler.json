@@ -175,10 +175,8 @@
             "raw_text": "={{$json.content}}",
             "published_at": "={{ DateTime.fromFormat($json.date, 'd.M.yyyy').toISO() }}",
             "fetched_at": "={{ $now.toISO() }}",
-            "source_language": "en",
-            "section": "news",
-            "status": "new",
-            "created_at": "={{ $now.toISO() }}"
+            "source_language": "fi",
+            "status": "new"
           },
           "matchingColumns": [
             "canonical_url"
@@ -367,13 +365,7 @@
         0
       ],
       "id": "b380db89-2558-4104-88c0-1bb3beeed411",
-      "name": "Insert or update rows in a table",
-      "credentials": {
-        "postgres": {
-          "id": "SGvBvoeRTPzI7uPd",
-          "name": "Postgres account 3"
-        }
-      }
+      "name": "Insert or update rows in a table"
     }
   ],
   "pinData": {},

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Newsletter dashboard, Prototype 2 (DM42)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#ffffff;
+  --band:#f2f1ec;
+  --ink:#22251d;
+  --soft:#5f6558;
+  --rule:#dcdbd2;
+  --green:#4f8f2a;
+  --green-deep:#35661a;
+  --wash:#eef4e6;
+  --amber:#8c5c10;
+  --amber-wash:#f7efdd;
+  --sans:"Archivo","Segoe UI",Helvetica,Arial,sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#15170f; --band:#1c1f17; --ink:#e9eae3; --soft:#a7ac9d; --rule:#343829;
+    --green:#8cc460; --green-deep:#a9d684; --wash:#222d18; --amber:#d8a852; --amber-wash:#312717;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#15170f; --band:#1c1f17; --ink:#e9eae3; --soft:#a7ac9d; --rule:#343829;
+  --green:#8cc460; --green-deep:#a9d684; --wash:#222d18; --amber:#d8a852; --amber-wash:#312717;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:16px;line-height:1.5;
+}
+img{max-width:100%}
+a{color:var(--green-deep)}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+
+/* ---------- brand bar ---------- */
+.brand{border-bottom:1px solid var(--rule);background:var(--paper)}
+.brand .wrap{display:flex;align-items:center;gap:14px;padding-top:18px;padding-bottom:18px;flex-wrap:wrap}
+.mark{flex:0 0 auto}
+.brand h1{font-size:17px;font-weight:600;margin:0;letter-spacing:.01em}
+.brand p{margin:1px 0 0;font-size:13px;color:var(--soft)}
+.stamp{margin-left:auto;font-size:12px;color:var(--soft);border:1px solid var(--rule);padding:4px 9px;border-radius:2px}
+
+/* ---------- tabs ---------- */
+nav.tabs{background:var(--band);border-bottom:1px solid var(--rule)}
+nav.tabs .wrap{display:flex;gap:2px;overflow-x:auto}
+.tab{
+  appearance:none;border:0;background:none;font:inherit;font-size:14.5px;color:var(--soft);
+  padding:14px 16px;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;
+}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--green)}
+.tab small{display:block;font-weight:400;font-size:11.5px;color:var(--soft)}
+
+/* ---------- page shell ---------- */
+main{padding:34px 0 70px}
+.lede{max-width:64ch;margin:0 0 26px}
+.lede h2{font-size:26px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+.lede p{margin:0;color:var(--soft);font-size:15px}
+[hidden]{display:none !important}
+
+/* ---------- toolbar ---------- */
+.toolbar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:12px 14px;background:var(--band);border:1px solid var(--rule);margin-bottom:18px;
+}
+.count{font-size:14px}
+.count b{font-weight:600}
+.spacer{margin-left:auto}
+.btn{
+  appearance:none;font:inherit;font-size:14px;cursor:pointer;
+  background:var(--ink);color:var(--paper);border:1px solid var(--ink);padding:8px 14px;border-radius:2px;
+}
+.btn:hover{background:var(--green-deep);border-color:var(--green-deep);color:#fff}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--rule)}
+.btn.ghost:hover{background:transparent;color:var(--green-deep);border-color:var(--green)}
+
+/* ---------- item list ---------- */
+.list{border:1px solid var(--rule);border-bottom:0}
+.item{border-bottom:1px solid var(--rule);border-left:4px solid transparent;background:var(--paper)}
+.item.is-selected{border-left-color:var(--green);background:var(--wash)}
+.item.is-unprocessed{border-left:4px dashed var(--rule)}
+.item.is-failed{border-left-color:var(--amber)}
+.item.is-filtered{border-left-color:#6b7d8f;opacity:.72}
+.row{display:grid;grid-template-columns:34px minmax(0,1fr) 128px 104px;gap:14px;padding:14px 16px;align-items:start}
+.pick{margin-top:3px}
+.pick input{width:17px;height:17px;accent-color:var(--green);cursor:pointer}
+.title{font-size:16px;font-weight:600;margin:0;line-height:1.35}
+.title a{color:inherit;text-decoration:none;border-bottom:1px solid var(--rule)}
+.title a:hover{border-bottom-color:var(--green)}
+.by{margin:4px 0 0;font-size:13.5px;color:var(--soft)}
+.by .pub{color:var(--ink)}
+.sig{margin:8px 0 0;display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;border:1px solid var(--rule);padding:2px 7px;border-radius:2px;color:var(--soft)}
+.chip.dup{border-color:var(--amber);color:var(--amber);background:var(--amber-wash)}
+.kind{font-size:13px;color:var(--soft)}
+.when{font-size:13px;color:var(--soft);text-align:right}
+.state{grid-column:2 / -1;margin-top:10px}
+.state-line{font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.dot.grey{background:var(--soft)}
+.dot.amber{background:var(--amber)}
+.dot.blue{background:#6b7d8f}
+.linkish{
+  appearance:none;border:0;background:none;font:inherit;font-size:13.5px;color:var(--green-deep);
+  cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px;
+}
+.summary{
+  margin:10px 0 2px;padding:12px 14px;background:var(--band);border:1px solid var(--rule);
+  font-size:14.5px;max-width:74ch;
+}
+.summary p{margin:0}
+.summary .src{margin-top:7px;font-size:12.5px;color:var(--soft)}
+.note{font-size:13.5px;color:var(--amber);background:var(--amber-wash);border:1px solid var(--amber);padding:9px 12px;margin-top:10px;max-width:74ch}
+
+/* ---------- empty state ---------- */
+.empty{border:1px solid var(--rule);background:var(--band);padding:44px 26px;text-align:center}
+.empty h3{margin:0 0 8px;font-size:19px;font-weight:600}
+.empty p{margin:0 auto 18px;max-width:46ch;color:var(--soft);font-size:15px}
+
+/* ---------- fields table ---------- */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14.5px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{background:var(--band);font-weight:600;font-size:13.5px}
+tbody tr:last-child td{border-bottom:0}
+td.who{color:var(--soft)}
+tr.gap td{background:var(--amber-wash)}
+tr.gap td.who{color:var(--amber)}
+.prov{font-size:13.5px;color:var(--soft)}
+.legend{margin-top:14px;font-size:13.5px;color:var(--soft);max-width:70ch}
+
+/* ---------- newsletter preview ---------- */
+.paperframe{border:1px solid var(--rule);background:var(--paper);padding:38px 34px}
+.nlhead{border-bottom:2px solid var(--green);padding-bottom:16px;margin-bottom:28px}
+.nlhead h3{font-family:var(--serif);font-size:30px;font-weight:600;margin:0;letter-spacing:-.01em}
+.nlhead p{margin:6px 0 0;font-size:13.5px;color:var(--soft)}
+.group{margin-bottom:34px}
+.group > h4{
+  font-family:var(--sans);font-size:14px;font-weight:600;margin:0 0 14px;
+  padding-bottom:6px;border-bottom:1px solid var(--rule);color:var(--green-deep);
+}
+.entry{margin:0 0 22px;padding-left:14px;border-left:2px solid var(--rule);max-width:70ch}
+.entry.attention{border-left-color:var(--amber)}
+.entry h5{font-family:var(--serif);font-size:19px;font-weight:600;margin:0 0 5px;line-height:1.3}
+.entry .attrib{font-size:13px;color:var(--soft);margin:0 0 8px}
+.entry .attrib a{color:var(--green-deep)}
+.entry .text{font-family:var(--serif);font-size:16px;line-height:1.62;margin:0}
+.entry .fallback{color:var(--soft)}
+.flag{display:inline-block;margin-top:9px;font-size:12.5px;color:var(--amber);background:var(--amber-wash);border:1px solid var(--amber);padding:3px 8px}
+.nothing{color:var(--soft);font-size:15px;font-style:italic}
+
+footer{border-top:1px solid var(--rule);background:var(--band);padding:22px 0;font-size:13px;color:var(--soft)}
+footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
+
+@media (max-width:720px){
+  .row{grid-template-columns:30px minmax(0,1fr);gap:10px}
+  .kind,.when{grid-column:2;text-align:left}
+  .state{grid-column:1 / -1}
+  .paperframe{padding:24px 18px}
+  .nlhead h3{font-size:24px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <div class="wrap">
+    <svg class="mark" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+      <circle cx="17" cy="17" r="15" fill="none" stroke="var(--green)" stroke-width="3.5"/>
+      <path d="M9 19.5h13a7 7 0 1 0-7-7v14" fill="none" stroke="var(--green-deep)" stroke-width="3.5" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>Jäsenkirje – kokoamisnäkymä</h1>
+      <p>Suomen eOppimiskeskus ry · editor tool</p>
+    </div>
+    <span class="stamp">Prototype 2 · DM42</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="wrap" role="tablist" aria-label="Prototype pages">
+    <button class="tab" role="tab" id="tab-fields" aria-controls="page-fields" aria-selected="false" data-page="fields">What the dashboard shows<small>US-12 · DM42-64</small></button>
+    <button class="tab" role="tab" id="tab-dash" aria-controls="page-dash" aria-selected="true" data-page="dash">Collected items<small>US-13 · DM42-65</small></button>
+    <button class="tab" role="tab" id="tab-preview" aria-controls="page-preview" aria-selected="false" data-page="preview">Newsletter preview<small>US-14 · DM42-66</small></button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <!-- ============ US-12 ============ -->
+  <section id="page-fields" role="tabpanel" aria-labelledby="tab-fields" hidden>
+    <div class="lede">
+      <h2>Fields on the dashboard, and where each one comes from</h2>
+      <p>The editors agreed this list. Every field comes from a part of the system that already exists, so nothing on the screen is promised that we cannot actually produce.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Field</th><th scope="col">What the editor sees</th><th scope="col">Produced by</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Title</td><td>Headline of the article, links to the original</td><td class="who">Crawler</td></tr>
+          <tr><td>Publisher</td><td>Organisation that published it, named on every entry</td><td class="who">Crawler</td></tr>
+          <tr><td>Source</td><td>Feed or site the item was collected from</td><td class="who">Crawler</td></tr>
+          <tr><td>Publication date</td><td>Date given by the publisher</td><td class="who">Crawler</td></tr>
+          <tr><td>Original link</td><td>Address of the article itself</td><td class="who">Crawler</td></tr>
+          <tr><td>Section</td><td>Which part of the newsletter it belongs in: events, member news, highlights from the field</td><td class="who">Editor, for now</td></tr>
+          <tr><td>AI summary</td><td>Three to four sentences, one click away on the row</td><td class="who">Summarisation workflow</td></tr>
+          <tr><td>Detected signals</td><td>Topic tags such as tekoäly or saavutettavuus</td><td class="who">Signal workflow</td></tr>
+          <tr><td>Selection state</td><td>Whether the item is going into this newsletter</td><td class="who">Dashboard</td></tr>
+          <tr><td>Duplicate marker</td><td>Points at the item this one repeats</td><td class="who">Dashboard</td></tr>
+          <tr class="gap"><td>Author</td><td>Requested by the editors, but left out of the design</td><td class="who">Nobody</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="legend">Author was checked with the crawler owner: most of the sources do not publish a machine-readable author, so the field would usually be empty. It is recorded here as a known gap rather than built into the dashboard. Section is stored on every item, but nothing fills it in automatically yet, so for now an editor picks it.</p>
+  </section>
+
+  <!-- ============ US-13 ============ -->
+  <section id="page-dash" role="tabpanel" aria-labelledby="tab-dash">
+    <div class="lede">
+      <h2>What the crawler collected</h2>
+      <p>Scan the list, open a summary when the title is not enough, and mark what belongs in the next newsletter. Your choices are saved, so you can leave the list and come back to it.</p>
+      <p class="prov">Real articles from eoppimiskeskus.fi. Our own workflow wrote the summaries, using gemma4:31b-cloud.</p>
+    </div>
+
+    <div class="toolbar">
+      <span class="count"><b id="selcount">0</b> items selected for the newsletter</span>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="clearsel" type="button">Clear selection</button>
+      <button class="btn ghost" id="toggleempty" type="button">Show the empty list</button>
+      <button class="btn" id="gopreview" type="button">Open preview</button>
+    </div>
+
+    <div class="list" id="list"></div>
+
+    <div class="empty" id="emptystate" hidden>
+      <h3>Nothing collected yet</h3>
+      <p>The crawler has not brought in any items for this period. The next run is tonight at 02:00. Fetch now to check the sources straight away.</p>
+      <button class="btn" id="exitempty" type="button">Fetch now</button>
+    </div>
+  </section>
+
+  <!-- ============ US-14 ============ -->
+  <section id="page-preview" role="tabpanel" aria-labelledby="tab-preview" hidden>
+    <div class="lede">
+      <h2>The newsletter as the members will read it</h2>
+      <p>Selected items in the order the newsletter uses. Read it through before sending, and go back to the list to change what is in it.</p>
+    </div>
+
+    <div class="toolbar">
+      <span class="count"><b id="prevcount">0</b> items in this draft</span>
+      <span class="spacer"></span>
+      <button class="btn ghost" id="backtolist" type="button">Back to the list</button>
+      <button class="btn" id="sendbtn" type="button">Send to members</button>
+    </div>
+
+    <div class="paperframe">
+      <div class="nlhead">
+        <h3>Jäsenkirje 9/2026</h3>
+        <p>Draft · not sent · Suomen eOppimiskeskus ry</p>
+      </div>
+      <div id="preview"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Prototype 2 · user stories 12 to 14 · dashboard and UX</span>
+    <span>Clickable prototype, not connected to the real crawler</span>
+  </div>
+</footer>
+
+<script>
+var ITEMS = [
+  {
+    "id": "i1",
+    "title": "SYTY tuo työyhteisöjen näkymättömän monimuotoisuuden näkyväksi",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "14.9.2026",
+    "url": "https://eoppimiskeskus.fi/syty-tuo-tyoyhteisojen-nakymattoman-monimuotoisuuden-nakyvaksi/",
+    "section": "Jäsenten kuulumiset",
+    "group": "members",
+    "signals": [
+      "syvädiversiteetti",
+      "tekoäly"
+    ],
+    "status": "ok",
+    "summary": "Työyhteisön monimuotoisuus rakentuu myös erilaisten ajattelutapojen, arvojen, vahvuuksien, kokemusten ja oppimistapojen varaan. Syyskuussa alkanut SYTY-hanke auttaa organisaatioita tunnistamaan tämän monimuotoisuuden ja hyödyntämään sitä voimavarana. eOppimiskeskus vastaa hankkeessa digitaalisiin työkaluihin ja tekoälyyn liittyvästä kokonaisuudesta."
+  },
+  {
+    "id": "i2",
+    "title": "Osaaminen näkyväksi Digital Learning -teemaviikolla",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "8.9.2026",
+    "url": "https://eoppimiskeskus.fi/osaaminen-nakyvaksi-digital-learning-teemaviikolla/",
+    "section": "Poimintoja kentältä",
+    "group": "field",
+    "signals": [
+      "tekoäly",
+      "jäsenorganisaatiot"
+    ],
+    "status": "ok",
+    "summary": "UNESCOn Digital Learning -teemaviikkoa vietetään 8.–11.9.2026 teemalla Education in the age of AI. eOppimiskeskus juhlistaa viikkoa esittelemällä jäsenistönsä osaamista ja kehitystyötä. Tekstissä mainitaan Qridin ja Sanoma Pron yhteistyö, RATEKOn eKoulutusten tavoittavuus sekä GreenICTComp-koulutuksen materiaalit."
+  },
+  {
+    "id": "i3",
+    "title": "Elovalkeat 2026 kutsuu keskustelemaan tekoälystä, inhimillisyydestä ja oppimisesta",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "18.8.2026",
+    "url": "https://eoppimiskeskus.fi/elovalkeat-2026-kutsuu-keskustelemaan-tekoalysta-inhimillisyydesta-ja-oppimisesta/",
+    "section": "Tulevat tapahtumat",
+    "group": "events",
+    "signals": [
+      "tapahtuma",
+      "tekoäly"
+    ],
+    "status": "ok",
+    "summary": "Tampereella järjestettävässä Elovalkeat 2026 -tapahtumassa käsitellään työn muutosta tekoälymurroksen aikana 17.9.2026 klo 12–16 Kokouskeskus Puistotornissa. Tilaisuus on suunnattu johtajille, esihenkilöille sekä henkilöstö- ja kehittämisvastaaville, ja puhujina ovat Niina Majaniemi, Johanna Pystynen, Laura Katajisto ja Henna-Riikka Ahvenjärvi. eOppimiskeskuksen jäsenet saavat tapahtumasta jäsenhinnan."
+  },
+  {
+    "id": "i4",
+    "title": "Yhdessä Elovalkeille – hyödynnä kaveri-, tiimi- tai jäsenhinta",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "28.8.2026",
+    "url": "https://eoppimiskeskus.fi/yhdessa-elovalkeille-hyodynna-kaveri-tiimi-tai-jasenhinta/",
+    "section": "Tulevat tapahtumat",
+    "group": "events",
+    "signals": [
+      "tapahtuma"
+    ],
+    "status": "ok",
+    "duplicateOf": "Elovalkeat 2026 kutsuu keskustelemaan tekoälystä, inhimillisyydestä ja oppimisesta",
+    "summary": "Elovalkeat 2026 järjestetään 17.9.2026 Tampereen Kokouskeskus Puistotornissa. Tapahtumassa käsitellään tekoälyn vaikutuksia työhön ja oppimiseen keynote-puheenvuorojen, sytykepajojen ja keskustelujen muodossa. Suomen eOppimiskeskus ry:n jäsenet osallistuvat tapahtumaan 69 eurolla."
+  },
+  {
+    "id": "i5",
+    "title": "Etäopetuksen päivän Call for Papers: Pedagogista muutosta luomassa",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "18.8.2026",
+    "url": "https://eoppimiskeskus.fi/etaopetuksen-paivan-call-for-papers-pedagogista-muutosta-luomassa/",
+    "section": "Tulevat tapahtumat",
+    "group": "events",
+    "signals": [
+      "tapahtuma",
+      "etäopetus"
+    ],
+    "status": "failed",
+    "summary": null,
+    "publisherText": "Miltä pedagoginen muutos näyttää käytännössä etä- ja hybridiopetuksessa?"
+  },
+  {
+    "id": "i6",
+    "title": "Kysymykset synnyttävät oppimista myös tekoälyn aikakaudella",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "3.6.2026",
+    "url": "https://eoppimiskeskus.fi/kysymykset-synnyttavat-oppimista-myos-tekoalyn-aikakaudella/",
+    "section": "Poimintoja kentältä",
+    "group": "field",
+    "signals": [
+      "tekoäly",
+      "pedagogiikka"
+    ],
+    "status": "new",
+    "summary": null
+  },
+  {
+    "id": "i7",
+    "title": "Yhdessä enemmän – viisi oppia onnistuneesta hankeyhteistyöstä",
+    "publisher": "Suomen eOppimiskeskus ry",
+    "source": "eoppimiskeskus.fi",
+    "date": "29.6.2026",
+    "url": "https://eoppimiskeskus.fi/yhdessa-enemman-viisi-oppia-onnistuneesta-hankeyhteistyosta/",
+    "section": "Poimintoja kentältä",
+    "group": "field",
+    "signals": [
+      "hankeyhteistyö"
+    ],
+    "status": "filtered",
+    "summary": null
+  }
+];
+
+var GROUPS = [
+  {key:"events", label:"Tulevat tapahtumat"},
+  {key:"members", label:"Jäsenten kuulumiset"},
+  {key:"field", label:"Poimintoja kentältä"}
+];
+
+var KEY = "dm42.proto2.selection";
+var selected = {};
+try{
+  var saved = localStorage.getItem(KEY);
+  if(saved){ selected = JSON.parse(saved) || {}; }
+  else { selected = {i1:true, i2:true, i3:true, i5:true}; }
+}catch(e){ selected = {i1:true, i2:true, i3:true, i5:true}; }
+
+function persist(){
+  try{ localStorage.setItem(KEY, JSON.stringify(selected)); }catch(e){}
+}
+function selectedIds(){
+  return ITEMS.filter(function(it){ return !!selected[it.id]; }).map(function(it){ return it.id; });
+}
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+/* ---------- dashboard ---------- */
+function statusLine(it){
+  if(it.status === "ok"){
+    return '<span class="dot"></span><span>Summary ready</span>' +
+           '<button class="linkish" type="button" data-toggle="'+it.id+'" aria-expanded="false" aria-controls="sum-'+it.id+'">Show summary</button>';
+  }
+  if(it.status === "new"){
+    return '<span class="dot grey"></span><span>Collected, not processed yet. The summary appears when the run finishes.</span>';
+  }
+  if(it.status === "filtered"){
+    return '<span class="dot blue"></span><span>Skipped on purpose before the AI step, so it never cost an AI call.</span>';
+  }
+  return '<span class="dot amber"></span><span>Summarising this item failed. Read the original before deciding.</span>';
+}
+
+function renderList(){
+  var html = ITEMS.map(function(it){
+    var cls = "item" + (selected[it.id] ? " is-selected" : "") +
+      (it.status === "new" ? " is-unprocessed" : "") + (it.status === "failed" ? " is-failed" : "") +
+      (it.status === "filtered" ? " is-filtered" : "");
+    var chips = it.signals.map(function(s){ return '<span class="chip">'+esc(s)+'</span>'; }).join("");
+    if(it.duplicateOf){ chips += '<span class="chip dup">Same story as: '+esc(it.duplicateOf)+'</span>'; }
+    return '<article class="'+cls+'" id="item-'+it.id+'">'+
+      '<div class="row">'+
+        '<div class="pick"><input type="checkbox" id="chk-'+it.id+'" data-pick="'+it.id+'"'+(selected[it.id]?" checked":"")+
+          ' aria-label="Select '+esc(it.title)+' for the newsletter"></div>'+
+        '<div>'+
+          '<h3 class="title"><a href="'+esc(it.url)+'" target="_blank" rel="noopener">'+esc(it.title)+'</a></h3>'+
+          '<p class="by"><span class="pub">'+esc(it.publisher)+'</span>, collected from '+esc(it.source)+'</p>'+
+          '<div class="sig">'+chips+'</div>'+
+        '</div>'+
+        '<div class="kind">'+esc(it.section)+'</div>'+
+        '<div class="when">'+esc(it.date)+'</div>'+
+        '<div class="state">'+
+          '<div class="state-line">'+statusLine(it)+'</div>'+
+          (it.status === "ok" ?
+            '<div class="summary" id="sum-'+it.id+'" hidden><p>'+esc(it.summary)+'</p>'+
+              '<p class="src">AI summary · always check it against the original</p></div>' : '')+
+          (it.status === "failed" ?
+            '<p class="note">This item can still go into the newsletter. The preview will use the publisher\u2019s own description and mark the entry for checking.</p>' : '')+
+        '</div>'+
+      '</div></article>';
+  }).join("");
+  document.getElementById("list").innerHTML = html;
+  updateCounts();
+}
+
+function updateCounts(){
+  var n = selectedIds().length;
+  document.getElementById("selcount").textContent = n;
+  document.getElementById("prevcount").textContent = n;
+}
+
+/* ---------- preview ---------- */
+function renderPreview(){
+  var chosen = ITEMS.filter(function(it){ return !!selected[it.id]; });
+  var host = document.getElementById("preview");
+  if(!chosen.length){
+    host.innerHTML = '<p class="nothing">No items selected yet. Pick items in the list and they appear here in the newsletter order.</p>';
+    updateCounts(); return;
+  }
+  host.innerHTML = GROUPS.map(function(g){
+    var inGroup = chosen.filter(function(it){ return it.group === g.key; });
+    if(!inGroup.length){ return ""; }
+    var entries = inGroup.map(function(it){
+      var attention = (it.status !== "ok");
+      var body;
+      if(it.status === "ok"){ body = '<p class="text">'+esc(it.summary)+'</p>'; }
+      else if(it.publisherText){ body = '<p class="text fallback">'+esc(it.publisherText)+'</p>'; }
+      else { body = '<p class="text fallback">No summary and no publisher description. Write a line here or drop the item.</p>'; }
+      return '<div class="entry'+(attention?" attention":"")+'">'+
+        '<h5>'+esc(it.title)+'</h5>'+
+        '<p class="attrib">'+esc(it.publisher)+' · <a href="'+esc(it.url)+'" target="_blank" rel="noopener">Read the original</a></p>'+
+        body+
+        (attention ? '<span class="flag">Needs checking before sending. This text is the publisher\u2019s own description, not an AI summary.</span>' : '')+
+      '</div>';
+    }).join("");
+    return '<section class="group"><h4>'+esc(g.label)+'</h4>'+entries+'</section>';
+  }).join("");
+  updateCounts();
+}
+
+/* ---------- interactions ---------- */
+document.getElementById("list").addEventListener("click", function(ev){
+  var t = ev.target.closest("[data-toggle]");
+  if(!t) return;
+  var box = document.getElementById("sum-"+t.getAttribute("data-toggle"));
+  var open = box.hasAttribute("hidden");
+  if(open){ box.removeAttribute("hidden"); } else { box.setAttribute("hidden",""); }
+  t.setAttribute("aria-expanded", open ? "true" : "false");
+  t.textContent = open ? "Hide summary" : "Show summary";
+});
+
+document.getElementById("list").addEventListener("change", function(ev){
+  var t = ev.target.closest("[data-pick]");
+  if(!t) return;
+  var id = t.getAttribute("data-pick");
+  if(t.checked){ selected[id] = true; } else { delete selected[id]; }
+  persist();
+  document.getElementById("item-"+id).classList.toggle("is-selected", !!selected[id]);
+  updateCounts();
+});
+
+document.getElementById("clearsel").addEventListener("click", function(){
+  selected = {}; persist(); renderList();
+});
+
+var emptyOn = false;
+function setEmpty(on){
+  emptyOn = on;
+  document.getElementById("list").hidden = on;
+  document.getElementById("emptystate").hidden = !on;
+  document.getElementById("toggleempty").textContent = on ? "Show the collected items" : "Show the empty list";
+}
+document.getElementById("toggleempty").addEventListener("click", function(){ setEmpty(!emptyOn); });
+document.getElementById("exitempty").addEventListener("click", function(){ setEmpty(false); });
+
+function show(page){
+  ["fields","dash","preview"].forEach(function(p){
+    var panel = document.getElementById("page-"+p);
+    var tab = document.querySelector('[data-page="'+p+'"]');
+    var on = (p === page);
+    panel.hidden = !on;
+    tab.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  if(page === "preview"){ renderPreview(); }
+  window.scrollTo({top:0, behavior:"auto"});
+}
+Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(tab){
+  tab.addEventListener("click", function(){ show(tab.getAttribute("data-page")); });
+});
+document.getElementById("gopreview").addEventListener("click", function(){ show("preview"); });
+document.getElementById("backtolist").addEventListener("click", function(){ show("dash"); });
+document.getElementById("sendbtn").addEventListener("click", function(){
+  var risky = ITEMS.filter(function(it){ return selected[it.id] && it.status !== "ok"; }).length;
+  alert(risky ? (risky + (risky === 1 ? " entry needs" : " entries need") + " checking before this draft can be sent.") : "Draft is ready to send.");
+});
+
+renderList();
+renderPreview();
+</script>
+</body>
+</html>
