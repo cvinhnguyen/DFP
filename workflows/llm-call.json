@@ -15,7 +15,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  max(CASE WHEN key = 'llm_provider'      THEN value END) AS provider,\n  max(CASE WHEN key = 'llm_model'         THEN value END) AS model,\n  max(CASE WHEN key = 'llm_base_url'      THEN value END) AS base_url,\n  max(CASE WHEN key = 'llm_cache_enabled' THEN value END) AS cache_enabled\nFROM app_settings;",
+        "query": "SELECT\n  max(CASE WHEN key = 'llm_provider'          THEN value END) AS provider,\n  max(CASE WHEN key = 'llm_model'             THEN value END) AS model,\n  max(CASE WHEN key = 'llm_base_url'          THEN value END) AS base_url,\n  max(CASE WHEN key = 'llm_cache_enabled'     THEN value END) AS cache_enabled,\n  max(CASE WHEN key = 'llm_max_output_tokens' THEN value END) AS max_output_tokens\nFROM app_settings;",
         "options": {}
       },
       "id": "config",
@@ -29,7 +29,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge the caller's input with the configuration read from the database.\n// Nothing here is hardcoded: provider, model and endpoint all come from\n// app_settings, so switching provider is a database update, not a workflow edit.\nconst cfg = $('Load config').first().json;\nconst input = $('When Executed by Another Workflow').first().json;\n\nif (!cfg.provider || !cfg.model) {\n  throw new Error('llm_provider or llm_model missing from app_settings.');\n}\n\nreturn [{\n  json: {\n    task: input.task || 'unknown',\n    item_id: input.item_id ?? null,\n    system_prompt: input.system_prompt || 'Tiivista seuraava teksti lyhyesti suomeksi.',\n    user_text: input.user_text || '',\n    provider: cfg.provider,\n    model: cfg.model,\n    base_url: cfg.base_url,\n    cache_enabled: cfg.cache_enabled === 'true',\n  }\n}];\n"
+        "jsCode": "// Merge the caller's input with the configuration read from the database.\n// Nothing here is hardcoded: provider, model and endpoint all come from\n// app_settings, so switching provider is a database update, not a workflow edit.\nconst cfg = $('Load config').first().json;\nconst input = $('When Executed by Another Workflow').first().json;\n\nif (!cfg.provider || !cfg.model) {\n  throw new Error('llm_provider or llm_model missing from app_settings.');\n}\n\nreturn [{\n  json: {\n    task: input.task || 'unknown',\n    item_id: input.item_id ?? null,\n    system_prompt: input.system_prompt || 'Tiivista seuraava teksti lyhyesti suomeksi.',\n    user_text: input.user_text || '',\n    provider: cfg.provider,\n    model: cfg.model,\n    base_url: cfg.base_url,\n    cache_enabled: cfg.cache_enabled === 'true',\n    max_output_tokens: Number(cfg.max_output_tokens) || 400,\n  }\n}];\n"
       },
       "id": "prepare",
       "name": "Prepare request",
@@ -60,7 +60,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Return the cached response if we have one, otherwise call the provider.\n// This is the only place in the project that talks to a model, which is what\n// makes cost measurable in one place and the provider swappable.\nconst req = $('Prepare request').first().json;\nconst rows = $input.all();\nconst cached = rows.length ? rows[0].json : null;\n\nif (req.cache_enabled && cached && cached.response) {\n  return [{ json: { ...req, text: cached.response, tokens_in: cached.tokens_in,\n                    tokens_out: cached.tokens_out, duration_ms: 0, cached: true } }];\n}\n\nconst started = Date.now();\nlet text = '', tokensIn = null, tokensOut = null;\n\nif (req.provider === 'ollama') {\n  const res = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${req.base_url}/api/generate`,\n    body: { model: req.model, prompt: `${req.system_prompt}\\n\\n${req.user_text}`, stream: false },\n    json: true,\n    timeout: 180000,\n  });\n  text = (res.response || '').trim();\n  tokensIn = res.prompt_eval_count ?? null;\n  tokensOut = res.eval_count ?? null;\n} else {\n  // Add the commercial provider here when we have a key. Keep the shape of\n  // the returned object identical so nothing downstream has to change.\n  throw new Error(`Provider \"${req.provider}\" is not implemented yet. Set llm_provider in app_settings.`);\n}\n\nreturn [{ json: { ...req, text, tokens_in: tokensIn, tokens_out: tokensOut,\n                  duration_ms: Date.now() - started, cached: false } }];\n"
+        "jsCode": "// Return the cached response if we have one, otherwise call the provider.\n// This is the only place in the project that talks to a model, which is what\n// makes cost measurable in one place and the provider swappable.\nconst req = $('Prepare request').first().json;\nconst rows = $input.all();\nconst cached = rows.length ? rows[0].json : null;\n\nif (req.cache_enabled && cached && cached.response) {\n  // Only whole answers are cached, so a hit is never truncated.\n  return [{ json: { ...req, text: cached.response, tokens_in: cached.tokens_in,\n                    tokens_out: cached.tokens_out, duration_ms: 0, cached: true,\n                    truncated: false } }];\n}\n\nconst started = Date.now();\nlet text = '', tokensIn = null, tokensOut = null, truncated = false;\n\nif (req.provider === 'ollama') {\n  const res = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${req.base_url}/api/generate`,\n    body: {\n      model: req.model,\n      prompt: `${req.system_prompt}\\n\\n${req.user_text}`,\n      stream: false,\n      options: { num_predict: req.max_output_tokens },\n    },\n    json: true,\n    timeout: 180000,\n  });\n  text = (res.response || '').trim();\n  tokensIn = res.prompt_eval_count ?? null;\n  tokensOut = res.eval_count ?? null;\n  // 'length' means it stopped because it ran out of room, not because it\n  // finished. The text will end mid-sentence and look complete otherwise.\n  truncated = res.done_reason === 'length';\n} else {\n  // Add the commercial provider here when we have a key. Keep the shape of\n  // the returned object identical so nothing downstream has to change.\n  throw new Error(`Provider \"${req.provider}\" is not implemented yet. Set llm_provider in app_settings.`);\n}\n\nreturn [{ json: { ...req, text, tokens_in: tokensIn, tokens_out: tokensOut,\n                  duration_ms: Date.now() - started, cached: false, truncated } }];"
       },
       "id": "call",
       "name": "Call model",
@@ -74,9 +74,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO llm_cache (hash, provider, model, response, tokens_in, tokens_out)\nVALUES (md5($1 || '|' || $2 || '|' || $3 || '|' || $4), $1, $2, $5, $6::int, $7::int)\nON CONFLICT (hash) DO NOTHING;",
+        "query": "-- A truncated answer must not be cached. Caching it once would hand the same\n-- half sentence back to every caller from then on.\nINSERT INTO llm_cache (hash, provider, model, response, tokens_in, tokens_out)\nSELECT md5($1 || '|' || $2 || '|' || $3 || '|' || $4), $1, $2, $5, $6::int, $7::int\nWHERE $8::boolean IS NOT TRUE\nON CONFLICT (hash) DO NOTHING;",
         "options": {
-          "queryReplacement": "={{ [$json.provider, $json.model, $json.system_prompt, $json.user_text, $json.text, $json.tokens_in, $json.tokens_out] }}"
+          "queryReplacement": "={{ [$json.provider, $json.model, $json.system_prompt, $json.user_text, $json.text, $json.tokens_in, $json.tokens_out, $json.truncated] }}"
         }
       },
       "id": "storecache",
@@ -92,9 +92,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Cost is looked up from llm_pricing rather than hardcoded, so prices\n-- can be updated as providers change them. NULL means we have no price\n-- on file, which is more honest than recording zero.\nINSERT INTO llm_usage\n  (item_id, workflow, provider, model, tokens_in, tokens_out,\n   estimated_cost_eur, duration_ms, cached)\nVALUES ($1::bigint, $2, $3, $4, $5::int, $6::int,\n  (SELECT ($5::numeric / 1000.0) * input_eur_per_1k\n        + ($6::numeric / 1000.0) * output_eur_per_1k\n     FROM llm_pricing WHERE provider = $3 AND model = $4),\n  $7::int, $8::boolean)\nRETURNING id, estimated_cost_eur;",
+        "query": "-- Cost is looked up from llm_pricing rather than hardcoded, so prices\n-- can be updated as providers change them. NULL means we have no price\n-- on file, which is more honest than recording zero.\nINSERT INTO llm_usage\n  (item_id, workflow, provider, model, tokens_in, tokens_out,\n   estimated_cost_eur, duration_ms, cached, truncated)\nVALUES ($1::bigint, $2, $3, $4, $5::int, $6::int,\n  (SELECT ($5::numeric / 1000.0) * input_eur_per_1k\n        + ($6::numeric / 1000.0) * output_eur_per_1k\n     FROM llm_pricing WHERE provider = $3 AND model = $4),\n  $7::int, $8::boolean, $9::boolean)\nRETURNING id, estimated_cost_eur;",
         "options": {
-          "queryReplacement": "={{ [$('Call model').first().json.item_id, $('Call model').first().json.task, $('Call model').first().json.provider, $('Call model').first().json.model, $('Call model').first().json.tokens_in, $('Call model').first().json.tokens_out, $('Call model').first().json.duration_ms, $('Call model').first().json.cached] }}"
+          "queryReplacement": "={{ [$('Call model').first().json.item_id, $('Call model').first().json.task, $('Call model').first().json.provider, $('Call model').first().json.model, $('Call model').first().json.tokens_in, $('Call model').first().json.tokens_out, $('Call model').first().json.duration_ms, $('Call model').first().json.cached, $('Call model').first().json.truncated] }}"
         }
       },
       "id": "logusage",
@@ -108,7 +108,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// The shape every caller gets back. Keep this stable.\n//\n// task and item_id are echoed straight back from what the caller sent. A\n// caller gets one item out of this workflow and loses whatever it was holding,\n// so without these it has the model's answer and nothing to match it against.\n// Join on item_id, or reach back to your own earlier node.\nconst r = $('Call model').first().json;\nconst req = $('Prepare request').first().json;\nconst logged = $input.first().json || {};\n\nreturn [{\n  json: {\n    task: req.task,\n    item_id: req.item_id,\n    text: r.text,\n    provider: r.provider,\n    model: r.model,\n    tokens_in: r.tokens_in,\n    tokens_out: r.tokens_out,\n    cost_eur: logged.estimated_cost_eur ?? null,\n    duration_ms: r.duration_ms,\n    cached: r.cached,\n  }\n}];"
+        "jsCode": "// The shape every caller gets back. Keep this stable.\n//\n// task and item_id are echoed straight back from what the caller sent. A\n// caller gets one item out of this workflow and loses whatever it was holding,\n// so without these it has the model's answer and nothing to match it against.\n// Join on item_id, or reach back to your own earlier node.\nconst r = $('Call model').first().json;\nconst req = $('Prepare request').first().json;\nconst logged = $input.first().json || {};\n\nreturn [{\n  json: {\n    task: req.task,\n    item_id: req.item_id,\n    text: r.text,\n    provider: r.provider,\n    model: r.model,\n    tokens_in: r.tokens_in,\n    tokens_out: r.tokens_out,\n    cost_eur: logged.estimated_cost_eur ?? null,\n    duration_ms: r.duration_ms,\n    cached: r.cached,\n    // true means the model ran out of room and the text stops mid-sentence.\n    truncated: r.truncated === true,\n  }\n}];"
       },
       "id": "result",
       "name": "Return result",

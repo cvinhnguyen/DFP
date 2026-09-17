@@ -63,6 +63,14 @@ docker compose exec -T postgres psql -U $POSTGRES_USER -d newsletter \
   < db/init/04-signals.sql
 ```
 
+The shared LLM workflow caps how much a model may write, using
+`llm_max_output_tokens` in `app_settings`. When a model stops because it ran
+out of room rather than because it finished, the call comes back with
+`truncated: true` and the answer is not cached, because caching half a
+sentence would hand the same half sentence to every later caller. `llm_usage`
+records it too, so we can see whether the cap is set too low instead of
+guessing.
+
 `signals` and `signal_items` hold what the trend detection finds. A signal
 must link to at least one article, enforced by a trigger that runs at commit,
 so write the signal and its links in one statement. There is a worked example
