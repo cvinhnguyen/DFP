@@ -77,6 +77,15 @@ item. Workflows should post there rather than writing to `items` directly, so
 one workflow with a bug cannot fill the shared database. See
 `docs/ingest-api.md`.
 
+`workflows/telegram-capture.json` lets an editor send a link to
+@DFP_Mazhar4_bot and have it join the same pipeline as crawled content. It
+asks Telegram for new messages once a minute rather than Telegram calling
+us, so no tunnel and no public address are needed. Only Telegram IDs listed
+in `users.telegram_user_id` are accepted; anyone else is refused and told
+their own id, which is how a new editor gets added. Where the page cannot be
+read, and LinkedIn almost never can, the bot uses the words the editor typed
+as the title. Set `TELEGRAM_BOT_TOKEN` in `.env`.
+
 `workflows/signal-detection.json` fills `signals` and `signal_items`. It asks
 the model, per article, whether the article points at something new or
 growing, and keeps only the ones it says yes to. Articles that name the same

@@ -67,6 +67,23 @@ services:
       EXECUTIONS_DATA_PRUNE: "true"
       EXECUTIONS_DATA_MAX_AGE: ${N8N_EXECUTION_RETENTION_HOURS:-720}
 
+      # The Telegram bot token. Kept in .env rather than in a workflow or in
+      # the database, so it is not in git and does not end up in a database
+      # dump. Workflows read it as $env.TELEGRAM_BOT_TOKEN.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+
+      # n8n blocks $env inside nodes by default. Unblocking it is what lets a
+      # workflow read the token above without us storing it in the database.
+      #
+      # The cost, stated plainly: any workflow on this instance can now read
+      # every variable here, including POSTGRES_PASSWORD and the encryption
+      # key. That is acceptable because each of us runs our own n8n and the
+      # only person who can add a workflow is the person who already has the
+      # .env file. If n8n is ever shared with people who should not read the
+      # database password, set this back to true and find another way to pass
+      # the token.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+
       # No usage data sent to n8n.
       N8N_DIAGNOSTICS_ENABLED: "false"
 

@@ -1,0 +1,262 @@
+{
+  "name": "Telegram capture",
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "t1",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n2",
+      "name": "Load state",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The polling marker and the allowlist in one round trip, so the rest of the\n-- workflow never has to go back to the database for a single message.\nSELECT\n  coalesce((SELECT value::bigint FROM app_settings WHERE key = 'telegram_offset'), 0)\n    AS next_offset,\n  coalesce((SELECT jsonb_agg(jsonb_build_object(\n              'telegram_user_id', u.telegram_user_id,\n              'user_id',          u.id,\n              'name',             coalesce(u.display_name, u.email)))\n              FROM users u WHERE u.telegram_user_id IS NOT NULL), '[]'::jsonb)\n    AS allowlist;",
+        "options": {}
+      }
+    },
+    {
+      "id": "n3",
+      "name": "Ask Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getUpdates",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "offset",
+              "value": "={{ $json.next_offset }}"
+            },
+            {
+              "name": "timeout",
+              "value": "0"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            },
+            {
+              "name": "allowed_updates",
+              "value": "[\"message\"]"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n4",
+      "name": "Read messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Telegram hands back everything since next_offset and only forgets a message\n// once we ask for the one after it, so the marker is advanced at the end of the\n// run rather than here. Handling a message twice is harmless. Losing one is not.\nconst state = $('Load state').first().json;\nconst allow = new Map((state.allowlist || []).map(a => [String(a.telegram_user_id), a]));\nconst updates = ($input.first().json || {}).result || [];\n\nconst URL_RE = /https?:\\/\\/[^\\s<>()]+/i;\nlet nextOffset = Number(state.next_offset) || 0;\nconst out = [];\n\nfor (const u of updates) {\n  if (u.update_id >= nextOffset) nextOffset = u.update_id + 1;\n  const msg = u.message;\n  if (!msg || !msg.text) continue;\n\n  const fromId = String(msg.from && msg.from.id);\n  const who = allow.get(fromId) || null;\n  const text = String(msg.text).trim();\n  const found = text.match(URL_RE);\n  const url = found ? found[0].replace(/[.,;:)\\]]+$/, '') : null;\n  // whatever the editor typed around the link: their own note, and the title\n  // we fall back to when the page cannot be read\n  const note = found ? text.replace(found[0], ' ').replace(/\\s+/g, ' ').trim() : '';\n\n  out.push({ json: {\n    update_id: u.update_id,\n    chat_id: msg.chat.id,\n    from_id: fromId,\n    from_name: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' '),\n    allowed: !!who,\n    text, url, note,\n  }});\n}\n\n// Updates that carry nothing we handle still have to move the marker, or we\n// would ask for them again every minute forever.\nif (out.length === 0) {\n  return updates.length ? [{ json: { skip: true, next_offset: nextOffset } }] : [];\n}\nfor (const o of out) o.json.next_offset = nextOffset;\nreturn out;"
+      }
+    },
+    {
+      "id": "n5",
+      "name": "Fetch page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Read the page for a title, so the editor does not have to type one.\n//\n// A page we cannot read leaves the editor's own words as the title instead.\n// LinkedIn sits behind a login and lands here almost every time, and LinkedIn is\n// the client's main social source, so this path is the normal one rather than\n// the exception.\nconst m = $json;\nif (m.skip || !m.allowed || !m.url) {\n  return { json: { ...m, page_ok: false, title: null, publisher: null, published_at: null } };\n}\n\nconst unescape = s => String(s)\n  .replace(/&amp;/g, '&').replace(/&quot;/g, '\"').replace(/&#0?39;/g, \"'\")\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();\n\nlet page_ok = false, pageTitle = null, publisher = null, published_at = null;\ntry {\n  const html = String(await this.helpers.httpRequest({\n    url: m.url, timeout: 15000, json: false,\n    headers: { 'User-Agent': 'DFP newsletter bot (HAMK student project)' },\n  }));\n  const pick = re => { const x = html.match(re); return x ? unescape(x[1]) : null; };\n  pageTitle = pick(/<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)/i)\n           || pick(/<title[^>]*>([^<]+)<\\/title>/i);\n  publisher = pick(/<meta[^>]+property=[\"']og:site_name[\"'][^>]+content=[\"']([^\"']+)/i);\n  published_at = pick(/<meta[^>]+property=[\"']article:published_time[\"'][^>]+content=[\"']([^\"']+)/i);\n  // A page that loads is not the same as an article we can read. LinkedIn\n  // answers with its login page, title and all, so trusting that would file\n  // \"LinkedIn Login, Sign in\" as the headline of whatever the editor meant.\n  const LOGIN_LIKE = /(log ?in|sign ?in|sign ?up|kirjaudu|rekister|access denied|just a moment|are you a robot)/i;\n  if (pageTitle && LOGIN_LIKE.test(pageTitle)) pageTitle = null;\n  page_ok = !!pageTitle;\n} catch (e) {\n  page_ok = false;\n}\n\nreturn { json: { ...m, page_ok, publisher, published_at,\n                 title: page_ok ? pageTitle : (m.note || null) } };"
+      }
+    },
+    {
+      "id": "n6",
+      "name": "Save capture",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        0
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Nothing is stored unless the sender is on the allowlist and we have both a\n-- link and a title, so a stray message cannot put an item in the newsletter.\nWITH me AS (\n    SELECT $1::text        AS tg_id,\n           nullif($2, '')  AS url,\n           nullif($3, '')  AS title,\n           nullif($4, '')  AS publisher,\n           $5::timestamptz AS published_at,\n           nullif($6, '')  AS note\n),\nperson AS (\n    SELECT u.id FROM users u JOIN me ON u.telegram_user_id = me.tg_id\n),\n-- read before the insert below, so we can tell \"saved\" from \"already had it\"\nseen AS (\n    SELECT EXISTS (SELECT 1 FROM items i JOIN me ON i.canonical_url = me.url) AS already\n),\nstored AS (\n    INSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                       published_at, excerpt, status, captured_by, fetched_at)\n    SELECT (SELECT id FROM sources WHERE type = 'manual' ORDER BY id LIMIT 1),\n           me.url, me.url, me.title, me.publisher, me.published_at, me.note,\n           'new', (SELECT id FROM person), now()\n      FROM me\n     WHERE EXISTS (SELECT 1 FROM person)\n       AND me.url IS NOT NULL\n       AND me.title IS NOT NULL\n    ON CONFLICT (canonical_url) DO NOTHING\n    RETURNING id\n)\nSELECT EXISTS (SELECT 1 FROM person) AS allowed,\n       (SELECT id FROM stored)       AS item_id,\n       (SELECT already FROM seen)    AS already_known;",
+        "options": {
+          "queryReplacement": "={{ [ $json.from_id ?? '', $json.url ?? '', $json.title ?? '', $json.publisher ?? '', $json.published_at ?? null, $json.note ?? '' ] }}"
+        }
+      }
+    },
+    {
+      "id": "n7",
+      "name": "Build reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Tell the editor what happened, in their words rather than ours.\nconst db = $json;                       // what the database did\nconst m  = $('Fetch page').item.json;   // the message it was about\n\nlet reply = null;\nif (m.skip) {\n  reply = null;\n} else if (!m.allowed) {\n  // Telling an unknown sender their own id is how someone gets added without a\n  // round trip. It gives away nothing: they can read it from any bot.\n  reply = `I only take links from people on the list.\\n\\nYour Telegram ID is ${m.from_id}. Send that to Vinh and he will add you.`;\n} else if (!m.url) {\n  reply = 'Send me a link and I will save it for the newsletter. You can put a note after the link.';\n} else if (!m.page_ok && !m.note) {\n  reply = 'I could not read that page. Send the link again with a title after it and I will save that instead.';\n} else if (db.item_id) {\n  reply = `Saved: ${m.title}`\n        + (m.publisher ? `\\n${m.publisher}` : '')\n        + (m.page_ok ? '' : '\\n(I could not read the page, so I used your own words as the title.)');\n} else if (db.already_known) {\n  reply = 'I already have that link.';\n} else {\n  reply = 'Something went wrong saving that. Try again, or tell Vinh.';\n}\n\nreturn { json: { ...m, reply, item_id: db.item_id ?? null, allowed_by_db: db.allowed } };"
+      }
+    },
+    {
+      "id": "n8",
+      "name": "Reply on Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Nothing to say for a message we did not act on.\nconst m = $json;\nif (!m.reply) return { json: m };\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n  body: { chat_id: m.chat_id, text: m.reply, disable_web_page_preview: true },\n  json: true,\n});\nreturn { json: m };"
+      }
+    },
+    {
+      "id": "n9",
+      "name": "Save offset",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1760,
+        0
+      ],
+      "executeOnce": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Advanced only now the batch has been handled.\nUPDATE app_settings SET value = $1, updated_at = now()\n WHERE key = 'telegram_offset';",
+        "options": {
+          "queryReplacement": "={{ [ String($json.next_offset) ] }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Load state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load state": {
+      "main": [
+        [
+          {
+            "node": "Ask Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Telegram": {
+      "main": [
+        [
+          {
+            "node": "Read messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read messages": {
+      "main": [
+        [
+          {
+            "node": "Fetch page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch page": {
+      "main": [
+        [
+          {
+            "node": "Save capture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save capture": {
+      "main": [
+        [
+          {
+            "node": "Build reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build reply": {
+      "main": [
+        [
+          {
+            "node": "Reply on Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply on Telegram": {
+      "main": [
+        [
+          {
+            "node": "Save offset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
