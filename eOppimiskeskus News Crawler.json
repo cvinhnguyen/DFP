@@ -1,0 +1,499 @@
+{
+  "name": "eOppimiskeskus News Crawler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "cc82854a-b04a-4a35-917d-b62e40b07a5a",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://eoppimiskeskus.fi/en/news/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "12d30b20-dc7e-4b42-b0d0-c07595f96161",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "titles",
+              "cssSelector": "h2.post-content-heading",
+              "returnArray": true
+            },
+            {
+              "key": "urls",
+              "cssSelector": ".newscard .content > a:has(h2.post-content-heading)",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            },
+            {
+              "key": "dates",
+              "cssSelector": ".newscard .postmeta",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "6fde9953-df4e-4846-b51a-d70bc2d9c2db",
+      "name": "HTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst titles = data.titles || [];\nconst urls = data.urls || [];\nconst dates = data.dates || [];\n\nreturn titles.map((title, index) => ({\n  json: {\n    title: title,\n    url: urls[index] || \"\",\n    date: dates[index] || \"\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "2a25c0e5-ede3-449f-9190-9e5b106bcc6c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "url": "={{$json.url}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        896,
+        0
+      ],
+      "id": "29cdd89b-3a67-45dc-8604-4c2085551361",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "content",
+              "cssSelector": ".entry-content"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "d3cd00e4-f152-46cf-85b7-034423bc519a",
+      "name": "HTML1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const contentItems = $input.all();\nconst articleItems = $(\"Code in JavaScript\").all();\n\nreturn contentItems.map((item, index) => ({\n  json: {\n    title: articleItems[index]?.json?.title || \"\",\n    url: articleItems[index]?.json?.url || \"\",\n    date: articleItems[index]?.json?.date || \"\",\n    content: item.json.content || \"\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "20197efb-d3aa-4c46-994c-09c5cea172e6",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n  const data = item.json;\n\n  let cleanContent = data.content || \"\";\n\n  cleanContent = cleanContent\n    .replace(/\\n/g, \" \")\n    .replace(/\\r/g, \" \")\n    .replace(/\\t/g, \" \")\n    .replace(/\\s+/g, \" \")\n    .trim();\n\n  return {\n    json: {\n      title: data.title,\n      url: data.url,\n      date: data.date,\n      content: cleanContent\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        0
+      ],
+      "id": "ac38330b-90bc-4b34-bfca-180790594239",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2016,
+        0
+      ],
+      "id": "5dfcd137-63f7-4188-82c6-6ff649089f78",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "items",
+          "mode": "list",
+          "cachedResultName": "items"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "canonical_url": "={{$json.url}}",
+            "publisher": "eOppimiskeskus",
+            "source_id": 1,
+            "source_url": "={{$json.url}}",
+            "title": "={{$json.title}}",
+            "raw_text": "={{$json.content}}",
+            "published_at": "={{ DateTime.fromFormat($json.date, 'd.M.yyyy').toISO() }}",
+            "fetched_at": "={{ $now.toISO() }}",
+            "source_language": "en",
+            "section": "news",
+            "status": "new",
+            "created_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "canonical_url"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "source_id",
+              "displayName": "source_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "publisher",
+              "displayName": "publisher",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "source_url",
+              "displayName": "source_url",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "canonical_url",
+              "displayName": "canonical_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "excerpt",
+              "displayName": "excerpt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "raw_text",
+              "displayName": "raw_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "published_at",
+              "displayName": "published_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "fetched_at",
+              "displayName": "fetched_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "source_language",
+              "displayName": "source_language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "section",
+              "displayName": "section",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "duplicate_of",
+              "displayName": "duplicate_of",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "captured_by",
+              "displayName": "captured_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1792,
+        0
+      ],
+      "id": "b380db89-2558-4104-88c0-1bb3beeed411",
+      "name": "Insert or update rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "SGvBvoeRTPzI7uPd",
+          "name": "Postgres account 3"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "HTML1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Insert or update rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        []
+      ]
+    },
+    "Insert or update rows in a table": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "bd7ebe68-7eea-4c6f-b765-0fb3a485e995",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "994d0d3697229099cd6609a29a84986222d32abd6b08c856514f8dfe9610fcee"
+  },
+  "nodeGroups": [],
+  "id": "qab4Qn1wTLANqHsG",
+  "tags": []
+}
