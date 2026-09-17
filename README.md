@@ -79,8 +79,12 @@ updates the existing signal rather than adding a copy.
 
 The important ones for the crawler:
 
-- `sources` is what we monitor. One example row is seeded so you have
-  something to reference before the client sends their real list.
+- `sources` is what we monitor, and the crawler should read its URL from
+  here rather than hardcoding one. Two rows are seeded: the Finnish
+  `ajankohtaista` section and the English `en/news` section, which carry
+  different articles. Each has a `language`, so nothing downstream has to
+  guess from the URL. If the client decides against an English edition, set
+  `active = false` on that row rather than deleting it.
 - `items` is one row per article. `source_id` is where we found it,
   `publisher` is who wrote it, and both are needed because the publisher is
   the attribution printed in the newsletter.
