@@ -55,7 +55,7 @@ repository.
   "rejected": 4,
   "results": [
     { "url": "https://example.invalid/a", "accepted": true,  "item_id": "76" },
-    { "url": "https://example.invalid/b", "accepted": true,  "item_id": "77" },
+    { "url": "https://example.invalid/b", "accepted": true,  "item_id": "77", "duplicate_of": "25" },
     { "url": "",                          "accepted": false, "reason": "url is required" },
     { "url": "https://example.invalid/c", "accepted": false, "reason": "title is required" },
     { "url": "https://example.invalid/d", "accepted": false, "reason": "unknown or inactive source_id" },
@@ -79,13 +79,23 @@ A malformed body answers 400 with `{"error": "..."}` and stores nothing.
 
 ## Things worth knowing
 
-Sending the same URL again updates the existing item rather than creating a
-second one, matched on `canonical_url`. Title, publisher, excerpt, text and
-publication date are refreshed and `fetched_at` is moved on. The item keeps its
-id, so summaries and signals stay attached.
+The database cleans every URL before comparing it: https, lowercase host
+without `www.`, no `utm_` or other tracking parameters, no `#fragment`, no
+trailing slash. So `https://www.example.fi/news/?utm_source=linkedin` and
+`https://example.fi/news` are the same article.
 
-The same URL twice inside one batch is rejected the second time rather than
-silently collapsed, so the response still has a line for it.
+Sending the same article again updates the existing item rather than creating
+a second one. A field you leave out keeps the value already stored, so sharing
+a link with only a title never wipes the text the crawler collected. The item
+keeps its id, so summaries and signals stay attached.
+
+The same article twice inside one batch is rejected the second time rather
+than silently collapsed, so the response still has a line for it.
+
+An article at a different address whose text matches one we already have is
+stored, and `duplicate_of` in the response names the item it matches. Nothing
+is deleted: how many sources carried a story is useful to the editors, and the
+`story_coverage` view lists them.
 
 The whole batch is one SQL statement. Either the accepted items are all stored
 or none are, and a failure cannot leave half a batch behind.
