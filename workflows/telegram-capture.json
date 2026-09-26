@@ -101,7 +101,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Read the page for a title, so the editor does not have to type one.\n//\n// A page we cannot read leaves the editor's own words as the title instead.\n// LinkedIn sits behind a login and lands here almost every time, and LinkedIn is\n// the client's main social source, so this path is the normal one rather than\n// the exception.\nconst m = $json;\nif (m.skip || !m.allowed || !m.url) {\n  return { json: { ...m, page_ok: false, title: null, publisher: null, published_at: null } };\n}\n\nconst unescape = s => String(s)\n  .replace(/&amp;/g, '&').replace(/&quot;/g, '\"').replace(/&#0?39;/g, \"'\")\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();\n\nlet page_ok = false, pageTitle = null, publisher = null, published_at = null;\ntry {\n  const html = String(await this.helpers.httpRequest({\n    url: m.url, timeout: 15000, json: false,\n    headers: { 'User-Agent': 'DFP newsletter bot (HAMK student project)' },\n  }));\n  const pick = re => { const x = html.match(re); return x ? unescape(x[1]) : null; };\n  pageTitle = pick(/<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)/i)\n           || pick(/<title[^>]*>([^<]+)<\\/title>/i);\n  publisher = pick(/<meta[^>]+property=[\"']og:site_name[\"'][^>]+content=[\"']([^\"']+)/i);\n  published_at = pick(/<meta[^>]+property=[\"']article:published_time[\"'][^>]+content=[\"']([^\"']+)/i);\n  // A page that loads is not the same as an article we can read. LinkedIn\n  // answers with its login page, title and all, so trusting that would file\n  // \"LinkedIn Login, Sign in\" as the headline of whatever the editor meant.\n  const LOGIN_LIKE = /(log ?in|sign ?in|sign ?up|kirjaudu|rekister|access denied|just a moment|are you a robot)/i;\n  if (pageTitle && LOGIN_LIKE.test(pageTitle)) pageTitle = null;\n  page_ok = !!pageTitle;\n} catch (e) {\n  page_ok = false;\n}\n\nreturn { json: { ...m, page_ok, publisher, published_at,\n                 title: page_ok ? pageTitle : (m.note || null) } };"
+        "jsCode": "// Read the page for a title, so the editor does not have to type one.\n//\n// A page we cannot read leaves the editor's own words as the title instead.\n// LinkedIn sits behind a login and lands here almost every time, and LinkedIn is\n// the client's main social source, so this path is the normal one rather than\n// the exception.\nconst m = $json;\nif (m.skip || !m.allowed || !m.url) {\n  return { json: { ...m, page_ok: false, title: null, publisher: null, published_at: null, text: '' } };\n}\n\nconst unescape = s => String(s)\n  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (_, n) => String.fromCodePoint(Number(n)))\n  .replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&#0?39;/g, \"'\")\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&')\n  .replace(/\\s+/g, ' ').trim();\n\nlet page_ok = false, pageTitle = null, publisher = null, published_at = null, text = '';\ntry {\n  const html = String(await this.helpers.httpRequest({\n    url: m.url, timeout: 15000, json: false,\n    headers: { 'User-Agent': 'DFP newsletter bot (HAMK student project)' },\n  }));\n  const pick = re => { const x = html.match(re); return x ? unescape(x[1]) : null; };\n  pageTitle = pick(/<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)/i)\n           || pick(/<title[^>]*>([^<]+)<\\/title>/i);\n  publisher = pick(/<meta[^>]+property=[\"']og:site_name[\"'][^>]+content=[\"']([^\"']+)/i);\n  published_at = pick(/<meta[^>]+property=[\"']article:published_time[\"'][^>]+content=[\"']([^\"']+)/i);\n  // Sites append their own name to the <title>. The editor does not need it\n  // twice, the publisher is already on the next line of the reply. Only a\n  // tail that matches the site is removed, so a real title ending in a dash\n  // survives.\n  const host = (m.url.match(/^https?:\\/\\/(?:www\\.)?([^\\/]+)/i) || ['', ''])[1].split('.')[0];\n  for (const name of [publisher, host].filter(Boolean)) {\n    const esc = name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    if (pageTitle) pageTitle = pageTitle.replace(new RegExp(`\\\\s*[\\u2013\\u2014|\\u00b7-]\\\\s*${esc}\\\\s*$`, 'i'), '').trim();\n  }\n\n  // A page that loads is not the same as an article we can read. LinkedIn\n  // answers with its login page, title and all, so trusting that would file\n  // \"LinkedIn Login, Sign in\" as the headline of whatever the editor meant.\n  const LOGIN_LIKE = /(log ?in|sign ?in|sign ?up|kirjaudu|rekister|access denied|just a moment|are you a robot)/i;\n  if (pageTitle && LOGIN_LIKE.test(pageTitle)) pageTitle = null;\n  page_ok = !!pageTitle;\n\n  // The article itself. Without this the bot can file a link but never say\n  // anything about it, which is most of what the editor wants.\n  //\n  // Start at the article container and run to whatever closes the article\n  // region. Matching to the first </div> stops at the first nested one, which\n  // on some pages left three sentences and a summary confidently about the\n  // wrong thing. Paragraphs are preferred because they keep prose and drop\n  // menus and buttons.\n  let region = html;\n  const start = html.search(/<div[^>]*class=\"[^\"]*\\bentry-content\\b[^\"]*\"/i);\n  if (start >= 0) {\n    const after = html.slice(start);\n    const end = after.search(/<footer|<\\/article>|class=\"[^\"]*(?:entry-footer|post-nav|sharedaddy|comments|related)/i);\n    region = end > 0 ? after.slice(0, end) : after;\n  }\n  const stripped = region.replace(/<(script|style|noscript)[\\s\\S]*?<\\/\\1>/gi, ' ');\n  const paras = [...stripped.matchAll(/<p[^>]*>([\\s\\S]*?)<\\/p>/gi)]\n    .map(x => unescape(x[1].replace(/<[^>]+>/g, ' ')))\n    .filter(t => t.length > 40);\n  const byParas = paras.join('\\n');\n  const byStrip = unescape(stripped.replace(/<[^>]+>/g, ' '));\n  text = (byParas.length > 200 ? byParas : byStrip).slice(0, 6000);\n} catch (e) {\n  page_ok = false;\n}\n\nreturn { json: { ...m, page_ok, publisher, published_at, text,\n                 title: page_ok ? pageTitle : (m.note || null) } };"
       }
     },
     {
@@ -116,9 +116,96 @@
       "alwaysOutputData": true,
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Nothing is stored unless the sender is on the allowlist and we have both a\n-- link and a title, so a stray message cannot put an item in the newsletter.\nWITH me AS (\n    SELECT $1::text        AS tg_id,\n           nullif($2, '')  AS url,\n           nullif($3, '')  AS title,\n           nullif($4, '')  AS publisher,\n           $5::timestamptz AS published_at,\n           nullif($6, '')  AS note\n),\nperson AS (\n    SELECT u.id FROM users u JOIN me ON u.telegram_user_id = me.tg_id\n),\n-- read before the insert below, so we can tell \"saved\" from \"already had it\"\nseen AS (\n    SELECT EXISTS (SELECT 1 FROM items i JOIN me ON i.canonical_url = me.url) AS already\n),\nstored AS (\n    INSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                       published_at, excerpt, status, captured_by, fetched_at)\n    SELECT (SELECT id FROM sources WHERE type = 'manual' ORDER BY id LIMIT 1),\n           me.url, me.url, me.title, me.publisher, me.published_at, me.note,\n           'new', (SELECT id FROM person), now()\n      FROM me\n     WHERE EXISTS (SELECT 1 FROM person)\n       AND me.url IS NOT NULL\n       AND me.title IS NOT NULL\n    ON CONFLICT (canonical_url) DO NOTHING\n    RETURNING id\n)\nSELECT EXISTS (SELECT 1 FROM person) AS allowed,\n       (SELECT id FROM stored)       AS item_id,\n       (SELECT already FROM seen)    AS already_known;",
+        "query": "-- Nothing is stored unless the sender is on the allowlist and we have both a\n-- link and a title, so a stray message cannot put an item in the newsletter.\nWITH me AS (\n    SELECT $1::text        AS tg_id,\n           nullif($2, '')  AS url,\n           nullif($3, '')  AS title,\n           nullif($4, '')  AS publisher,\n           $5::timestamptz AS published_at,\n           nullif($6, '')  AS note,\n           nullif($7, '')  AS body\n),\nperson AS (\n    SELECT u.id FROM users u JOIN me ON u.telegram_user_id = me.tg_id\n),\n-- read before the insert below, so we can tell \"saved\" from \"already had it\"\nseen AS (\n    SELECT EXISTS (SELECT 1 FROM items i JOIN me ON i.canonical_url = me.url) AS already\n),\nstored AS (\n    INSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                       published_at, excerpt, raw_text, status, captured_by, fetched_at)\n    SELECT (SELECT id FROM sources WHERE type = 'manual' ORDER BY id LIMIT 1),\n           me.url, me.url, me.title, me.publisher, me.published_at, me.note,\n           me.body, 'new', (SELECT id FROM person), now()\n      FROM me\n     WHERE EXISTS (SELECT 1 FROM person)\n       AND me.url IS NOT NULL\n       AND me.title IS NOT NULL\n    ON CONFLICT (canonical_url) DO NOTHING\n    RETURNING id\n)\nSELECT EXISTS (SELECT 1 FROM person) AS allowed,\n       (SELECT id FROM stored)       AS item_id,\n       (SELECT already FROM seen)    AS already_known;",
         "options": {
-          "queryReplacement": "={{ [ $json.from_id ?? '', $json.url ?? '', $json.title ?? '', $json.publisher ?? '', $json.published_at ?? null, $json.note ?? '' ] }}"
+          "queryReplacement": "={{ [ $json.from_id ?? '', $json.url ?? '', $json.title ?? '', $json.publisher ?? '', $json.published_at ?? null, $json.note ?? '', $json.text ?? '' ] }}"
+        }
+      }
+    },
+    {
+      "id": "nif",
+      "name": "Worth summarising",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1210,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "needs",
+              "leftValue": "={{ $json.item_id !== null && ($('Fetch page').item.json.text || '').length > 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "nreq",
+      "name": "Build request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        -120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Through the shared workflow, never a model call of our own, or the cost\n// figures we give the client stop adding up.\nconst m = $('Fetch page').item.json;\nreturn { json: {\n  task: 'telegram_capture',\n  item_id: $json.item_id,\n  system_prompt: 'Tiivistä seuraava uutinen jäsenkirjeeseen kolmella lyhyellä suomenkielisellä lauseella. Kerro vain se mitä tekstissä lukee. Älä keksi mitään lisää.',\n  user_text: `${m.title}\\n\\n${m.text}`,\n} };"
+      }
+    },
+    {
+      "id": "nsum",
+      "name": "Summarise",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1590,
+        -120
+      ],
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "LslQ5XfMnOE6tg22",
+          "mode": "id"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "nss",
+      "name": "Save summary",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1780,
+        -120
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- One statement, so an item is never marked summarised without a summary.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    VALUES ($1::bigint, 'fi', $2, $3, $4)\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, generated_at = now()\n    RETURNING item_id\n)\nUPDATE items SET status = 'summarised' WHERE id = (SELECT item_id FROM s);",
+        "options": {
+          "queryReplacement": "={{ [ $json.item_id, $json.text, $json.provider, $json.model ] }}"
         }
       }
     },
@@ -133,7 +220,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Tell the editor what happened, in their words rather than ours.\nconst db = $json;                       // what the database did\nconst m  = $('Fetch page').item.json;   // the message it was about\n\nlet reply = null;\nif (m.skip) {\n  reply = null;\n} else if (!m.allowed) {\n  // Telling an unknown sender their own id is how someone gets added without a\n  // round trip. It gives away nothing: they can read it from any bot.\n  reply = `I only take links from people on the list.\\n\\nYour Telegram ID is ${m.from_id}. Send that to Vinh and he will add you.`;\n} else if (!m.url) {\n  reply = 'Send me a link and I will save it for the newsletter. You can put a note after the link.';\n} else if (!m.page_ok && !m.note) {\n  reply = 'I could not read that page. Send the link again with a title after it and I will save that instead.';\n} else if (db.item_id) {\n  reply = `Saved: ${m.title}`\n        + (m.publisher ? `\\n${m.publisher}` : '')\n        + (m.page_ok ? '' : '\\n(I could not read the page, so I used your own words as the title.)');\n} else if (db.already_known) {\n  reply = 'I already have that link.';\n} else {\n  reply = 'Something went wrong saving that. Try again, or tell Vinh.';\n}\n\nreturn { json: { ...m, reply, item_id: db.item_id ?? null, allowed_by_db: db.allowed } };"
+        "jsCode": "// Tell the editor what happened, in their words rather than ours.\n//\n// Nothing is read from $json here: the two branches of \"Worth summarising\"\n// arrive carrying different things, so every value is fetched from the node\n// that owns it.\nconst m  = $('Fetch page').item.json;    // the message and the page\nconst db = $('Save capture').item.json;  // what the database did\nlet llm = null;\ntry { llm = $('Summarise').item.json; } catch (e) { llm = null; }  // only one branch summarises\n\nconst cost = (llm && llm.cost_eur != null) ? Number(llm.cost_eur) : null;\nconst tokens = llm ? (Number(llm.tokens_in || 0) + Number(llm.tokens_out || 0)) : 0;\n\nlet reply = null;\nif (m.skip) {\n  reply = null;\n} else if (!m.allowed) {\n  // Telling an unknown sender their own id is how someone gets added without a\n  // round trip. It gives away nothing: they can read it from any bot.\n  reply = `I only take links from people on the list.\\n\\nYour Telegram ID is ${m.from_id}. Send that to Vinh and he will add you.`;\n} else if (!m.url) {\n  reply = 'Send me a link and I will save it for the newsletter. You can put a note after the link.';\n} else if (!m.page_ok && !m.note) {\n  reply = 'I could not read that page. Send the link again with a title after it and I will save that instead.';\n} else if (db.item_id) {\n  const lines = [`Saved: ${m.title}`];\n  if (m.publisher) lines.push(m.publisher);\n  if (llm && llm.text) {\n    lines.push('', llm.text.trim());\n    // What the client asked about in the kickoff, on their own article,\n    // rather than as a number on a slide.\n    lines.push('', `${tokens} tokens${cost != null ? ` · €${cost.toFixed(4)}` : ''}${cost === 0 ? ' (free tier)' : ''}`);\n  } else if (!m.page_ok) {\n    lines.push('', 'I could not read the page, so I used your own words as the title.');\n  } else {\n    lines.push('', 'Saved without a summary: there was too little text on the page.');\n  }\n  reply = lines.join('\\n');\n} else if (db.already_known) {\n  reply = 'I already have that link.';\n} else {\n  reply = 'Something went wrong saving that. Try again, or tell Vinh.';\n}\n\nreturn { json: { ...m, reply, item_id: db.item_id ?? null, summarised: !!(llm && llm.text) } };"
       }
     },
     {
@@ -226,6 +313,57 @@
       ]
     },
     "Save capture": {
+      "main": [
+        [
+          {
+            "node": "Worth summarising",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worth summarising": {
+      "main": [
+        [
+          {
+            "node": "Build request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build request": {
+      "main": [
+        [
+          {
+            "node": "Summarise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarise": {
+      "main": [
+        [
+          {
+            "node": "Save summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save summary": {
       "main": [
         [
           {
