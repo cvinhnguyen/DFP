@@ -3,29 +3,14 @@
   "nodes": [
     {
       "parameters": {},
-      "type": "n8n-nodes-base.manualTrigger",
+      "id": "89395f80-211a-58be-bf89-1398cbcc29fa",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [
-        0,
-        0
-      ],
-      "id": "cc82854a-b04a-4a35-917d-b62e40b07a5a",
-      "name": "When clicking ‘Execute workflow’"
-    },
-    {
-      "id": "src-1",
-      "name": "Get sources",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.7,
       "position": [
         180,
         0
-      ],
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "-- Which pages to collect from. Kept in the database so adding or\n-- switching off a source needs no change to this workflow.\nSELECT url FROM sources WHERE active ORDER BY id;",
-        "options": {}
-      }
+      ]
     },
     {
       "parameters": {
@@ -147,47 +132,54 @@
       }
     },
     {
-      "id": "save-1",
-      "name": "Save article",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.7,
+      "parameters": {
+        "jsCode": "// One call to the ingest API per source. The API checks every article and\n// stores the good ones, so this workflow never writes to Postgres itself.\n//\n// An article whose page did not load arrives with no text and is left out, as\n// before, but it is counted so the run can say so.\nconst src = $('Start').first().json;\nconst listed = $('Find articles').all().length;\nconst read = $input.all().map(i => i.json)\n  .filter(a => a.url && a.title && (a.text || '').length > 100);\n\nreturn [{ json: {\n  found: listed,\n  unreadable: listed - read.length,\n  body: { items: read.map(a => ({\n    source_id: Number(src.source_id),\n    url: a.url,\n    title: a.title,\n    publisher: 'Suomen eOppimiskeskus ry',\n    published_at: a.published_at,\n    excerpt: a.excerpt,\n    raw_text: a.text,\n  })) },\n} }];"
+      },
+      "id": "e5bd853c-6d6f-5da7-8d6a-89421cab9c48",
+      "name": "Build batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         1720,
         0
-      ],
+      ]
+    },
+    {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "-- source_id and source_language are looked up from the sources table rather\n-- than hardcoded, so pointing the crawler at another section needs no edit\n-- here. An article that could not be fetched arrives with no text, and the\n-- length check drops it instead of storing an empty row.\nINSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                   published_at, excerpt, raw_text, source_language, status)\nSELECT s.id, $1, $1, $2, 'Suomen eOppimiskeskus ry', $3::timestamptz, $4, $5,\n       s.language, 'new'\n  FROM sources s\n WHERE s.active\n   AND s.language = CASE WHEN $1 LIKE '%/en/%' THEN 'en' ELSE 'fi' END\n   AND length($5) > 100\nON CONFLICT (canonical_url) DO UPDATE\n   SET title        = EXCLUDED.title,\n       excerpt      = coalesce(EXCLUDED.excerpt,      items.excerpt),\n       raw_text     = EXCLUDED.raw_text,\n       published_at = coalesce(EXCLUDED.published_at, items.published_at),\n       fetched_at   = now();",
-        "options": {
-          "queryReplacement": "={{ [ $json.url, $json.title, $json.published_at, $json.excerpt, $json.text ] }}"
-        }
-      }
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ingest",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "76b341da-16f0-5f4a-9d2e-1c3f1d246b8f",
+      "name": "Send to ingest API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1940,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// What the schedule writes to collection_runs for this source.\nconst batch = $('Build batch').first().json;\nconst results = $json.results || [];\nconst rejected = results.filter(r => !r.accepted);\n\nconst problems = [];\nif (batch.unreadable) problems.push(`${batch.unreadable} article(s) could not be read`);\nif (rejected.length) problems.push(`${rejected.length} rejected: ` +\n  [...new Set(rejected.map(r => r.reason))].join(', '));\n\nreturn [{ json: {\n  items_found: batch.found,\n  items_new: results.filter(r => r.accepted && r.new).length,\n  error: problems.length ? problems.join('; ') : null,\n} }];"
+      },
+      "id": "8dc36867-16a6-59d2-8896-f4405f8c6cf3",
+      "name": "Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ]
     }
   ],
   "pinData": {},
   "connections": {
-    "When clicking ‘Execute workflow’": {
-      "main": [
-        [
-          {
-            "node": "Get sources",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get sources": {
-      "main": [
-        [
-          {
-            "node": "HTTP Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "HTTP Request": {
       "main": [
         [
@@ -243,11 +235,44 @@
         ]
       ]
     },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Clean article": {
       "main": [
         [
           {
-            "node": "Save article",
+            "node": "Build batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build batch": {
+      "main": [
+        [
+          {
+            "node": "Send to ingest API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to ingest API": {
+      "main": [
+        [
+          {
+            "node": "Report",
             "type": "main",
             "index": 0
           }

@@ -54,8 +54,8 @@ repository.
   "accepted": 2,
   "rejected": 4,
   "results": [
-    { "url": "https://example.invalid/a", "accepted": true,  "item_id": "76" },
-    { "url": "https://example.invalid/b", "accepted": true,  "item_id": "77", "duplicate_of": "25" },
+    { "url": "https://example.invalid/a", "accepted": true,  "item_id": "76", "new": true },
+    { "url": "https://example.invalid/b", "accepted": true,  "item_id": "77", "new": true, "duplicate_of": "25" },
     { "url": "",                          "accepted": false, "reason": "url is required" },
     { "url": "https://example.invalid/c", "accepted": false, "reason": "title is required" },
     { "url": "https://example.invalid/d", "accepted": false, "reason": "unknown or inactive source_id" },
@@ -88,6 +88,8 @@ Sending the same article again updates the existing item rather than creating
 a second one. A field you leave out keeps the value already stored, so sharing
 a link with only a title never wipes the text the crawler collected. The item
 keeps its id, so summaries and signals stay attached.
+`new` is true when the article was stored for the first time and false when an
+existing item was updated.
 
 The same article twice inside one batch is rejected the second time rather
 than silently collapsed, so the response still has a line for it.
