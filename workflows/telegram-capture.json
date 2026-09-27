@@ -1,8 +1,7 @@
 {
+  "id": "02ZxKVxc2wx6RZ85",
   "name": "Telegram capture",
-  "settings": {
-    "executionOrder": "v1"
-  },
+  "active": true,
   "nodes": [
     {
       "id": "t1",
@@ -37,6 +36,12 @@
         "operation": "executeQuery",
         "query": "-- The polling marker and the allowlist in one round trip, so the rest of the\n-- workflow never has to go back to the database for a single message.\nSELECT\n  -- After a week with no messages Telegram starts numbering them again from a\n  -- random point, which can be lower than the marker we kept. Asking from the\n  -- old marker would then never return anything. Nothing handled for 6 days\n  -- means we ask from the start of whatever is waiting instead.\n  coalesce((SELECT CASE WHEN updated_at < now() - interval '6 days' THEN 0\n                        ELSE value::bigint END\n              FROM app_settings WHERE key = 'telegram_offset'), 0)\n    AS next_offset,\n  coalesce((SELECT jsonb_agg(jsonb_build_object(\n              'telegram_user_id', u.telegram_user_id,\n              'user_id',          u.id,\n              'name',             coalesce(u.display_name, u.email)))\n              FROM users u WHERE u.telegram_user_id IS NOT NULL), '[]'::jsonb)\n    AS allowlist;",
         "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
       }
     },
     {
@@ -44,12 +49,12 @@
       "name": "Ask Telegram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 2,
       "position": [
         440,
         0
       ],
-      "retryOnFail": true,
-      "maxTries": 2,
       "parameters": {
         "method": "GET",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/getUpdates",
@@ -109,16 +114,22 @@
       "name": "Save capture",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
+      "alwaysOutputData": true,
       "position": [
         1100,
         0
       ],
-      "alwaysOutputData": true,
       "parameters": {
         "operation": "executeQuery",
         "query": "-- Nothing is stored unless the sender is on the allowlist and we have both a\n-- link and a title, so a stray message cannot put an item in the newsletter.\nWITH me AS (\n    SELECT $1::text        AS tg_id,\n           nullif($2, '')  AS url,\n           nullif($3, '')  AS title,\n           nullif($4, '')  AS publisher,\n           $5::timestamptz AS published_at,\n           nullif($6, '')  AS note,\n           nullif($7, '')  AS body\n),\nperson AS (\n    SELECT u.id FROM users u JOIN me ON u.telegram_user_id = me.tg_id\n),\n-- read before the insert below, so we can tell \"saved\" from \"already had it\"\nseen AS (\n    SELECT EXISTS (SELECT 1 FROM items i JOIN me ON i.canonical_url = canonicalise_url(me.url)) AS already\n),\nstored AS (\n    INSERT INTO items (source_id, source_url, canonical_url, title, publisher,\n                       published_at, excerpt, raw_text, status, captured_by, fetched_at)\n    SELECT (SELECT id FROM sources WHERE type = 'manual' ORDER BY id LIMIT 1),\n           me.url, me.url, me.title, me.publisher, me.published_at, me.note,\n           me.body, 'new', (SELECT id FROM person), now()\n      FROM me\n     WHERE EXISTS (SELECT 1 FROM person)\n       AND me.url IS NOT NULL\n       AND me.title IS NOT NULL\n    ON CONFLICT (canonical_url) DO NOTHING\n    RETURNING id, duplicate_of\n)\nSELECT EXISTS (SELECT 1 FROM person) AS allowed,\n       (SELECT id FROM stored)       AS item_id,\n       (SELECT duplicate_of FROM stored) AS duplicate_of,\n       (SELECT already FROM seen)    AS already_known;",
         "options": {
           "queryReplacement": "={{ [ $json.from_id ?? '', $json.url ?? '', $json.title ?? '', $json.publisher ?? '', $json.published_at ?? null, $json.note ?? '', $json.text ?? '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
         }
       }
     },
@@ -196,16 +207,22 @@
       "name": "Save summary",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
+      "alwaysOutputData": true,
       "position": [
         1780,
         -120
       ],
-      "alwaysOutputData": true,
       "parameters": {
         "operation": "executeQuery",
         "query": "-- One statement, so an item is never marked summarised without a summary.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    VALUES ($1::bigint, 'fi', $2, $3, $4)\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, generated_at = now()\n    RETURNING item_id\n)\nUPDATE items SET status = 'summarised' WHERE id = (SELECT item_id FROM s);",
         "options": {
           "queryReplacement": "={{ [ $json.item_id, $json.text, $json.provider, $json.model ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
         }
       }
     },
@@ -242,16 +259,22 @@
       "name": "Save offset",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
+      "executeOnce": true,
       "position": [
         1760,
         0
       ],
-      "executeOnce": true,
       "parameters": {
         "operation": "executeQuery",
         "query": "-- Advanced only now the batch has been handled.\nUPDATE app_settings SET value = $1, updated_at = now()\n WHERE key = 'telegram_offset';",
         "options": {
           "queryReplacement": "={{ [ String($json.next_offset) ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
         }
       }
     },
@@ -324,6 +347,16 @@
       }
     },
     {
+      "id": "ncollect",
+      "name": "Collect now",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        880,
+        -480
+      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -334,23 +367,9 @@
         "options": {
           "waitForSubWorkflow": false
         }
-      },
-      "id": "ncollect",
-      "name": "Collect now",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        880,
-        -480
-      ],
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// The check itself can take minutes the first time. Waiting for it here would\n// hold up the next poll, which would read /check again and run it twice. So\n// this answers straight away and the collection workflow sends the result.\nconst m = $('Read messages').item.json;\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset,\n  reply: 'Checking all sources now. I will send you what I find when it is done.' } };"
-      },
       "id": "ncheckrep",
       "name": "Check reply",
       "type": "n8n-nodes-base.code",
@@ -358,16 +377,13 @@
       "position": [
         1100,
         -480
-      ]
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The check itself can take minutes the first time. Waiting for it here would\n// hold up the next poll, which would read /check again and run it twice. So\n// this answers straight away and the collection workflow sends the result.\nconst m = $('Read messages').item.json;\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset,\n  reply: 'Checking all sources now. I will send you what I find when it is done.' } };"
+      }
     },
     {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "-- /schedule on its own shows the times. With times it replaces them, and off\n-- stops automatic checking. Anything else is answered, not saved, so a typo\n-- cannot switch the checking off by accident.\nWITH arg AS (\n    SELECT lower(btrim(coalesce($1, ''))) AS a\n),\nwanted AS (\n    SELECT CASE\n             WHEN a = '' THEN NULL\n             WHEN a IN ('off', 'pois') THEN 'off'\n             WHEN a ~ '^([01]?[0-9]|2[0-3])[:.][0-5][0-9]([ ,]+([01]?[0-9]|2[0-3])[:.][0-5][0-9])*$' THEN\n               (SELECT string_agg(DISTINCT to_char(replace(t, '.', ':')::time, 'HH24:MI'), ' '\n                                  ORDER BY to_char(replace(t, '.', ':')::time, 'HH24:MI'))\n                  FROM regexp_split_to_table(a, '[ ,]+') AS t)\n             ELSE 'invalid'\n           END AS v\n      FROM arg\n),\nsaved AS (\n    UPDATE app_settings s\n       SET value = w.v, updated_at = now()\n      FROM wanted w\n     WHERE s.key = 'collection_times'\n       AND w.v IS NOT NULL AND w.v <> 'invalid'\n    RETURNING s.value\n)\nSELECT coalesce((SELECT value FROM saved),\n                (SELECT value FROM app_settings WHERE key = 'collection_times')) AS times,\n       coalesce((SELECT v = 'invalid' FROM wanted), false) AS invalid,\n       EXISTS (SELECT 1 FROM saved) AS changed;",
-        "options": {
-          "queryReplacement": "={{ [ $json.args || '' ] }}"
-        }
-      },
       "id": "nsched",
       "name": "Schedule",
       "type": "n8n-nodes-base.postgres",
@@ -375,13 +391,22 @@
       "position": [
         1100,
         -300
-      ]
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- /schedule on its own shows the times. With times it replaces them, and off\n-- stops automatic checking. Anything else is answered, not saved, so a typo\n-- cannot switch the checking off by accident.\nWITH arg AS (\n    SELECT lower(btrim(coalesce($1, ''))) AS a\n),\nwanted AS (\n    SELECT CASE\n             WHEN a = '' THEN NULL\n             WHEN a IN ('off', 'pois') THEN 'off'\n             WHEN a ~ '^([01]?[0-9]|2[0-3])[:.][0-5][0-9]([ ,]+([01]?[0-9]|2[0-3])[:.][0-5][0-9])*$' THEN\n               (SELECT string_agg(DISTINCT to_char(replace(t, '.', ':')::time, 'HH24:MI'), ' '\n                                  ORDER BY to_char(replace(t, '.', ':')::time, 'HH24:MI'))\n                  FROM regexp_split_to_table(a, '[ ,]+') AS t)\n             ELSE 'invalid'\n           END AS v\n      FROM arg\n),\nsaved AS (\n    UPDATE app_settings s\n       SET value = w.v, updated_at = now()\n      FROM wanted w\n     WHERE s.key = 'collection_times'\n       AND w.v IS NOT NULL AND w.v <> 'invalid'\n    RETURNING s.value\n)\nSELECT coalesce((SELECT value FROM saved),\n                (SELECT value FROM app_settings WHERE key = 'collection_times')) AS times,\n       coalesce((SELECT v = 'invalid' FROM wanted), false) AS invalid,\n       EXISTS (SELECT 1 FROM saved) AS changed;",
+        "options": {
+          "queryReplacement": "={{ [ $json.args || '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const m = $('Read messages').item.json;\nconst r = $json;\nconst times = (r.times || '').split(' ').filter(Boolean);\nlet reply;\nif (r.invalid) {\n  reply = 'I did not understand that. Examples:\\n/schedule 8:00\\n/schedule 8:00 14:00\\n/schedule off';\n} else if (r.times === 'off' || !times.length) {\n  reply = 'Automatic checking is off. I check only when you send /check.\\n\\nTo turn it on: /schedule 8:00';\n} else {\n  const when = times.length === 1 ? times[0] : times.slice(0, -1).join(', ') + ' and ' + times[times.length - 1];\n  reply = `${r.changed ? 'Done. ' : ''}I check the sources every day at ${when} (Finnish time).`\n        + '\\n\\nChange it with /schedule 8:00 14:00, stop it with /schedule off, or check now with /check.';\n}\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset, reply } };"
-      },
       "id": "nschedrep",
       "name": "Schedule reply",
       "type": "n8n-nodes-base.code",
@@ -389,7 +414,11 @@
       "position": [
         1320,
         -300
-      ]
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const m = $('Read messages').item.json;\nconst r = $json;\nconst times = (r.times || '').split(' ').filter(Boolean);\nlet reply;\nif (r.invalid) {\n  reply = 'I did not understand that. Examples:\\n/schedule 8:00\\n/schedule 8:00 14:00\\n/schedule off';\n} else if (r.times === 'off' || !times.length) {\n  reply = 'Automatic checking is off. I check only when you send /check.\\n\\nTo turn it on: /schedule 8:00';\n} else {\n  const when = times.length === 1 ? times[0] : times.slice(0, -1).join(', ') + ' and ' + times[times.length - 1];\n  reply = `${r.changed ? 'Done. ' : ''}I check the sources every day at ${when} (Finnish time).`\n        + '\\n\\nChange it with /schedule 8:00 14:00, stop it with /schedule off, or check now with /check.';\n}\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset, reply } };"
+      }
     }
   ],
   "connections": {
@@ -612,5 +641,8 @@
         ]
       ]
     }
+  },
+  "settings": {
+    "executionOrder": "v1"
   }
 }

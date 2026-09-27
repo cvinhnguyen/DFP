@@ -13,11 +13,41 @@ You need Docker Desktop installed and running.
 ```bash
 cp .env.example .env
 openssl rand -hex 32          # paste the result into N8N_ENCRYPTION_KEY
-docker compose up -d
+openssl rand -hex 24          # paste the result into INGEST_TOKEN
+docker compose up -d          # the database builds itself from db/init/
+./scripts/n8n-rebuild.sh      # credentials and every workflow, switched on
 ```
 
 Then open http://localhost:5678 and create your owner account. That account
 is local to your machine.
+
+The client's source list is not in this repository, because the repository is
+public. Ask the team for `db/client/sources.sql` and load it with:
+
+```bash
+docker compose exec -T postgres psql -U dfp -d newsletter < db/client/sources.sql
+```
+
+## Saving your workflow changes
+
+n8n keeps workflows in its own database, so a change made in the editor is
+not in git until you export it. After changing a workflow:
+
+```bash
+./scripts/n8n-export.sh       # writes workflows/*.json from your n8n
+git diff workflows/           # check it is the change you meant
+```
+
+Then commit as usual. The export refuses to write anything if a password or
+token from your `.env` appears in a workflow, or if a workflow calls a
+sub-workflow that is not in the repository. It also drops pinned test data,
+which can hold real articles or Telegram messages.
+
+Workflows call each other by id, and the ids in `workflows/` are the ones
+everybody uses. If you build a new workflow, export it and commit it before
+another workflow starts calling it.
+
+On Windows, run the scripts from Git Bash.
 
 Check it worked:
 

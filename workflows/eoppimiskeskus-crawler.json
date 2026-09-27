@@ -1,5 +1,7 @@
 {
+  "id": "qab4Qn1wTLANqHsG",
   "name": "eOppimiskeskus News Crawler",
+  "active": true,
   "nodes": [
     {
       "parameters": {},
@@ -162,7 +164,13 @@
       "position": [
         1940,
         0
-      ]
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
     },
     {
       "parameters": {
@@ -178,7 +186,6 @@
       ]
     }
   ],
-  "pinData": {},
   "connections": {
     "HTTP Request": {
       "main": [
@@ -280,17 +287,8 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
-  },
-  "versionId": "bd7ebe68-7eea-4c6f-b765-0fb3a485e995",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "994d0d3697229099cd6609a29a84986222d32abd6b08c856514f8dfe9610fcee"
-  },
-  "nodeGroups": [],
-  "id": "qab4Qn1wTLANqHsG",
-  "tags": []
+  }
 }

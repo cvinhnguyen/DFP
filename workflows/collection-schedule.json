@@ -1,8 +1,17 @@
 {
   "id": "7Wc9Bh6n5lP7lYPW",
   "name": "Collection schedule",
+  "active": true,
   "nodes": [
     {
+      "id": "1a9f8fe3-13db-5a8d-86e4-18f437c04bf7",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -12,18 +21,9 @@
             }
           ]
         }
-      },
-      "id": "1a9f8fe3-13db-5a8d-86e4-18f437c04bf7",
-      "name": "Every 15 minutes",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        0
-      ]
+      }
     },
     {
-      "parameters": {},
       "id": "2d7885bc-6041-5847-9fef-27f5c32364bb",
       "name": "Run now",
       "type": "n8n-nodes-base.manualTrigger",
@@ -31,9 +31,19 @@
       "position": [
         0,
         200
-      ]
+      ],
+      "parameters": {}
     },
     {
+      "id": "52280a2d-d7d3-51bf-b46d-70b2074a91e9",
+      "name": "POST /collect",
+      "webhookId": "c408bd78-9430-5a19-b274-f63b7fc2c1c0",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
       "parameters": {
         "httpMethod": "POST",
         "path": "collect",
@@ -41,20 +51,14 @@
         "responseMode": "onReceived",
         "options": {}
       },
-      "id": "52280a2d-d7d3-51bf-b46d-70b2074a91e9",
-      "name": "POST /collect",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        0,
-        400
-      ],
-      "webhookId": "c408bd78-9430-5a19-b274-f63b7fc2c1c0"
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Asked for by a person, so every active source is checked now, due or not.\n// chat_id is there when the ask came from Telegram, so the answer can go back.\nreturn [{ json: { force: true, chat_id: $input.first().json.chat_id ?? null } }];"
-      },
       "id": "eba9f45e-e348-5e61-ad80-c2daefa00f6f",
       "name": "Check everything",
       "type": "n8n-nodes-base.code",
@@ -62,16 +66,12 @@
       "position": [
         220,
         300
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// Asked for by a person, so every active source is checked now, due or not.\n// chat_id is there when the ask came from Telegram, so the answer can go back.\nreturn [{ json: { force: true, chat_id: $input.first().json.chat_id ?? null } }];"
+      }
     },
     {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "-- The sources that are due, and a collection_runs row for each, in one step.\n-- A run that dies halfway still leaves its started row behind.\n--\n-- The editors choose the times from Telegram with /schedule, kept in\n-- app_settings.collection_times as \"08:00 14:00\" or \"off\". A source is due once\n-- the latest of those times has passed since it was last checked. /check and\n-- POST /collect skip this and check everything now.\n--\n-- last_checked_at is set when a check starts, so the next tick does not start\n-- the same source again while it is still running.\n--\n-- rss and crossref sources go to the Feed collector. The only webpage collector\n-- is the crawler for the client's own site, so another webpage source waits\n-- until someone writes a reader for it.\nWITH slot AS (\n    SELECT max(d + t::time) AS last_slot          -- Finnish local time\n      FROM app_settings,\n           regexp_split_to_table(value, ' ') AS t,\n           (VALUES ((now() AT TIME ZONE 'Europe/Helsinki')::date),\n                   ((now() AT TIME ZONE 'Europe/Helsinki')::date - 1)) AS days(d)\n     WHERE key = 'collection_times'\n       AND t ~ '^[0-9]{1,2}:[0-9]{2}$'\n       AND d + t::time <= now() AT TIME ZONE 'Europe/Helsinki'\n),\ndue AS (\n    SELECT id, url, type, fetch_full_text, publisher\n      FROM sources\n     WHERE active\n       AND (type IN ('rss', 'crossref')\n            OR (type = 'webpage' AND url LIKE 'https://eoppimiskeskus.fi/%'))\n       AND ($1::boolean\n            OR (SELECT last_slot FROM slot) > coalesce(last_checked_at AT TIME ZONE 'Europe/Helsinki', '-infinity'))\n     ORDER BY id\n       FOR UPDATE SKIP LOCKED\n),\nstarted AS (\n    INSERT INTO collection_runs (source_id)\n    SELECT id FROM due\n    RETURNING id AS run_id, source_id\n),\ntouched AS (\n    UPDATE sources s SET last_checked_at = now()\n      FROM due WHERE s.id = due.id\n)\nSELECT st.run_id, d.id AS source_id, d.url, d.type, d.fetch_full_text, d.publisher\n  FROM started st\n  JOIN due d ON d.id = st.source_id\n ORDER BY d.id;",
-        "options": {
-          "queryReplacement": "={{ [ $json.force === true ] }}"
-        }
-      },
       "id": "3f5db392-a837-5445-bac5-5bb47937d252",
       "name": "Due sources",
       "type": "n8n-nodes-base.postgres",
@@ -79,13 +79,22 @@
       "position": [
         440,
         100
-      ]
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The sources that are due, and a collection_runs row for each, in one step.\n-- A run that dies halfway still leaves its started row behind.\n--\n-- The editors choose the times from Telegram with /schedule, kept in\n-- app_settings.collection_times as \"08:00 14:00\" or \"off\". A source is due once\n-- the latest of those times has passed since it was last checked. /check and\n-- POST /collect skip this and check everything now.\n--\n-- last_checked_at is set when a check starts, so the next tick does not start\n-- the same source again while it is still running.\n--\n-- rss and crossref sources go to the Feed collector. The only webpage collector\n-- is the crawler for the client's own site, so another webpage source waits\n-- until someone writes a reader for it.\nWITH slot AS (\n    SELECT max(d + t::time) AS last_slot          -- Finnish local time\n      FROM app_settings,\n           regexp_split_to_table(value, ' ') AS t,\n           (VALUES ((now() AT TIME ZONE 'Europe/Helsinki')::date),\n                   ((now() AT TIME ZONE 'Europe/Helsinki')::date - 1)) AS days(d)\n     WHERE key = 'collection_times'\n       AND t ~ '^[0-9]{1,2}:[0-9]{2}$'\n       AND d + t::time <= now() AT TIME ZONE 'Europe/Helsinki'\n),\ndue AS (\n    SELECT id, url, type, fetch_full_text, publisher\n      FROM sources\n     WHERE active\n       AND (type IN ('rss', 'crossref')\n            OR (type = 'webpage' AND url LIKE 'https://eoppimiskeskus.fi/%'))\n       AND ($1::boolean\n            OR (SELECT last_slot FROM slot) > coalesce(last_checked_at AT TIME ZONE 'Europe/Helsinki', '-infinity'))\n     ORDER BY id\n       FOR UPDATE SKIP LOCKED\n),\nstarted AS (\n    INSERT INTO collection_runs (source_id)\n    SELECT id FROM due\n    RETURNING id AS run_id, source_id\n),\ntouched AS (\n    UPDATE sources s SET last_checked_at = now()\n      FROM due WHERE s.id = due.id\n)\nSELECT st.run_id, d.id AS source_id, d.url, d.type, d.fetch_full_text, d.publisher\n  FROM started st\n  JOIN due d ON d.id = st.source_id\n ORDER BY d.id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.force === true ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
       "id": "7d6ad639-3e8d-5318-90c6-0c4b6b47b540",
       "name": "One at a time",
       "type": "n8n-nodes-base.splitInBatches",
@@ -93,9 +102,23 @@
       "position": [
         660,
         100
-      ]
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
     },
     {
+      "id": "d1261e7c-69fa-52bb-9fce-bd2b92800162",
+      "name": "Collect",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        880,
+        180
+      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -106,26 +129,9 @@
         "options": {
           "waitForSubWorkflow": true
         }
-      },
-      "id": "d1261e7c-69fa-52bb-9fce-bd2b92800162",
-      "name": "Collect",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        880,
-        180
-      ],
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
+      }
     },
     {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE collection_runs\n   SET finished_at = now(),\n       items_found = $2::int,\n       items_new   = $3::int,\n       error       = nullif($4, '')\n WHERE id = $1::bigint\nRETURNING id, source_id, items_found, items_new, error;",
-        "options": {
-          "queryReplacement": "={{ [ $('One at a time').first().json.run_id, $json.items_found || 0, $json.items_new || 0, ($json.error && ($json.error.message || $json.error)) || ($json.items_found === undefined ? 'the collector returned nothing' : '') ] }}"
-        }
-      },
       "id": "342f4a87-61cb-5123-8be2-41be805ba6d0",
       "name": "Save run",
       "type": "n8n-nodes-base.postgres",
@@ -133,10 +139,22 @@
       "position": [
         1100,
         180
-      ]
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE collection_runs\n   SET finished_at = now(),\n       items_found = $2::int,\n       items_new   = $3::int,\n       error       = nullif($4, '')\n WHERE id = $1::bigint\nRETURNING id, source_id, items_found, items_new, error;",
+        "options": {
+          "queryReplacement": "={{ [ $('One at a time').first().json.run_id, $json.items_found || 0, $json.items_new || 0, ($json.error && ($json.error.message || $json.error)) || ($json.items_found === undefined ? 'the collector returned nothing' : '') ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
-      "parameters": {},
       "id": "e48293cc-52a4-5a3d-98d0-107803253ffc",
       "name": "From Telegram",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
@@ -144,9 +162,19 @@
       "position": [
         0,
         600
-      ]
+      ],
+      "parameters": {}
     },
     {
+      "id": "d11e93f2-d801-54c3-bf86-b74012d5a00e",
+      "name": "Sum up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "executeOnce": true,
+      "position": [
+        880,
+        0
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "-- What the person who asked for the check is told. Runs once, after the last\n-- source, and only reads what the runs above wrote.\nWITH runs AS (\n    SELECT r.*, s.name\n      FROM collection_runs r\n      JOIN sources s ON s.id = r.source_id\n     WHERE r.id = ANY (string_to_array($1, ',')::bigint[])\n)\nSELECT (SELECT count(*) FROM runs)::int                        AS sources,\n       (SELECT coalesce(sum(items_found), 0) FROM runs)::int    AS found,\n       (SELECT coalesce(sum(items_new), 0) FROM runs)::int      AS new,\n       (SELECT coalesce(jsonb_agg(name || ': ' || error), '[]'::jsonb)\n          FROM runs WHERE error IS NOT NULL)                     AS problems,\n       (SELECT coalesce(jsonb_agg(i.title ORDER BY i.id), '[]'::jsonb)\n          FROM items i\n         WHERE i.source_id IN (SELECT source_id FROM runs)\n           AND i.created_at >= (SELECT min(started_at) FROM runs)) AS new_titles;",
@@ -154,20 +182,14 @@
           "queryReplacement": "={{ [ $('Due sources').all().map(i => i.json.run_id).join(',') ] }}"
         }
       },
-      "id": "d11e93f2-d801-54c3-bf86-b74012d5a00e",
-      "name": "Sum up",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.7,
-      "position": [
-        880,
-        0
-      ],
-      "executeOnce": true
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// When /check started this run, tell the editor what it found. A scheduled\n// run has no chat to answer and stops here.\nlet chatId = null;\ntry { chatId = $('Check everything').first().json.chat_id; } catch (e) { chatId = null; }\nif (!chatId) return [];\n\nconst r = $json;\nlet text;\nif (!r.sources) {\n  text = 'There are no sources to check. Tell Vinh.';\n} else {\n  const titles = r.new_titles || [];\n  const lines = [`Checked ${r.sources} source${r.sources === 1 ? '' : 's'}.`];\n  if (titles.length) {\n    lines.push(`${titles.length} new article${titles.length === 1 ? '' : 's'}:`);\n    for (const t of titles.slice(0, 10)) lines.push(`• ${t}`);\n    if (titles.length > 10) lines.push(`and ${titles.length - 10} more`);\n    lines.push('', 'Summaries will be ready within 15 minutes.');\n  } else {\n    lines.push('Nothing new since the last check.');\n  }\n  const problems = r.problems || [];\n  if (problems.length) lines.push('', `${problems.length} source${problems.length === 1 ? '' : 's'} had a problem:`, ...problems.slice(0, 5).map(p => `• ${p}`));\n  text = lines.join('\\n');\n}\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n  body: { chat_id: chatId, text, disable_web_page_preview: true },\n  json: true,\n});\nreturn [{ json: { told: chatId } }];"
-      },
       "id": "67d23e2f-d98a-5262-be9a-14b5de63d481",
       "name": "Tell the editor",
       "type": "n8n-nodes-base.code",
@@ -175,16 +197,12 @@
       "position": [
         1100,
         0
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// When /check started this run, tell the editor what it found. A scheduled\n// run has no chat to answer and stops here.\nlet chatId = null;\ntry { chatId = $('Check everything').first().json.chat_id; } catch (e) { chatId = null; }\nif (!chatId) return [];\n\nconst r = $json;\nlet text;\nif (!r.sources) {\n  text = 'There are no sources to check. Tell Vinh.';\n} else {\n  const titles = r.new_titles || [];\n  const lines = [`Checked ${r.sources} source${r.sources === 1 ? '' : 's'}.`];\n  if (titles.length) {\n    lines.push(`${titles.length} new article${titles.length === 1 ? '' : 's'}:`);\n    for (const t of titles.slice(0, 10)) lines.push(`• ${t}`);\n    if (titles.length > 10) lines.push(`and ${titles.length - 10} more`);\n    lines.push('', 'Summaries will be ready within 15 minutes.');\n  } else {\n    lines.push('Nothing new since the last check.');\n  }\n  const problems = r.problems || [];\n  if (problems.length) lines.push('', `${problems.length} source${problems.length === 1 ? '' : 's'} had a problem:`, ...problems.slice(0, 5).map(p => `• ${p}`));\n  text = lines.join('\\n');\n}\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n  body: { chat_id: chatId, text, disable_web_page_preview: true },\n  json: true,\n});\nreturn [{ json: { told: chatId } }];"
+      }
     },
     {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "-- The run row was made when the whole check began. This is when this source's\n-- turn came, so collection_runs shows how long each source really took.\nUPDATE collection_runs r\n   SET started_at = now()\n  FROM sources s\n WHERE r.id = $1::bigint\n   AND s.id = r.source_id\nRETURNING r.id AS run_id, s.id AS source_id, s.url, s.type, s.fetch_full_text, s.publisher;",
-        "options": {
-          "queryReplacement": "={{ [ $json.run_id ] }}"
-        }
-      },
       "id": "0d79966a-e54b-5ed8-a66b-7fe46ed9ee02",
       "name": "Mark started",
       "type": "n8n-nodes-base.postgres",
@@ -192,7 +210,20 @@
       "position": [
         880,
         300
-      ]
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The run row was made when the whole check began. This is when this source's\n-- turn came, so collection_runs shows how long each source really took.\nUPDATE collection_runs r\n   SET started_at = now()\n  FROM sources s\n WHERE r.id = $1::bigint\n   AND s.id = r.source_id\nRETURNING r.id AS run_id, s.id AS source_id, s.url, s.type, s.fetch_full_text, s.publisher;",
+        "options": {
+          "queryReplacement": "={{ [ $json.run_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     }
   ],
   "connections": {

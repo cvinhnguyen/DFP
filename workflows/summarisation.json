@@ -1,7 +1,17 @@
 {
+  "id": "mF5DnLF8VtaD3Pg1",
   "name": "Summarisation",
+  "active": true,
   "nodes": [
     {
+      "id": "af65810d-7231-5896-a9a1-08b90667006b",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -11,18 +21,9 @@
             }
           ]
         }
-      },
-      "id": "af65810d-7231-5896-a9a1-08b90667006b",
-      "name": "Every 15 minutes",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        0,
-        0
-      ]
+      }
     },
     {
-      "parameters": {},
       "id": "718d5cae-415f-5596-959a-0fc016af1039",
       "name": "Run now",
       "type": "n8n-nodes-base.manualTrigger",
@@ -30,14 +31,10 @@
       "position": [
         0,
         200
-      ]
+      ],
+      "parameters": {}
     },
     {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "-- Decides every new item: queued for the AI, or skipped with a reason.\n-- The rules are in app_settings, see db/init/11-filter.sql.\nSELECT * FROM run_filter();",
-        "options": {}
-      },
       "id": "0a267191-0ae1-5e3e-b579-ae153da1ca88",
       "name": "Run filter",
       "type": "n8n-nodes-base.postgres",
@@ -45,29 +42,42 @@
       "position": [
         240,
         100
-      ]
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Decides every new item: queued for the AI, or skipped with a reason.\n-- The rules are in app_settings, see db/init/11-filter.sql.\nSELECT * FROM run_filter();",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
+      "id": "14de75f0-7d51-5bac-9e97-ff9266805d2d",
+      "name": "Pick queued",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "executeOnce": true,
+      "position": [
+        480,
+        100
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "-- Up to 20 items per run, newest first, so a backlog clears over a few runs\n-- instead of one long run that overlaps the next.\n--\n-- A source that does not allow summaries is copyright, not quality: those\n-- items go to a person instead and are never sent to the model, even when an\n-- editor asked.\nWITH held AS (\n    UPDATE items i\n       SET status = 'manual',\n           status_reason = 'the source does not allow AI summaries, handle by hand'\n      FROM sources s\n     WHERE s.id = i.source_id\n       AND i.status = 'queued'\n       AND NOT s.summarization_allowed\n    RETURNING i.id\n)\nSELECT i.id, i.title, i.raw_text\n  FROM items i\n  LEFT JOIN sources s ON s.id = i.source_id\n WHERE i.status = 'queued'\n   AND coalesce(s.summarization_allowed, TRUE)\n ORDER BY coalesce(i.published_at, i.fetched_at) DESC\n LIMIT 20;",
         "options": {}
       },
-      "id": "14de75f0-7d51-5bac-9e97-ff9266805d2d",
-      "name": "Pick queued",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.7,
-      "position": [
-        480,
-        100
-      ],
-      "executeOnce": true
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// The same instruction the Telegram bot uses, so a summary reads the same\n// whichever way the article arrived. Improving it is Mikko's part.\nreturn { json: {\n  task: 'summarise',\n  item_id: $json.id,\n  system_prompt: 'Tiivistä seuraava uutinen jäsenkirjeeseen kolmella lyhyellä suomenkielisellä lauseella. Kerro vain se mitä tekstissä lukee. Älä keksi mitään lisää.',\n  user_text: `${$json.title}\\n\\n${$json.raw_text}`,\n} };"
-      },
       "id": "61a45cd3-54db-522e-addc-27f861e00bdf",
       "name": "Build request",
       "type": "n8n-nodes-base.code",
@@ -75,13 +85,13 @@
       "position": [
         720,
         100
-      ]
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The same instruction the Telegram bot uses, so a summary reads the same\n// whichever way the article arrived. Improving it is Mikko's part.\nreturn { json: {\n  task: 'summarise',\n  item_id: $json.id,\n  system_prompt: 'Tiivistä seuraava uutinen jäsenkirjeeseen kolmella lyhyellä suomenkielisellä lauseella. Kerro vain se mitä tekstissä lukee. Älä keksi mitään lisää.',\n  user_text: `${$json.title}\\n\\n${$json.raw_text}`,\n} };"
+      }
     },
     {
-      "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
       "id": "5999b17e-87c6-58a3-9756-f8ef5165f71f",
       "name": "One at a time",
       "type": "n8n-nodes-base.splitInBatches",
@@ -89,9 +99,22 @@
       "position": [
         960,
         100
-      ]
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
     },
     {
+      "id": "57f113bb-eecf-5cb8-93c5-f311969bec67",
+      "name": "Summarise",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        1200,
+        180
+      ],
       "parameters": {
         "workflowId": {
           "__rl": true,
@@ -102,25 +125,9 @@
         "options": {
           "waitForSubWorkflow": true
         }
-      },
-      "id": "57f113bb-eecf-5cb8-93c5-f311969bec67",
-      "name": "Summarise",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [
-        1200,
-        180
-      ],
-      "onError": "continueRegularOutput"
+      }
     },
     {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "-- One statement, so an item is never marked summarised without a summary.\n-- A failed call is written down with its reason instead of leaving the item\n-- looking as if it is still waiting. Link and publisher are added by the\n-- database, see db/init/12-summaries.sql.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    SELECT $1::bigint, 'fi', btrim($2), $3, $4\n     WHERE nullif(btrim($2), '') IS NOT NULL\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, provider = EXCLUDED.provider,\n           model = EXCLUDED.model, generated_at = now()\n    RETURNING item_id\n)\nUPDATE items\n   SET status        = CASE WHEN EXISTS (SELECT 1 FROM s) THEN 'summarised'\n                            ELSE 'summary_failed' END,\n       status_reason = CASE WHEN EXISTS (SELECT 1 FROM s) THEN status_reason\n                            ELSE left(coalesce(nullif($5, ''), 'the model returned no text'), 300) END\n WHERE id = $1::bigint\nRETURNING id, status, status_reason;",
-        "options": {
-          "queryReplacement": "={{ [ $('One at a time').first().json.item_id, $json.text || '', $json.provider || '', $json.model || '', ($json.error && ($json.error.message || $json.error)) || '' ] }}"
-        }
-      },
       "id": "011e2215-1a31-5313-9498-e6b68501934a",
       "name": "Save summary",
       "type": "n8n-nodes-base.postgres",
@@ -128,7 +135,20 @@
       "position": [
         1440,
         180
-      ]
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- One statement, so an item is never marked summarised without a summary.\n-- A failed call is written down with its reason instead of leaving the item\n-- looking as if it is still waiting. Link and publisher are added by the\n-- database, see db/init/12-summaries.sql.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    SELECT $1::bigint, 'fi', btrim($2), $3, $4\n     WHERE nullif(btrim($2), '') IS NOT NULL\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, provider = EXCLUDED.provider,\n           model = EXCLUDED.model, generated_at = now()\n    RETURNING item_id\n)\nUPDATE items\n   SET status        = CASE WHEN EXISTS (SELECT 1 FROM s) THEN 'summarised'\n                            ELSE 'summary_failed' END,\n       status_reason = CASE WHEN EXISTS (SELECT 1 FROM s) THEN status_reason\n                            ELSE left(coalesce(nullif($5, ''), 'the model returned no text'), 300) END\n WHERE id = $1::bigint\nRETURNING id, status, status_reason;",
+        "options": {
+          "queryReplacement": "={{ [ $('One at a time').first().json.item_id, $json.text || '', $json.provider || '', $json.model || '', ($json.error && ($json.error.message || $json.error)) || '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     }
   ],
   "connections": {

@@ -1,5 +1,7 @@
 {
+  "id": "SG2X1CCtMzSAkQ3i",
   "name": "Signal detection",
+  "active": false,
   "nodes": [
     {
       "parameters": {},
@@ -25,6 +27,12 @@
         "operation": "executeQuery",
         "options": {},
         "query": "-- Items skipped on purpose before the AI step are left out, and so is\n-- anything without a publication date, because frequency over time needs one.\n-- The window is configuration, not a number typed in here.\nSELECT i.id AS item_id,\n       i.title,\n       i.published_at,\n       coalesce(s.text, i.excerpt, '') AS body\n  FROM items i\n  LEFT JOIN summaries s\n         ON s.item_id = i.id AND s.language = i.source_language\n WHERE i.status <> 'filtered_out'\n   AND i.published_at IS NOT NULL\n   AND i.published_at >= now() - make_interval(days => (\n         SELECT value::int FROM app_settings WHERE key = 'signal_window_days'))\n ORDER BY i.published_at DESC;"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
       }
     },
     {
@@ -52,10 +60,8 @@
       "parameters": {
         "workflowId": {
           "__rl": true,
-          "value": "DMsUEd1GzR7ANMOk",
-          "mode": "list",
-          "cachedResultUrl": "/workflow/DMsUEd1GzR7ANMOk",
-          "cachedResultName": "LLM call"
+          "value": "LslQ5XfMnOE6tg22",
+          "mode": "id"
         },
         "mode": "each",
         "options": {
@@ -104,10 +110,15 @@
         "options": {
           "queryReplacement": "={{ [ $json.topic, $json.reason, $json.score, '{' + $json.item_ids.join(',') + '}' ] }}"
         }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
       }
     }
   ],
-  "pinData": {},
   "connections": {
     "When clicking ‘Execute workflow’": {
       "main": [
@@ -176,17 +187,8 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
-  },
-  "versionId": "d0748e64-46aa-4ed3-b095-f6185027bcc2",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "bbe7412092457ee93068b21187c4cd84fdee498f4eff4df5417ceab4f271670c"
-  },
-  "nodeGroups": [],
-  "id": "SG2X1CCtMzSAkQ3i",
-  "tags": []
+  }
 }

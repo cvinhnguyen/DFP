@@ -1,9 +1,9 @@
 {
   "id": "fEEdC0llect0r26a",
   "name": "Feed collector",
+  "active": true,
   "nodes": [
     {
-      "parameters": {},
       "id": "f498fcae-2f91-5e94-8447-cdb425de815e",
       "name": "Start",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
@@ -11,7 +11,8 @@
       "position": [
         0,
         100
-      ]
+      ],
+      "parameters": {}
     },
     {
       "id": "c752d669-9081-501e-b3b0-f767daf61227",
@@ -48,6 +49,14 @@
       }
     },
     {
+      "id": "3f8b1354-cf17-5248-8bb9-3a8d8199b47f",
+      "name": "Ask Crossref",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
       "parameters": {
         "url": "={{ $json.url }}",
         "sendQuery": true,
@@ -87,20 +96,9 @@
         "options": {
           "timeout": 30000
         }
-      },
-      "id": "3f8b1354-cf17-5248-8bb9-3a8d8199b47f",
-      "name": "Ask Crossref",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        440,
-        0
-      ]
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// Crossref describes each new article: title, DOI link, publication date and,\n// when the publisher sent one, the abstract. That is all we use. The article\n// itself is never fetched.\nconst strip = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst works = (($input.first().json.message || {}).items) || [];\nreturn works.map(w => {\n  const p = ((w.published || {})['date-parts'] || [[]])[0];\n  const date = p[0] ? new Date(Date.UTC(p[0], (p[1] || 1) - 1, p[2] || 1)).toISOString() : null;\n  const abstract = strip(w.abstract).replace(/^Abstract\\s*/i, '');\n  return { json: {\n    url: w.URL || null,\n    title: strip((w.title || [])[0]) || null,\n    published_at: date,\n    excerpt: abstract.slice(0, 300),\n    text: abstract,\n    publisher: (w['container-title'] || [])[0] || null,\n  } };\n});"
-      },
       "id": "b8fe3e6e-4cf7-59e8-8057-ea23180d8026",
       "name": "Crossref items",
       "type": "n8n-nodes-base.code",
@@ -108,15 +106,12 @@
       "position": [
         660,
         0
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// Crossref describes each new article: title, DOI link, publication date and,\n// when the publisher sent one, the abstract. That is all we use. The article\n// itself is never fetched.\nconst strip = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst works = (($input.first().json.message || {}).items) || [];\nreturn works.map(w => {\n  const p = ((w.published || {})['date-parts'] || [[]])[0];\n  const date = p[0] ? new Date(Date.UTC(p[0], (p[1] || 1) - 1, p[2] || 1)).toISOString() : null;\n  const abstract = strip(w.abstract).replace(/^Abstract\\s*/i, '');\n  return { json: {\n    url: w.URL || null,\n    title: strip((w.title || [])[0]) || null,\n    published_at: date,\n    excerpt: abstract.slice(0, 300),\n    text: abstract,\n    publisher: (w['container-title'] || [])[0] || null,\n  } };\n});"
+      }
     },
     {
-      "parameters": {
-        "url": "={{ $json.url }}",
-        "options": {
-          "customFields": "pubdate"
-        }
-      },
       "id": "d654a78f-d6c4-5f99-af92-39b42db7d5b1",
       "name": "Read feed",
       "type": "n8n-nodes-base.rssFeedRead",
@@ -124,12 +119,15 @@
       "position": [
         440,
         200
-      ]
+      ],
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "customFields": "pubdate"
+        }
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// The same shape as the Crossref branch, so everything after this point does\n// not care where an article came from. A date we cannot read is left empty.\nconst strip = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst iso = d => { const t = d ? new Date(d) : null; return t && !isNaN(t) ? t.toISOString() : null; };\nreturn $input.all().map(i => {\n  const e = i.json;\n  const text = strip(e.content || e['content:encoded'] || e.summary || e.contentSnippet);\n  return { json: {\n    url: e.link || null,\n    title: strip(e.title) || null,\n    published_at: iso(e.isoDate || e.pubDate || e.pubdate),\n    excerpt: text.slice(0, 300),\n    text,\n    publisher: null,\n  } };\n});"
-      },
       "id": "1eb31053-24c0-5f3f-8d7b-6d4c1faadbd1",
       "name": "Feed items",
       "type": "n8n-nodes-base.code",
@@ -137,9 +135,22 @@
       "position": [
         660,
         200
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// The same shape as the Crossref branch, so everything after this point does\n// not care where an article came from. A date we cannot read is left empty.\nconst strip = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\nconst iso = d => { const t = d ? new Date(d) : null; return t && !isNaN(t) ? t.toISOString() : null; };\nreturn $input.all().map(i => {\n  const e = i.json;\n  const text = strip(e.content || e['content:encoded'] || e.summary || e.contentSnippet);\n  return { json: {\n    url: e.link || null,\n    title: strip(e.title) || null,\n    published_at: iso(e.isoDate || e.pubDate || e.pubdate),\n    excerpt: text.slice(0, 300),\n    text,\n    publisher: null,\n  } };\n});"
+      }
     },
     {
+      "id": "43cabd88-63d0-51fc-b4ef-956e97651218",
+      "name": "Keep new and recent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "position": [
+        880,
+        100
+      ],
       "parameters": {
         "operation": "executeQuery",
         "query": "-- Only articles we do not have yet and that are recent enough to be used, so\n-- a check reads a handful of pages instead of every item in every feed. The\n-- ingest API would catch a duplicate anyway, but only after we had fetched it.\nSELECT x.*\n  FROM jsonb_to_recordset($1::jsonb) AS x(url text, title text,\n       published_at timestamptz, excerpt text, text text, publisher text)\n WHERE x.url IS NOT NULL\n   AND x.title IS NOT NULL\n   AND NOT EXISTS (SELECT 1 FROM items i\n                    WHERE i.canonical_url = canonicalise_url(x.url))\n   AND coalesce(x.published_at, now()) >= now() - make_interval(days =>\n         (SELECT value::int FROM app_settings WHERE key = 'filter_max_age_days'))\n ORDER BY x.published_at DESC NULLS LAST\n LIMIT 20;",
@@ -147,22 +158,14 @@
           "queryReplacement": "={{ [ JSON.stringify($input.all().map(i => i.json)) ] }}"
         }
       },
-      "id": "43cabd88-63d0-51fc-b4ef-956e97651218",
-      "name": "Keep new and recent",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.7,
-      "position": [
-        880,
-        100
-      ],
-      "executeOnce": true,
-      "alwaysOutputData": true
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// Most feeds carry only a teaser. For public news pages whose robots.txt\n// allows it (fetch_full_text on the source), read the article itself. Journals\n// never come here: their text is the abstract and nothing more.\nconst src = $('Start').first().json;\nconst a = $json;\nif (!a.url || !src.fetch_full_text) return { json: a };\n\nconst unescape = s => String(s)\n  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (_, n) => String.fromCodePoint(Number(n)))\n  .replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&#0?39;/g, \"'\")\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\n\ntry {\n  const html = String(await this.helpers.httpRequest({\n    url: a.url, timeout: 15000, json: false,\n    headers: { 'User-Agent': 'DFP newsletter bot (HAMK student project)' },\n  }));\n  // Pages differ, so every likely article container is tried and the one\n  // holding the most paragraph text wins. Government sites, for example, put\n  // the language picker in the same kind of block as the article, and taking\n  // the first block gave the picker. Menus, headers and footers are dropped\n  // before paragraphs are read.\n  const paragraphs = region => [...region\n      .replace(/<(script|style|noscript|nav|header|footer|aside|form|figure|svg)\\b[\\s\\S]*?<\\/\\1>/gi, ' ')\n      .matchAll(/<p\\b[^>]*>([\\s\\S]*?)<\\/p>/gi)]\n    .map(x => unescape(x[1].replace(/<[^>]+>/g, ' ')))\n    .filter(t => t.length > 40);\n  const marks = /<(?:article|main)\\b|class=\"[^\"]*\\b(?:journal-content-article|entry-content|article-body|post-content|single-content)\\b/gi;\n  const starts = [...html.matchAll(marks)].map(m => m.index);\n  const regions = starts.length ? starts.map((st, i) => html.slice(st, starts[i + 1] ?? html.length)) : [html];\n  let best = [];\n  for (const r of regions) {\n    const p = paragraphs(r);\n    if (p.join('').length > best.join('').length) best = p;\n  }\n  const text = best.join('\\n').slice(0, 6000);\n  // Keep the feed's own text if the page gave us less.\n  if (text.length > (a.text || '').length) return { json: { ...a, text } };\n} catch (e) {\n  // A page that will not load still leaves the feed's text, and the item is stored.\n}\nreturn { json: a };"
-      },
       "id": "b139c340-5a15-5572-8af9-6241ad6e12e7",
       "name": "Fetch text",
       "type": "n8n-nodes-base.code",
@@ -170,12 +173,13 @@
       "position": [
         1100,
         100
-      ]
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Most feeds carry only a teaser. For public news pages whose robots.txt\n// allows it (fetch_full_text on the source), read the article itself. Journals\n// never come here: their text is the abstract and nothing more.\nconst src = $('Start').first().json;\nconst a = $json;\nif (!a.url || !src.fetch_full_text) return { json: a };\n\nconst unescape = s => String(s)\n  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (_, n) => String.fromCodePoint(Number(n)))\n  .replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&#0?39;/g, \"'\")\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&').replace(/\\s+/g, ' ').trim();\n\ntry {\n  const html = String(await this.helpers.httpRequest({\n    url: a.url, timeout: 15000, json: false,\n    headers: { 'User-Agent': 'DFP newsletter bot (HAMK student project)' },\n  }));\n  // Pages differ, so every likely article container is tried and the one\n  // holding the most paragraph text wins. Government sites, for example, put\n  // the language picker in the same kind of block as the article, and taking\n  // the first block gave the picker. Menus, headers and footers are dropped\n  // before paragraphs are read.\n  const paragraphs = region => [...region\n      .replace(/<(script|style|noscript|nav|header|footer|aside|form|figure|svg)\\b[\\s\\S]*?<\\/\\1>/gi, ' ')\n      .matchAll(/<p\\b[^>]*>([\\s\\S]*?)<\\/p>/gi)]\n    .map(x => unescape(x[1].replace(/<[^>]+>/g, ' ')))\n    .filter(t => t.length > 40);\n  const marks = /<(?:article|main)\\b|class=\"[^\"]*\\b(?:journal-content-article|entry-content|article-body|post-content|single-content)\\b/gi;\n  const starts = [...html.matchAll(marks)].map(m => m.index);\n  const regions = starts.length ? starts.map((st, i) => html.slice(st, starts[i + 1] ?? html.length)) : [html];\n  let best = [];\n  for (const r of regions) {\n    const p = paragraphs(r);\n    if (p.join('').length > best.join('').length) best = p;\n  }\n  const text = best.join('\\n').slice(0, 6000);\n  // Keep the feed's own text if the page gave us less.\n  if (text.length > (a.text || '').length) return { json: { ...a, text } };\n} catch (e) {\n  // A page that will not load still leaves the feed's text, and the item is stored.\n}\nreturn { json: a };"
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// One call to the ingest API per source. The API checks every article and\n// stores the good ones, so this workflow never writes to Postgres itself.\nconst src = $('Start').first().json;\nlet listed = 0;\nfor (const reader of ['Feed items', 'Crossref items']) {\n  try { listed = $(reader).all().length; break; } catch (e) { /* the other branch ran */ }\n}\nconst read = $input.all().map(i => i.json).filter(a => a.url && a.title);\nreturn [{ json: {\n  found: listed,\n  unreadable: 0,\n  body: { items: read.map(a => ({\n    source_id: Number(src.source_id),\n    url: a.url,\n    title: a.title,\n    publisher: a.publisher || src.publisher || null,\n    published_at: a.published_at,\n    excerpt: a.excerpt || null,\n    raw_text: a.text || null,\n  })) },\n} }];"
-      },
       "id": "f5da8ce5-e87b-5659-9799-4a21145ce7b4",
       "name": "Build batch",
       "type": "n8n-nodes-base.code",
@@ -183,9 +187,20 @@
       "position": [
         1320,
         100
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// One call to the ingest API per source. The API checks every article and\n// stores the good ones, so this workflow never writes to Postgres itself.\nconst src = $('Start').first().json;\nlet listed = 0;\nfor (const reader of ['Feed items', 'Crossref items']) {\n  try { listed = $(reader).all().length; break; } catch (e) { /* the other branch ran */ }\n}\nconst read = $input.all().map(i => i.json).filter(a => a.url && a.title);\nreturn [{ json: {\n  found: listed,\n  unreadable: 0,\n  body: { items: read.map(a => ({\n    source_id: Number(src.source_id),\n    url: a.url,\n    title: a.title,\n    publisher: a.publisher || src.publisher || null,\n    published_at: a.published_at,\n    excerpt: a.excerpt || null,\n    raw_text: a.text || null,\n  })) },\n} }];"
+      }
     },
     {
+      "id": "e0342f6f-9e95-5483-9b41-e2fa77191836",
+      "name": "Send to ingest API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        100
+      ],
       "parameters": {
         "method": "POST",
         "url": "http://localhost:5678/webhook/ingest",
@@ -196,19 +211,14 @@
         "jsonBody": "={{ JSON.stringify($json.body) }}",
         "options": {}
       },
-      "id": "e0342f6f-9e95-5483-9b41-e2fa77191836",
-      "name": "Send to ingest API",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1540,
-        100
-      ]
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
     },
     {
-      "parameters": {
-        "jsCode": "// What the schedule writes to collection_runs for this source.\nconst batch = $('Build batch').first().json;\nconst results = $json.results || [];\nconst rejected = results.filter(r => !r.accepted);\n\nconst problems = [];\nif (batch.unreadable) problems.push(`${batch.unreadable} article(s) could not be read`);\nif (rejected.length) problems.push(`${rejected.length} rejected: ` +\n  [...new Set(rejected.map(r => r.reason))].join(', '));\n\nreturn [{ json: {\n  items_found: batch.found,\n  items_new: results.filter(r => r.accepted && r.new).length,\n  error: problems.length ? problems.join('; ') : null,\n} }];"
-      },
       "id": "4148ac2d-9711-598a-a8ca-786e4237b5ce",
       "name": "Report",
       "type": "n8n-nodes-base.code",
@@ -216,7 +226,10 @@
       "position": [
         1760,
         100
-      ]
+      ],
+      "parameters": {
+        "jsCode": "// What the schedule writes to collection_runs for this source.\nconst batch = $('Build batch').first().json;\nconst results = $json.results || [];\nconst rejected = results.filter(r => !r.accepted);\n\nconst problems = [];\nif (batch.unreadable) problems.push(`${batch.unreadable} article(s) could not be read`);\nif (rejected.length) problems.push(`${rejected.length} rejected: ` +\n  [...new Set(rejected.map(r => r.reason))].join(', '));\n\nreturn [{ json: {\n  items_found: batch.found,\n  items_new: results.filter(r => r.accepted && r.new).length,\n  error: problems.length ? problems.join('; ') : null,\n} }];"
+      }
     }
   ],
   "connections": {

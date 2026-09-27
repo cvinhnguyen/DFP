@@ -10,11 +10,16 @@
 #
 # Both ports are bound to 127.0.0.1, so nothing is reachable from outside
 # your machine.
+#
+# Container names and ports can be changed in .env (CONTAINER_PREFIX,
+# N8N_PORT, POSTGRES_PORT). The defaults are what everything else assumes;
+# changing them is for running a second copy next to your own, for example
+# to test a rebuild from the repository.
 
 services:
   postgres:
     image: postgres:16
-    container_name: dfp-postgres
+    container_name: ${CONTAINER_PREFIX:-dfp}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dfp}
@@ -23,7 +28,7 @@ services:
       # Finnish collation so sorting handles a, o and a with rings correctly.
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Scripts here run once, the first time the volume is created.
@@ -38,7 +43,7 @@ services:
 
   n8n:
     image: n8nio/n8n:2.38.1
-    container_name: dfp-n8n
+    container_name: ${CONTAINER_PREFIX:-dfp}-n8n
     restart: unless-stopped
     # Wait for Postgres to actually accept connections, not just start.
     depends_on:
@@ -91,7 +96,7 @@ services:
       # run a tunnel, then put the public https URL here.
       WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
     ports:
-      - "127.0.0.1:5678:5678"
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
@@ -103,11 +108,11 @@ services:
   # Then pull a model:  docker compose exec ollama ollama pull llama3.2:1b
   ollama:
     image: ollama/ollama:latest
-    container_name: dfp-ollama
+    container_name: ${CONTAINER_PREFIX:-dfp}-ollama
     profiles: ["local-llm"]
     restart: unless-stopped
     ports:
-      - "127.0.0.1:11434:11434"
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
     networks:
