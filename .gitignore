@@ -6,3 +6,9 @@ __pycache__/
 
 # Coursework deliverables, not part of the project code
 docs/Sprint-1-Test-Cases*.docx
+
+# Client material, never in the public repository
+*.xlsx
+
+# The client's source list, kept out of the public repository
+db/client/
