@@ -49,6 +49,9 @@ another workflow starts calling it.
 
 On Windows, run the scripts from Git Bash.
 
+Where every password and token lives, and how the client's credentials are
+handled, is in `docs/credentials.md`.
+
 Check it worked:
 
 ```bash
