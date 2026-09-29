@@ -67,7 +67,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Up to 20 items per run, newest first, so a backlog clears over a few runs\n-- instead of one long run that overlaps the next.\n--\n-- A source that does not allow summaries is copyright, not quality: those\n-- items go to a person instead and are never sent to the model, even when an\n-- editor asked.\nWITH held AS (\n    UPDATE items i\n       SET status = 'manual',\n           status_reason = 'the source does not allow AI summaries, handle by hand'\n      FROM sources s\n     WHERE s.id = i.source_id\n       AND i.status = 'queued'\n       AND NOT s.summarization_allowed\n    RETURNING i.id\n)\nSELECT i.id, i.title, i.raw_text\n  FROM items i\n  LEFT JOIN sources s ON s.id = i.source_id\n WHERE i.status = 'queued'\n   AND coalesce(s.summarization_allowed, TRUE)\n ORDER BY coalesce(i.published_at, i.fetched_at) DESC\n LIMIT 20;",
+        "query": "-- Up to 20 items per run, newest first, so a backlog clears over a few runs\n-- instead of one long run that overlaps the next.\n--\n-- A source that does not allow summaries is copyright, not quality: those\n-- items go to a person instead and are never sent to the model, even when an\n-- editor asked.\nWITH held AS (\n    UPDATE items i\n       SET status = 'manual',\n           status_reason = 'the source does not allow AI summaries, handle by hand'\n      FROM sources s\n     WHERE s.id = i.source_id\n       AND i.status = 'queued'\n       AND NOT s.summarization_allowed\n    RETURNING i.id\n)\nSELECT i.id, i.title, i.raw_text,\n       (SELECT value FROM app_settings WHERE key = 'llm_provider') AS llm_provider,\n       (SELECT value FROM app_settings WHERE key = 'llm_base_url') AS llm_base_url\n  FROM items i\n  LEFT JOIN sources s ON s.id = i.source_id\n WHERE i.status = 'queued'\n   AND coalesce(s.summarization_allowed, TRUE)\n ORDER BY coalesce(i.published_at, i.fetched_at) DESC\n LIMIT 20;",
         "options": {}
       },
       "credentials": {
@@ -138,7 +138,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- One statement, so an item is never marked summarised without a summary.\n-- A failed call is written down with its reason instead of leaving the item\n-- looking as if it is still waiting. Link and publisher are added by the\n-- database, see db/init/12-summaries.sql.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    SELECT $1::bigint, 'fi', btrim($2), $3, $4\n     WHERE nullif(btrim($2), '') IS NOT NULL\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, provider = EXCLUDED.provider,\n           model = EXCLUDED.model, generated_at = now()\n    RETURNING item_id\n)\nUPDATE items\n   SET status        = CASE WHEN EXISTS (SELECT 1 FROM s) THEN 'summarised'\n                            ELSE 'summary_failed' END,\n       status_reason = CASE WHEN EXISTS (SELECT 1 FROM s) THEN status_reason\n                            ELSE left(coalesce(nullif($5, ''), 'the model returned no text'), 300) END\n WHERE id = $1::bigint\nRETURNING id, status, status_reason;",
+        "query": "-- One statement, so an item is never marked summarised without a summary.\n-- A failed call is written down with its reason instead of leaving the item\n-- looking as if it is still waiting. Link and publisher are added by the\n-- database, see db/init/12-summaries.sql.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    SELECT $1::bigint, 'fi', btrim($2), $3, $4\n     WHERE nullif(btrim($2), '') IS NOT NULL\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, provider = EXCLUDED.provider,\n           model = EXCLUDED.model, generated_at = now()\n    RETURNING item_id\n)\n-- If the AI could not be reached at all, the article goes back to the queue\n-- for the next run. Only an answer that was no use marks it failed.\nUPDATE items\n   SET status        = CASE WHEN EXISTS (SELECT 1 FROM s) THEN 'summarised'\n                            WHEN $5 ~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n                              THEN 'queued'\n                            ELSE 'summary_failed' END,\n       status_reason = CASE WHEN EXISTS (SELECT 1 FROM s) THEN status_reason\n                            WHEN $5 ~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n                              THEN 'waiting for the AI to answer again'\n                            ELSE left(coalesce(nullif($5, ''), 'the model returned no text'), 300) END\n WHERE id = $1::bigint\nRETURNING id, status, status_reason, title,\n          -- set when an editor sent this link to the bot\n          (SELECT u.telegram_user_id FROM users u WHERE u.id = items.captured_by) AS telegram_user_id;",
         "options": {
           "queryReplacement": "={{ [ $('One at a time').first().json.item_id, $json.text || '', $json.provider || '', $json.model || '', ($json.error && ($json.error.message || $json.error)) || '' ] }}"
         }
@@ -148,6 +148,32 @@
           "id": "9iauudkzEoz4bDay",
           "name": "DFP Postgres"
         }
+      }
+    },
+    {
+      "id": "365b4fa5-fe6d-5e75-b2c8-3689194b5f25",
+      "name": "Tell the sender",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        180
+      ],
+      "parameters": {
+        "jsCode": "// A link an editor sent to the bot while the AI was down gets its summary\n// here, and the bot promised to send it. Anything else just carries on.\n// A failed message never stops the loop: the summary is saved either way.\nconst r = $json;\nif (r.status === 'summarised' && r.telegram_user_id) {\n  const text = ($('Summarise').first().json.text || '').trim();\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n      body: { chat_id: r.telegram_user_id, text: `Summary for: ${r.title}\\n\\n${text}`,\n              disable_web_page_preview: true },\n      json: true,\n    });\n  } catch (e) { /* nothing more to do */ }\n}\nreturn [{ json: r }];"
+      }
+    },
+    {
+      "id": "1497d141-a12f-5467-9568-df58349b61f6",
+      "name": "Is the AI up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Ask the model server whether it is there before sending it up to 20\n// articles. If it is down, stop here: the articles stay queued and the next\n// run, 15 minutes later, tries again. Nothing is marked failed for an outage\n// that was not the article's fault.\nconst rows = $input.all();\nconst cfg = rows[0].json;\nif (cfg.llm_provider === 'ollama') {\n  try {\n    await this.helpers.httpRequest({ url: `${cfg.llm_base_url}/api/version`, timeout: 5000, json: true });\n  } catch (e) {\n    return [];\n  }\n}\nreturn rows;"
       }
     }
   ],
@@ -189,7 +215,7 @@
       "main": [
         [
           {
-            "node": "Build request",
+            "node": "Is the AI up",
             "type": "main",
             "index": 0
           }
@@ -234,7 +260,29 @@
       "main": [
         [
           {
+            "node": "Tell the sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tell the sender": {
+      "main": [
+        [
+          {
             "node": "One at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is the AI up": {
+      "main": [
+        [
+          {
+            "node": "Build request",
             "type": "main",
             "index": 0
           }
