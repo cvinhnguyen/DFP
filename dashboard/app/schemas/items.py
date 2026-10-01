@@ -5,14 +5,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# The buttons above the list.
+# The places the list can show.
+#   inbox      Uudet: summarised news nobody has decided about, and the theses
+#              of the followed topics, from the last month
 #   review     summarised, and nobody has decided about it yet
 #   picked     in the newsletter being prepared
 #   later      kept for later
 #   dismissed  not for the newsletter
 #   used       in a newsletter that has been sent
 #   waiting, skipped, attention: by what the AI step did with it
-View = Literal["review", "picked", "later", "dismissed", "used", "waiting", "skipped", "attention", "all"]
+#   open       everything not left out, for a topic, a tag or a source
+View = Literal["inbox", "review", "picked", "later", "dismissed", "used", "waiting", "skipped", "attention",
+               "open", "all"]
 Sort = Literal["collected", "published", "relevance"]
 # The newsletter sections an article can be picked into.
 Section = Literal["highlights", "events", "own_news", "member_news"]
@@ -27,6 +31,19 @@ class Summary(BaseModel):
 class SignalRef(BaseModel):
     id: int
     topic: str
+    reason: str | None = Field(default=None, description="Why signal detection flagged it, in Finnish")
+
+
+class TagRef(BaseModel):
+    id: int
+    label: str = Field(description="The YSO term's Finnish name")
+    uri: str = Field(description="The term's address in YSO")
+    origin: str = Field(description="source (the article's own subject words), finto (Finto AI), signal or editor")
+
+
+class TopicRef(BaseModel):
+    id: int
+    name: str
 
 
 class Copy(BaseModel):
@@ -43,21 +60,32 @@ class Item(BaseModel):
     publisher: str | None = Field(description="Who wrote it. Printed with the summary in the newsletter.")
     source_id: int | None
     source: str | None = Field(description="Where we found it: a feed, a site, or Telegram capture")
-    source_type: str | None = Field(description="rss, crossref, webpage, or manual for links sent on Telegram")
+    source_type: str | None = Field(description="rss, crossref, webpage, dspace for archives such as Theseus, "
+                                                "or manual for links sent on Telegram")
     sent_by: str | None = Field(description="Who sent the link on Telegram, if someone did")
     published_at: datetime | None
     collected_at: datetime
     language: str | None = Field(description="Language of the original: fi, en, no, or null if not known")
-    status: str = Field(description="new, queued, summarised, filtered_out, summary_failed or manual")
+    status: str = Field(description="new, queued, summarised, filtered_out, summary_failed, manual, or on_request "
+                                    "for an archive item that is summarised only when an editor picks it")
     status_reason: str | None = Field(description="Why it has that status, in plain words")
     section: str | None = Field(description="events, member_news or highlights, once an editor picks one")
     excerpt: str | None = Field(description="The publisher's own short description")
     text_length: int = Field(description="Characters of article text we have")
     summary: Summary | None
+    details: dict | None = Field(description="What the source knows beyond the shared fields. For a thesis: "
+                                             "kind, level, programme and licence")
+    from_archive: bool = Field(description="From an archive such as Theseus: summarised only on request, "
+                                           "and in a topic only with a learning tag")
+    abstract: str | None = Field(description="The author's own abstract, for an archive item")
     duplicate_of: int | None = Field(description="The article this one repeats, if it is the same story")
     duplicate_of_title: str | None
     copies: list[Copy] = Field(description="The same story collected from other places")
     signals: list[SignalRef] = Field(description="Topics the signal detection linked to this article")
+    tags: list[TagRef] = Field(description="YSO terms on the article, the most telling first")
+    topics: list[TopicRef] = Field(description="The topics its tags put it in")
+    needs_learning_tag: bool = Field(description="An archive item with no learning tag, so in no topic")
+    tags_pending: bool = Field(description="Its tags are still being made, within 15 minutes")
     can_request_summary: bool = Field(description="Whether POST /api/items/{id}/summarise would accept it")
     decision: str | None = Field(description="picked, later or dismissed, or null if nobody has decided")
     pick_section: str | None = Field(description="For a picked article: own_news, events, member_news or highlights")
@@ -70,6 +98,7 @@ class Item(BaseModel):
 
 
 class Counts(BaseModel):
+    inbox: int
     review: int
     picked: int
     later: int
@@ -78,6 +107,7 @@ class Counts(BaseModel):
     waiting: int
     skipped: int
     attention: int
+    open: int
     all: int
 
 
@@ -87,6 +117,7 @@ class ItemPage(BaseModel):
     page: int
     per_page: int
     counts: Counts = Field(description="How many match the filters in each view, for the buttons")
+    tag_label: str | None = Field(default=None, description="The name of the tag filtered by, if one is")
 
 
 class SourceOption(BaseModel):

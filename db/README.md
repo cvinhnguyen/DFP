@@ -43,12 +43,17 @@ docker compose up -d
 
 | Table | What it holds | Defined in |
 |---|---|---|
-| `sources` | the sites, feeds and journals we follow, and how each is read | `02-schema.sql`, `07`, `11`, `14` |
-| `items` | one row per article | `02-schema.sql`, `10`, `11` |
+| `sources` | the sites, feeds, journals and archives we follow, and how each is read | `02-schema.sql`, `07`, `11`, `14`, `20` |
+| `items` | one row per article or thesis | `02-schema.sql`, `10`, `11`, `20` |
 | `summaries` | the Finnish summaries, each carrying its source link and publisher | `02-schema.sql`, `12`, `15` |
 | `collection_runs` | one row each time a source is checked, with any error | `02-schema.sql` |
 | `filter_runs` | what the filter skipped and the tokens that saved | `11-filter.sql` |
 | `signals`, `signal_items` | topics that keep coming up, and the articles behind each | `04-signals.sql` |
+| `tags`, `item_tags` | subject tags, terms from YSO, and which article has which, where each came from, and the ones an editor took off | `20-topics.sql` |
+| `item_subjects`, `tag_labels` | the subject words a source sent with an article, and which YSO term each word means, so a word is looked up once | `20-topics.sql` |
+| `item_tagging` | which summaries Finto AI has read | `20-topics.sql` |
+| `topics`, `topic_tags` | what the editors read by: a name, its YSO terms, and whether its theses come to Uudet | `20-topics.sql` |
+| `learning_tags` | the terms a thesis also needs before it joins a topic | `20-topics.sql` |
 | `llm_usage` | every AI call: tokens, cost, time | `02-schema.sql`, `03`, `05` |
 | `llm_cache` | answers kept so the same text is never paid for twice | `03-llm.sql` |
 | `llm_pricing` | token prices per model | `03-llm.sql`, `06` |
@@ -77,6 +82,13 @@ The ones most code touches:
   yet.
 - `created_at` is when an article first arrived. `fetched_at` moves forward
   each time a source sends it again.
+- `status` is `on_request` for items from a source whose `filter_mode` is
+  `on_request`, Theseus so far: nothing goes to the AI until an editor picks
+  the item or asks for its summary. `details` holds what such a source knows
+  beyond the shared fields, for a thesis its level, programme and licence.
+- Which topics an article is in comes from the `item_topics` view, never
+  from code: one of its tags is a term of the topic, and an item from a
+  source with `learning_tag_required` also has a learning tag.
 
 A signal must link to at least one article, which a trigger checks at commit,
 so write the signal and its links in one statement. There is a worked example

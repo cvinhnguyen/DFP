@@ -1,0 +1,271 @@
+{
+  "id": "tagg1ngW0rkfl26a",
+  "name": "Tagging",
+  "active": true,
+  "nodes": [
+    {
+      "id": "a0914db5-2ab6-5a4c-906e-2dd8c76c8940",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7488006d-0337-511f-abd6-0366c1eb1e73",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "9c2f4989-1ec7-5a1d-8900-c253f5ceb944",
+      "name": "Words to look up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Subject words not matched to YSO yet: the words a source sent with an\n-- article, such as a thesis's own terms, and the words signal detection gave\n-- articles. Each word is asked about once and tag_labels keeps the answer, a\n-- miss as well. The language of an article the word came with is tried first.\nWITH words AS (\n    SELECT s.label, min(coalesce(i.source_language, 'fi')) AS lang\n      FROM item_subjects s\n      JOIN items i ON i.id = s.item_id\n     GROUP BY s.label\n    UNION ALL\n    SELECT lower(btrim(g.topic)), 'fi'\n      FROM signals g\n     WHERE g.status <> 'dismissed'\n)\nSELECT coalesce(jsonb_agg(jsonb_build_object('label', w.label, 'lang', w.lang)), '[]'::jsonb) AS words\n  FROM (SELECT DISTINCT ON (label) label, lang\n          FROM words\n         WHERE label <> ''\n           AND NOT EXISTS (SELECT 1 FROM tag_labels l WHERE l.label = words.label)\n         ORDER BY label, lang\n         LIMIT 200) w;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "fe822324-26bb-5a9c-8db0-cc6d5eefc17a",
+      "name": "Ask Finto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Matches each word to a YSO term through Finto, the National Library of\n// Finland's public vocabulary service. Only an exact name counts: the\n// preferred name, or another name YSO lists for the same term (jatkuva\n// oppiminen is filed under elinikäinen oppiminen). The article's language is\n// tried first, then Finnish, English and Swedish, because a thesis written in\n// English carries English terms. One call at a time.\nconst UA = 'DFP newsletter bot (HAMK student project)';\nconst pause = ms => new Promise(resolve => setTimeout(resolve, ms));\n// URLSearchParams is not available in n8n's Code node.\nconst query = o => Object.entries(o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');\nconst found = [];\nlet error = null;\n\nfor (const w of $json.words || []) {\n  let match = null;\n  try {\n    for (const lang of [...new Set([w.lang, 'fi', 'en', 'sv'])]) {\n      const data = await this.helpers.httpRequest({\n        url: 'https://api.finto.fi/rest/v1/yso/search?' + query({ query: w.label, lang, labellang: 'fi' }),\n        json: true, timeout: 15000,\n        headers: { 'User-Agent': UA, Accept: 'application/json' },\n      });\n      const same = s => String(s || '').toLowerCase() === w.label;\n      match = (data.results || []).find(r => r.uri && r.prefLabel &&\n        ((lang === 'fi' && same(r.prefLabel)) || same(r.matchedPrefLabel) || same(r.altLabel) || same(r.hiddenLabel)));\n      if (match) break;\n      await pause(100);\n    }\n  } catch (e) {\n    // Finto is away. What was matched so far is kept; the rest waits for the\n    // next run.\n    error = `Finto did not answer: ${e.message}`;\n    break;\n  }\n  found.push({ label: w.label, uri: match ? match.uri : null, name: match ? match.prefLabel : null });\n  await pause(100);\n}\nreturn [{ json: { found, error } }];"
+      }
+    },
+    {
+      "id": "ad4091c4-d563-55c0-b01b-c27165ef886a",
+      "name": "Save words",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- New YSO terms, then each word's answer, a miss included. A term that two\n-- words share, such as learning and oppiminen, is one tag.\nWITH answers AS (\n    SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(label text, uri text, name text)\n),\nnew_tags AS (\n    INSERT INTO tags (uri, label)\n    SELECT DISTINCT ON (uri) uri, name\n      FROM answers\n     WHERE uri IS NOT NULL AND name IS NOT NULL\n    ON CONFLICT (uri) DO NOTHING\n    RETURNING id, uri\n),\nsaved AS (\n    INSERT INTO tag_labels (label, tag_id)\n    SELECT a.label, coalesce(n.id, t.id)\n      FROM answers a\n      LEFT JOIN new_tags n ON n.uri = a.uri\n      LEFT JOIN tags t     ON t.uri = a.uri\n    ON CONFLICT (label) DO UPDATE\n       SET tag_id = EXCLUDED.tag_id, checked_at = now()\n    RETURNING tag_id\n)\nSELECT count(*) FILTER (WHERE tag_id IS NOT NULL) AS matched,\n       count(*) FILTER (WHERE tag_id IS NULL)     AS not_in_yso,\n       $2::text                                   AS error\n  FROM saved;",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($json.found), $json.error || '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "71fb3e75-0570-5431-bfcf-b4ebf049d153",
+      "name": "Tag from words",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The matched words become tags on their articles. A tag an editor took off\n-- stays off: its row is still there, so nothing new is inserted for it. Only\n-- recent articles, and older ones whose word was matched just now, are looked\n-- at, so the run stays short as the archive grows.\nWITH subjects AS (\n    INSERT INTO item_tags (item_id, tag_id, origin, position)\n    SELECT s.item_id, l.tag_id, 'source', min(s.position)\n      FROM item_subjects s\n      JOIN tag_labels l ON l.label = s.label AND l.tag_id IS NOT NULL\n      JOIN items i      ON i.id = s.item_id\n     WHERE i.created_at > now() - interval '60 days'\n        OR l.checked_at > now() - interval '1 day'\n     GROUP BY s.item_id, l.tag_id\n    ON CONFLICT (item_id, tag_id) DO NOTHING\n    RETURNING 1\n),\nfrom_signals AS (\n    INSERT INTO item_tags (item_id, tag_id, origin)\n    SELECT DISTINCT si.item_id, l.tag_id, 'signal'\n      FROM signal_items si\n      JOIN signals g    ON g.id = si.signal_id AND g.status <> 'dismissed'\n      JOIN tag_labels l ON l.label = lower(btrim(g.topic)) AND l.tag_id IS NOT NULL\n    ON CONFLICT (item_id, tag_id) DO NOTHING\n    RETURNING 1\n)\nSELECT (SELECT count(*) FROM subjects)     AS from_subjects,\n       (SELECT count(*) FROM from_signals) AS from_signals;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "f0fb69e2-aede-5f38-a75d-140199395951",
+      "name": "Summaries to tag",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Summaries Finto AI has not read yet, newest first, 40 a run, so a backlog\n-- clears over a few runs. An article whose source sent its own subject words,\n-- a thesis for example, already has tags and is left out. One that got an\n-- error from the service is tried again after an hour.\nSELECT coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'text', x.text)\n                          ORDER BY x.created_at DESC), '[]'::jsonb) AS articles,\n       (SELECT value FROM app_settings WHERE key = 'tagging_min_score')   AS min_score\n  FROM (SELECT i.id, i.created_at,\n               -- A Finnish title helps; an English one would only confuse a\n               -- Finnish indexer, and the summary is always Finnish.\n               CASE WHEN coalesce(i.source_language, s.language) = 'fi'\n                    THEN i.title || '. ' ELSE '' END || sm.text AS text\n          FROM items i\n          JOIN summaries sm   ON sm.item_id = i.id AND sm.language = 'fi'\n          LEFT JOIN sources s ON s.id = i.source_id\n          LEFT JOIN item_tagging t ON t.item_id = i.id\n         WHERE i.status = 'summarised'\n           AND NOT EXISTS (SELECT 1 FROM item_subjects x WHERE x.item_id = i.id)\n           AND (t.item_id IS NULL\n                OR (t.error IS NOT NULL AND t.checked_at < now() - interval '1 hour'))\n         ORDER BY i.created_at DESC\n         LIMIT 40) x;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "17cc1c32-ddf5-5c9b-822e-8dc008e83bc9",
+      "name": "Ask Finto AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Finto AI is the National Library's subject indexing service: given a\n// Finnish text, it suggests YSO terms with a score from 0 to 1. It is free\n// and open, and asks that calls are not made in parallel, so these go one at\n// a time. Only the title and our own Finnish summary are sent.\nconst UA = 'DFP newsletter bot (HAMK student project)';\nconst pause = ms => new Promise(resolve => setTimeout(resolve, ms));\nconst minScore = Number($json.min_score) || 0.1;\n// URLSearchParams is not available in n8n's Code node.\nconst form = o => Object.entries(o).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');\nconst done = [];\nlet error = null;\n\nfor (const a of $json.articles || []) {\n  try {\n    const data = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://ai.finto.fi/v1/projects/yso-fi/suggest',\n      body: form({ text: a.text, limit: 10, threshold: minScore }),\n      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': UA, Accept: 'application/json' },\n      json: true, timeout: 30000,\n    });\n    const terms = (data.results || [])\n      .filter(r => r.uri && r.label && Number(r.score) >= minScore)\n      .map((r, n) => ({ uri: r.uri, label: r.label, score: Number(r.score), rank: n + 1 }));\n    done.push({ id: a.id, terms, error: null });\n  } catch (e) {\n    const status = Number(e.httpCode || (e.response && e.response.status) || e.statusCode || 0);\n    // An answer of 4xx is about this text: written down and tried again in an\n    // hour. No answer at all means the service is away: stop here, and the\n    // next run, 15 minutes later, starts again with the same summaries.\n    if (status >= 400 && status < 500) {\n      done.push({ id: a.id, terms: [], error: `Finto AI answered ${status}` });\n      continue;\n    }\n    error = `Finto AI did not answer: ${e.message}`;\n    break;\n  }\n  await pause(200);\n}\nreturn [{ json: { done, error } }];"
+      }
+    },
+    {
+      "id": "aa0a3b8e-93b2-5cc5-942d-2639100b43f3",
+      "name": "Save suggestions",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1540,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- The suggestions become tags, and each summary is marked as read, with how\n-- many terms were kept or the error the service gave.\nWITH done AS (\n    SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(id bigint, terms jsonb, error text)\n),\nterms AS (\n    SELECT d.id, t.uri, t.label, t.score, t.rank\n      FROM done d\n     CROSS JOIN LATERAL jsonb_to_recordset(coalesce(d.terms, '[]'::jsonb))\n           AS t(uri text, label text, score numeric, rank int)\n),\nnew_tags AS (\n    INSERT INTO tags (uri, label)\n    SELECT DISTINCT ON (uri) uri, label FROM terms\n    ON CONFLICT (uri) DO NOTHING\n    RETURNING id, uri\n),\ntagged AS (\n    INSERT INTO item_tags (item_id, tag_id, origin, score, position)\n    SELECT x.id, coalesce(n.id, g.id), 'finto', round(x.score, 4), x.rank\n      FROM terms x\n      LEFT JOIN new_tags n ON n.uri = x.uri\n      LEFT JOIN tags g     ON g.uri = x.uri\n    ON CONFLICT (item_id, tag_id) DO NOTHING\n    RETURNING item_id\n),\nchecked AS (\n    INSERT INTO item_tagging (item_id, checked_at, suggested, error)\n    SELECT d.id, now(), jsonb_array_length(coalesce(d.terms, '[]'::jsonb)), d.error\n      FROM done d\n    ON CONFLICT (item_id) DO UPDATE\n       SET checked_at = now(), suggested = EXCLUDED.suggested, error = EXCLUDED.error\n    RETURNING item_id\n)\nSELECT (SELECT count(*) FROM checked) AS summaries,\n       (SELECT count(*) FROM tagged)  AS tags,\n       $2::text                       AS error;",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($json.done), $json.error || '' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    }
+  ],
+  "connections": {
+    "Words to look up": {
+      "main": [
+        [
+          {
+            "node": "Ask Finto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Finto": {
+      "main": [
+        [
+          {
+            "node": "Save words",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save words": {
+      "main": [
+        [
+          {
+            "node": "Tag from words",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag from words": {
+      "main": [
+        [
+          {
+            "node": "Summaries to tag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summaries to tag": {
+      "main": [
+        [
+          {
+            "node": "Ask Finto AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Finto AI": {
+      "main": [
+        [
+          {
+            "node": "Save suggestions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Words to look up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Words to look up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

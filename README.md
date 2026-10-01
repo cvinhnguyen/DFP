@@ -19,8 +19,9 @@ Each folder is one part of the system, with a README of its own.
 | `db/` | the database: every table, as numbered changes, and the client's source list |
 | `docs/` | documents for people: credentials, the ingest API, the AI cost comparison, the architecture diagram, the dashboard prototype |
 
-The parts meet in the database. n8n collects articles and writes them in
-through the ingest API, then summarises them. The dashboard reads what is
+The parts meet in the database. n8n collects articles and theses and writes
+them in through the ingest API, then summarises them and gives them subject
+tags. The dashboard reads what is
 there, and when an editor presses "check now" it asks n8n to collect. Nothing
 reaches the database except through these. Mailchimp is reached the same way:
 the dashboard asks n8n, which holds the key.

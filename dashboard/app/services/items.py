@@ -51,10 +51,10 @@ def suggest_section(found):
 
 
 def _as_item(found, min_chars):
-    # The same rules as request_summary() in 11-filter.sql, plus two of our
+    # The same rules as request_summary() in 20-topics.sql, plus two of our
     # own: a repeat of a story already here, and an article with too little
     # text to summarise, would only give the model a chance to invent.
-    can_request = (found["status"] in ("filtered_out", "summary_failed")
+    can_request = (found["status"] in ("filtered_out", "summary_failed", "on_request")
                    and found["duplicate_of"] is None
                    and found["text_length"] >= min_chars)
     return Item(**found, can_request_summary=can_request, suggested_section=suggest_section(found))
@@ -68,8 +68,10 @@ def list_items(view, sort, page, per_page, **chosen):
     counts = queries.counts(where, params)
     found = queries.page(where, params, view, sort, per_page, (page - 1) * per_page)
     min_chars = _min_chars()
+    tag = chosen.get("tag")
     return ItemPage(items=[_as_item(f, min_chars) for f in found], total=counts[view],
-                    page=page, per_page=per_page, counts=Counts(**counts))
+                    page=page, per_page=per_page, counts=Counts(**counts),
+                    tag_label=queries.tag_name(tag) if tag is not None else None)
 
 
 def get_item(item_id):
@@ -87,7 +89,7 @@ def summarise_anyway(item_id, requested_by):
     if item.duplicate_of is not None:
         raise CannotSummarise("duplicate", f"This is the same story as article {item.duplicate_of}. Use that one.",
                               id=item.duplicate_of)
-    if item.status in ("filtered_out", "summary_failed") and not item.can_request_summary:
+    if item.status in ("filtered_out", "summary_failed", "on_request") and not item.can_request_summary:
         raise CannotSummarise("too_little_text", "There is only a title or a few lines here, so nothing to summarise.")
     if not queries.request_summary(item_id, requested_by):
         raise CannotSummarise("cannot_summarise", "Only skipped or failed articles can be sent to the AI again.")

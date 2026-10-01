@@ -14,7 +14,8 @@ from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.issues import DecisionIn
 from ..schemas.items import FilterOptions, Item, ItemPage, Section, Sort, View
-from ..services import issues, items, picks
+from ..schemas.topics import TagIn
+from ..services import issues, items, picks, topics, yso
 
 router = APIRouter(tags=["articles"])
 
@@ -28,6 +29,9 @@ def list_items(
                                           description="fi, en, no, or unknown")] = None,
     signal: int | None = None,
     section: Section | None = None,
+    topic: Annotated[int | None, Query(description="Only articles in this topic")] = None,
+    tag: Annotated[int | None, Query(description="Only articles with this tag")] = None,
+    untopiced: Annotated[bool, Query(description="Only news no topic took")] = False,
     date_from: Annotated[date | None, Query(alias="from", description="First day, Finnish time")] = None,
     date_to: Annotated[date | None, Query(alias="to", description="Last day, Finnish time")] = None,
     sort: Sort = "collected",
@@ -35,7 +39,8 @@ def list_items(
     per_page: Annotated[int, Query(ge=1, le=100)] = 25,
 ):
     return items.list_items(view, sort, page, per_page, q=q, source=source, language=language,
-                            signal=signal, section=section, date_from=date_from, date_to=date_to)
+                            signal=signal, section=section, date_from=date_from, date_to=date_to,
+                            topic=topic, tag=tag, untopiced=untopiced)
 
 
 @router.get("/items/{item_id}", response_model=Item, summary="One article")
@@ -77,6 +82,31 @@ def decide(item_id: int, body: DecisionIn, user: User = Depends(current_user)):
         raise ApiError(404, "no_such_issue", "There is no newsletter with that number.")
     except picks.AlreadyUsed as e:
         raise ApiError(409, "already_used", str(e), issue=e.issue_name)
+
+
+@router.post("/items/{item_id}/tags", response_model=Item, summary="Add a tag to an article",
+             responses={422: {"description": "Not a YSO term"}, 502: {"description": "Finto did not answer"}})
+def add_tag(item_id: int, body: TagIn, user: User = Depends(current_user)):
+    """The term's Finnish name is read from YSO. A tag taken off earlier comes back."""
+    try:
+        return topics.add_tag(item_id, body.uri, user.id)
+    except items.NotFound:
+        raise ApiError(404, "no_such_article", "There is no article with that number.")
+    except yso.NotATerm:
+        raise ApiError(422, "not_a_term", "YSO has no such term.")
+    except yso.Unreachable:
+        raise ApiError(502, "finto_unreachable", "Finto, where the subject terms come from, did not answer. Try again in a moment.")
+
+
+@router.delete("/items/{item_id}/tags/{tag_id}", response_model=Item, summary="Take a wrong tag off an article")
+def remove_tag(item_id: int, tag_id: int, user: User = Depends(current_user)):
+    """The tag stays off: the tagging workflow does not put it back."""
+    try:
+        return topics.remove_tag(item_id, tag_id, user.id)
+    except items.NotFound:
+        raise ApiError(404, "no_such_article", "There is no article with that number.")
+    except topics.NoSuchTag:
+        raise ApiError(404, "no_such_tag", "The article has no such tag.")
 
 
 @router.get("/filters", response_model=FilterOptions, summary="What the article filters can choose from")

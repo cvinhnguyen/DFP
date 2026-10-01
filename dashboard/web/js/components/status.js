@@ -17,8 +17,9 @@ export function statusLines(overview, { checking = false, done = '', view = '' }
     const text = [
       o.last_check_at ? t('status.lastCheck', { when: when(o.last_check_at) }) : t('status.neverChecked'),
       o.new_today ? tn('status.newToday', o.new_today) : t('status.nothingToday'),
+      o.new_theses_today ? tn('status.thesesToday', o.new_theses_today) : '',
       o.next_check_at ? t('status.next', { when: when(o.next_check_at) }) : t('status.off'),
-    ].join(' ');
+    ].filter(Boolean).join(' ');
     lines.push(`<p class="line"><span>${esc(text)}</span>
       <button type="button" class="btn small" data-act="check">${esc(t('status.checkNow'))}</button></p>`);
   }

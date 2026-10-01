@@ -2,11 +2,13 @@
 
 The editors' web app, in Finnish with an English switch for the team.
 
-- **Artikkelit**: everything the tool collected, with its Finnish summary.
-  Search it, filter it, and decide on each article: add it to the newsletter
-  (in a section), keep it for later, or leave it out. Both editors see who
-  decided what. Skipped and failed articles say why, and can be summarised
-  anyway.
+- **Artikkelit**: everything the tool collected, read by topic. A column of
+  topics and lists on the left, the list in the middle, the article on the
+  right with its Finnish summary, its subject tags and the buttons that
+  decide: add it to the newsletter (in a section), keep it for later, or
+  leave it out. The next article opens by itself, and keys do the same as
+  the buttons. Both editors see who decided what. Skipped and failed
+  articles say why, and can be summarised anyway.
 - **Uutiskirjeet**: every newsletter, drafts first, like Mailchimp's list of
   campaigns. Each one opens to a checklist: articles, subject line and
   preview text, content, Mailchimp, with a preview beside it.
@@ -63,9 +65,11 @@ Give them one with `password` rather than adding them again.
 1. Pick articles on Artikkelit, each into one of the newsletter's four
    sections: Ajankohtaista yhdistykseltä (the association's own news and
    projects), Tapahtumat, Jäsenkuulumisia and Nostoja kentältä. They go into
-   the newest draft, marked "Uudet valinnat tulevat tähän" on Uutiskirjeet. One is made and named after the
-   month the first time it is needed, and an editor can start another with
-   Luo uutiskirje.
+   the draft chosen under "Valinnat menevät" at the bottom of the left
+   column: the newest draft, marked "Uudet valinnat tulevat tähän" on
+   Uutiskirjeet, unless an editor chooses another. One is made and named
+   after the month the first time it is needed, and an editor can start
+   another with Luo uutiskirje.
 2. Open the newsletter. Its checklist shows what is done: the articles, the
    subject line and preview text, the content, and Mailchimp.
 3. Open the editor. The first time, it asks for a template, grouped the way
@@ -154,6 +158,41 @@ readers' email programs can show it. A picture still used in a newsletter or
 a template cannot be deleted. Pictures going into Mailchimp are uploaded to
 its Content Studio once each, and the email points at Mailchimp's copy.
 
+## Reading by topic
+
+The left column holds the places the list can show:
+
+- **Uudet**: summarised news nobody has decided about, and the theses of the
+  followed topics, from the last 30 days (`filter_max_age_days`).
+- **Valitut**, **Myöhemmin**, **Ei käytetä**: the editors' decisions.
+- **Topics**, with how many new articles each has. A followed topic brings
+  its theses into Uudet; news comes there whatever its topic, because the
+  news sources are already about education. Following is shared: both
+  editors see the same Uudet.
+- **Ei aihetta**: news no topic covers, which shows whether one is missing.
+- **Lähteet**, and **Muut näkymät**: what the AI step did (waiting, skipped,
+  needs attention), the newsletters already sent, and everything.
+
+Every article has subject tags, terms from YSO, the general Finnish ontology
+(finto.fi/yso). The tagging workflow in n8n gives them: Finto AI suggests
+terms from the Finnish summary, a thesis brings its author's own terms, and
+a word from signal detection becomes a tag too. A topic is a list of YSO
+terms, and an article is in every topic one of its tags is in; the
+`item_topics` view in `db/init/20-topics.sql` is where that rule is written.
+Clicking a tag lists everything with it. A wrong tag comes off with its ×
+and stays off; "Lisää asiasana" searches YSO for one to add, so jatkuva
+oppiminen finds elinikäinen oppiminen.
+
+Theses come from Theseus. They wait without an AI summary until an editor
+picks one, and then the AI writes it within 15 minutes; until then the
+article shows the author's abstract and what its licence allows. A thesis
+joins a topic only when it also has a learning tag, because most theses are
+about other fields.
+
+Keys, whenever no text box has the focus: J and K move down and up the list,
+1 to 4 add the article to a section, L keeps it for later, X leaves it out.
+After each decision a note offers to take it back.
+
 ## How the code is laid out
 
 Each folder holds one kind of work, so a change usually touches one place.
@@ -181,11 +220,13 @@ web/
   js/app.js        starts the dashboard and picks the page
   js/api.js        every call to the API goes through here
   js/texts.js      every word on the screen, in Finnish and English, with
-                   the editor's and the newsletter pages' words in texts/
+                   the editor's, the newsletter pages' and the articles
+                   page's words in texts/
   js/format.js     escaping, safe links, dates in Finnish time
   js/ui/           building blocks: elements, icons, dialogs, form controls
   js/pages/        one file per page: what it shows and what each click does
-  js/components/   how one piece is drawn: an article, the status line
+  js/components/   how one piece is drawn: an article, the column of topics,
+                   the status line
   js/newsletter/   the email itself, used by the editor and the pages alike:
     model.js         what an email is made of: sections, blocks, styles
     render.js        a design written out as email HTML
@@ -256,4 +297,8 @@ for it.
   Mailchimp merge tags become links.
 - The dashboard never holds the Mailchimp key, and nothing in it or in n8n
   can send or schedule a newsletter. See `docs/credentials.md`.
+- Adding a tag asks Finto's public API at api.finto.fi, with an address the
+  dashboard builds itself, so it cannot be made to fetch anything else. Only
+  the words an editor types are sent. The term's Finnish name is read back
+  from YSO, so a tag cannot be stored under a wrong name.
 - Once it is served over https, set `COOKIE_SECURE=true` in `.env`.

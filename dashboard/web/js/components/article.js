@@ -1,26 +1,18 @@
-// How one article is drawn in the list: title, who published it, the Finnish
-// summary or why there is none, topics, and the details underneath. It only
-// turns data into HTML; the page decides what happens on a click.
+// How an article looks on the articles page: its row in the list, and the
+// whole article in the reading pane with its topics, tags and the buttons
+// that decide about it. It only turns data into HTML; the page decides what
+// happens on a click.
+// Jira: DM42-80, DM42-31
 
-import { t, tn } from '../texts.js';
-import { esc, safeUrl, date, when, number, languageName } from '../format.js';
+import { t, tn, currentLanguage } from '../texts.js';
+import { esc, safeUrl, date, when, number, languageName, finnishDay } from '../format.js';
+import { colourOf } from './side.js';
 
 // The reason the summarisation workflow gives when the model did not answer.
 const AI_DID_NOT_ANSWER = 'waiting for the AI to answer again';
 
-// The newsletter sections an article can be picked into.
-const SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
-
-function stateClass(item) {
-  return {
-    summarised: 'is-ready',
-    new: 'is-waiting',
-    queued: 'is-waiting',
-    filtered_out: 'is-skipped',
-    summary_failed: 'is-attention',
-    manual: 'is-attention',
-  }[item.status] ?? '';
-}
+// The newsletter sections, in the order of the keys 1 to 4.
+export const SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
 
 function requester(reason) {
   const name = reason.slice('requested by '.length);
@@ -50,36 +42,176 @@ function stateText(item) {
   return item.status;
 }
 
-function langAttr(code) {
-  return code ? ` lang="${esc(code)}"` : '';
+const langAttr = (code) => (code ? ` lang="${esc(code)}"` : '');
+
+function langBadge(item) {
+  return item.language && item.language !== 'fi'
+    ? `<span class="lang" title="${esc(languageName(item.language))}">${esc(item.language.toUpperCase())}</span>`
+    : '';
+}
+
+function kindLabel(item) {
+  if (!item.from_archive) return '';
+  return t(item.details?.kind === 'publication' ? 'row.publication' : 'row.thesis');
+}
+
+function byline(item) {
+  const from = item.source_type === 'manual'
+    ? (item.sent_by ? t('item.sentBy', { name: item.sent_by }) : t('item.sentOnTelegram'))
+    : (item.source && item.source !== item.publisher && !item.from_archive ? t('item.from', { source: item.source }) : '');
+  return [item.publisher, from].filter(Boolean);
+}
+
+// The editors' decision, or else what the AI step did, as one short chip.
+function stateChip(item) {
+  if (item.decision === 'picked') {
+    const text = item.pick_issue_status === 'sent' ? t('row.sent') : t(`section.${item.pick_section}`);
+    return `<span class="chip-state picked">${esc(text)}</span>`;
+  }
+  if (item.decision === 'later') return `<span class="chip-state">${esc(t('row.later'))}</span>`;
+  if (item.decision === 'dismissed') return `<span class="chip-state">${esc(t('row.dismissed'))}</span>`;
+  if (item.status === 'new' || item.status === 'queued') return `<span class="chip-state">${esc(t('row.waiting'))}</span>`;
+  if (item.status === 'filtered_out') return `<span class="chip-state">${esc(t('row.skipped'))}</span>`;
+  if (item.status === 'summary_failed' || item.status === 'manual') return `<span class="chip-state warn">${esc(t('row.attention'))}</span>`;
+  return '';
+}
+
+function topicDots(item, topics) {
+  return item.topics.map((x) => {
+    const found = topics.get(x.id);
+    return `<span class="dot c${colourOf(found ? found.position : 1)}" title="${esc(x.name)}"></span>`;
+  }).join('');
+}
+
+// topics: a Map of the topics by id, for their colours.
+export function articleRow(item, { selected = false, topics = new Map() } = {}) {
+  const meta = [...byline(item).map(esc), kindLabel(item) ? `<span class="kind">${esc(kindLabel(item))}</span>` : '']
+    .filter(Boolean).join(' · ');
+  let tags = item.tags.slice(0, 3).map((g) => `<span class="tg${g.origin === 'signal' ? ' sig' : ''}">${esc(g.label)}</span>`).join('');
+  if (!tags && item.tags_pending) tags = `<span class="tg none">${esc(t('row.tagsComing'))}</span>`;
+  else if (!tags && (item.status === 'summarised' || item.from_archive)) tags = `<span class="tg none">${esc(t('row.noTags'))}</span>`;
+  return `
+    <button type="button" class="ar-row${item.decision ? ' decided' : ''}" data-id="${item.id}" aria-current="${selected}">
+      <span class="ar-row-title">${langBadge(item)}<span${langAttr(item.language)}>${esc(item.title)}</span></span>
+      <span class="ar-row-meta"><span class="ar-row-by">${meta}</span><span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
+      ${tags ? `<span class="ar-row-tags">${tags}</span>` : ''}
+    </button>`;
+}
+
+// "Tänään", "Eilen", or "Tiistai 29.9.", for the headings between days.
+const weekdays = {};
+export function dayHeading(day) {
+  const today = finnishDay();
+  if (day === today) return t('day.today');
+  if (day === finnishDay(Date.now() - 86400000)) return t('day.yesterday');
+  const lang = currentLanguage();
+  weekdays[lang] ??= new Intl.DateTimeFormat(lang === 'fi' ? 'fi-FI' : 'en-GB', { weekday: 'long', timeZone: 'UTC' });
+  const [y, m, d] = day.split('-').map(Number);
+  const name = weekdays[lang].format(new Date(Date.UTC(y, m - 1, d)));
+  const shown = y === Number(today.slice(0, 4)) ? `${d}.${m}.` : `${d}.${m}.${y}`;
+  return `${name[0].toUpperCase()}${name.slice(1)} ${shown}`;
+}
+
+// ---------- the reading pane ----------
+
+function chips(item, topics) {
+  const topicChips = item.topics.map((x) => {
+    const found = topics.get(x.id);
+    return `<button type="button" class="chip topic" data-act="topic" data-topic="${x.id}">
+      <span class="dot c${colourOf(found ? found.position : 1)}" aria-hidden="true"></span>${esc(x.name)}</button>`;
+  }).join('') || `<span class="chip none">${esc(t(item.needs_learning_tag ? 'reader.noLearningTag' : 'reader.noTopic'))}</span>`;
+  const tagChips = item.tags.map((g) => `
+    <span class="tagchip${g.origin === 'signal' ? ' sig' : ''}"><button type="button" data-act="tag" data-tag="${g.id}"
+        title="${esc(t('reader.tagHint', { tag: g.label }))}">${esc(g.label)}</button><button type="button" class="x"
+        data-act="untag" data-tag="${g.id}" aria-label="${esc(t('reader.removeTag', { tag: g.label }))}"
+        title="${esc(t('reader.removeTag', { tag: g.label }))}">×</button></span>`).join('');
+  return `
+    <div class="rd-chips"><span class="rd-lbl">${esc(t('reader.topics'))}</span>${topicChips}</div>
+    <div class="rd-chips"><span class="rd-lbl">${esc(t('reader.tags'))}</span>${tagChips}
+      ${item.tags_pending ? `<span class="rd-soft">${esc(t('reader.tagsComing'))}</span>` : ''}
+      <span class="addtag">
+        <input type="text" id="addtag" autocomplete="off" spellcheck="false" maxlength="100"
+               placeholder="+ ${esc(t('reader.addTag'))}" aria-label="${esc(t('reader.addTag'))}"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addtag-list">
+        <span class="addtag-list" id="addtag-list" role="listbox" hidden></span>
+      </span>
+    </div>`;
+}
+
+function signalNotes(item) {
+  return item.signals.map((s) => `
+    <p class="rd-signal"><strong>${esc(t('reader.signal', { topic: s.topic }))}.</strong> ${esc(s.reason || '')}</p>`).join('');
+}
+
+function licenceNote(item) {
+  const licence = item.details?.licence;
+  if (!licence) return '';
+  if (/^CC\b/i.test(licence)) return `<p class="rd-licence open">${esc(t('reader.licenceOpen', { licence }))}</p>`;
+  if (/all rights reserved/i.test(licence)) return `<p class="rd-licence">${esc(t('reader.licenceClosed'))}</p>`;
+  return '';
 }
 
 function body(item) {
-  if (item.status === 'summarised' && item.summary) {
+  const abstract = item.abstract || item.excerpt || '';
+  if (item.summary) {
     const reason = item.status_reason || '';
     const asked = reason.startsWith('requested by ')
-      ? `<p class="aside">${esc(t('item.requestedDone', { name: requester(reason) }))}</p>`
+      ? `<p class="rd-soft">${esc(t('item.requestedDone', { name: requester(reason) }))}</p>` : '';
+    const original = item.from_archive && abstract
+      ? `<details class="rd-abstract"><summary>${esc(t('reader.abstract'))}</summary><p${langAttr(item.language)}>${esc(abstract)}</p></details>`
       : '';
-    return `<p class="summary" lang="fi">${esc(item.summary.text)}</p>${asked}`;
+    return `<p class="rd-label">${esc(t('reader.summary'))}</p>
+      <p class="rd-text" lang="fi">${esc(item.summary.text)}</p>${asked}${original}`;
+  }
+  if (item.from_archive) {
+    const queued = item.status === 'queued' || item.status === 'new'
+      ? `<p class="rd-state">${esc(t('reader.summaryComing'))}</p>` : '';
+    const now = item.status === 'on_request' && item.can_request_summary
+      ? `<button type="button" class="btn ghost small" data-act="summarise">${esc(t('reader.summariseNow'))}</button>` : '';
+    return `<p class="rd-label">${esc(t('reader.abstract'))}</p>
+      <p class="rd-text"${langAttr(item.language)}>${esc(abstract)}</p>
+      ${licenceNote(item)}${queued}${now}`;
   }
   const action = item.can_request_summary
-    ? ` <button type="button" class="linkish" data-act="summarise" data-id="${item.id}">${esc(t(item.status === 'summary_failed' ? 'item.tryAgain' : 'item.summariseAnyway'))}</button>`
+    ? ` <button type="button" class="linkish" data-act="summarise">${esc(t(item.status === 'summary_failed' ? 'item.tryAgain' : 'item.summariseAnyway'))}</button>`
     : '';
   const excerpt = item.excerpt
-    ? `<p class="excerpt"><span class="label">${esc(t('item.excerpt'))}</span> <span${langAttr(item.language)}>${esc(item.excerpt)}</span></p>`
+    ? `<p class="rd-label">${esc(t('item.excerpt'))}</p><p class="rd-text"${langAttr(item.language)}>${esc(item.excerpt)}</p>`
     : '';
-  return `
-    <p class="state"><span class="dot" aria-hidden="true"></span><span>${esc(stateText(item))}${action}</span></p>
-    <p class="row-error" role="alert" hidden></p>
-    ${excerpt}`;
+  return `<p class="rd-state attention-${item.status}">${esc(stateText(item))}${action}</p>${excerpt}`;
 }
 
-function chips(item) {
-  const out = item.signals.map((s) => `
-    <button type="button" class="chip" data-act="topic" data-signal="${s.id}" data-topic="${esc(s.topic)}"
-            title="${esc(t('item.topicHint'))}">${esc(s.topic)}</button>`);
-  if (item.copies.length) out.push(`<span class="chip copies">${esc(tn('item.alsoIn', item.copies.length))}</span>`);
-  return out.length ? `<div class="chips">${out.join('')}</div>` : '';
+function decision(item, target) {
+  if (item.decision === 'picked' && item.pick_issue_status === 'sent') {
+    return `<div class="rd-decide"><p class="rd-sent">${esc(t('reader.sentIn', { issue: item.pick_issue_name }))}</p></div>`;
+  }
+  const picked = item.decision === 'picked';
+  const where = picked
+    ? t('pick.inIssue', { issue: item.pick_issue_name, section: t(`section.${item.pick_section}`) })
+    : (target ? t('reader.addTo', { issue: target }) : t('reader.addToNew'));
+  const buttons = SECTIONS.map((s, n) => {
+    const chosen = picked && item.pick_section === s;
+    const hint = chosen ? t('reader.chosen')
+      : (!item.decision && item.suggested_section === s ? t('reader.suggested', { key: n + 1 }) : t('reader.key', { key: n + 1 }));
+    return `<button type="button" class="rd-sec${chosen ? ' chosen' : ''}${!item.decision && item.suggested_section === s ? ' suggested' : ''}"
+              data-act="pick" data-section="${s}" aria-pressed="${chosen}">
+              <span>${esc(t(`section.${s}`))}</span><small>${esc(hint)}</small></button>`;
+  }).join('');
+  const by = item.decided_by && item.decided_at
+    ? `<span class="rd-by">${esc(t('reader.decidedBy', { name: item.decided_by, when: when(item.decided_at) }))}</span>` : '';
+  return `
+    <div class="rd-decide">
+      <p class="rd-where">${esc(where)}</p>
+      <div class="rd-secs">${buttons}</div>
+      <div class="rd-other">
+        <button type="button" class="btn ghost small${item.decision === 'later' ? ' on' : ''}" data-act="later" aria-pressed="${item.decision === 'later'}">${esc(t('reader.later'))}</button>
+        <button type="button" class="btn ghost small${item.decision === 'dismissed' ? ' on' : ''}" data-act="dismiss" aria-pressed="${item.decision === 'dismissed'}">${esc(t('reader.dismiss'))}</button>
+        ${item.decision ? `<button type="button" class="linkish" data-act="clear">${esc(t('reader.clear'))}</button>` : ''}
+        ${by}
+        <span class="rd-keys" aria-hidden="true"><kbd>J</kbd> <kbd>K</kbd> ${esc(t('reader.keysMove'))} · <kbd>1</kbd>–<kbd>4</kbd> ${esc(t('reader.keysAdd'))} · <kbd>L</kbd> ${esc(t('reader.later').toLowerCase())} · <kbd>X</kbd> ${esc(t('reader.dismiss').toLowerCase())}</span>
+      </div>
+      <p class="row-error" role="alert" hidden></p>
+    </div>`;
 }
 
 function copyLink(copy) {
@@ -88,60 +220,8 @@ function copyLink(copy) {
   return `<li>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>` : label}</li>`;
 }
 
-// A small menu of sections, the suggested one first. act is pick for a new
-// pick, or move for changing the section of one already picked.
-function sectionMenu(item, label, act, buttonClass) {
-  const order = [item.suggested_section, ...SECTIONS.filter((s) => s !== item.suggested_section)]
-    .filter((s) => act !== 'move' || s !== item.pick_section);
-  const choices = order.map((s) => {
-    const name = t(`section.${s}`);
-    const text = act === 'pick' && s === item.suggested_section ? t('pick.suggested', { section: name }) : name;
-    return `<button type="button" role="menuitem" data-act="pick" data-id="${item.id}" data-section="${s}">${esc(text)}</button>`;
-  }).join('');
-  return `
-    <details class="menu">
-      <summary class="${buttonClass}">${esc(label)}</summary>
-      <div class="menu-list" role="menu">${choices}</div>
-    </details>`;
-}
-
-// What the editors decided about the article, who did, and what can be done
-// next. Articles still waiting for the AI have nothing to decide yet.
-function decisionBar(item) {
-  if (item.status === 'new' || item.status === 'queued') return '';
-  const by = item.decided_by && item.decided_at
-    ? `<span class="decision-by">${esc(t('pick.by', { name: item.decided_by, when: when(item.decided_at) }))}</span>`
-    : '';
-  const undo = `<button type="button" class="linkish" data-act="decide" data-id="${item.id}" data-decision="">${esc(t('pick.undo'))}</button>`;
-  if (item.decision === 'picked' && item.pick_issue_status === 'sent') {
-    return `<div class="decision is-used"><span class="decision-state">${esc(t('pick.sentIn', { issue: item.pick_issue_name }))}</span></div>`;
-  }
-  if (item.decision === 'picked') {
-    const state = t('pick.inIssue', { issue: item.pick_issue_name, section: t(`section.${item.pick_section}`) });
-    return `
-      <div class="decision is-picked">
-        <span class="decision-state"><span aria-hidden="true">✓</span> ${esc(state)}</span>${by}
-        ${sectionMenu(item, t('pick.move'), 'move', 'linkish')}${undo}
-      </div>`;
-  }
-  if (item.decision === 'later' || item.decision === 'dismissed') {
-    const state = t(item.decision === 'later' ? 'pick.keptLater' : 'pick.notUsed');
-    const add = item.decision === 'later' ? sectionMenu(item, t('pick.add'), 'pick', 'btn small') : '';
-    return `
-      <div class="decision is-${item.decision}">
-        <span class="decision-state">${esc(state)}</span>${by}${add}${undo}
-      </div>`;
-  }
-  return `
-    <div class="decision">
-      ${sectionMenu(item, t('pick.add'), 'pick', 'btn small')}
-      <button type="button" class="btn ghost small" data-act="decide" data-id="${item.id}" data-decision="later">${esc(t('pick.later'))}</button>
-      <button type="button" class="btn ghost small" data-act="decide" data-id="${item.id}" data-decision="dismissed">${esc(t('pick.dismiss'))}</button>
-    </div>`;
-}
-
-function details(item) {
-  const facts = [
+function facts(item) {
+  const rows = [
     [t('details.collected'), when(item.collected_at)],
     item.published_at && [t('details.published'), date(item.published_at)],
     item.summary && [t('details.summarised'), when(item.summary.made_at)],
@@ -150,39 +230,51 @@ function details(item) {
     [t('details.number'), String(item.id)],
   ].filter(Boolean);
   const copies = item.copies.length
-    ? `<p class="copies-title">${esc(t('details.copies'))}</p><ul class="copies">${item.copies.map(copyLink).join('')}</ul>`
-    : '';
+    ? `<p class="copies-title">${esc(t('details.copies'))}</p><ul class="copies">${item.copies.map(copyLink).join('')}</ul>` : '';
   return `
-    <details class="facts">
-      <summary>${esc(t('item.details'))}</summary>
-      <dl>${facts.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>
+    <details class="rd-facts">
+      <summary>${esc(t('item.details'))}${item.copies.length ? ` · ${esc(tn('item.alsoIn', item.copies.length))}` : ''}</summary>
+      <dl>${rows.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>
       ${copies}
     </details>`;
 }
 
-export function articleRow(item) {
+// ctx: place (its name), index and total (for "3 / 25"), canPrev, canNext,
+// target (the name of the newsletter picks go into) and topics (a Map by id).
+export function articleReader(item, ctx) {
   const url = safeUrl(item.url);
-  const title = url
-    ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer"${langAttr(item.language)}>${esc(item.title)}</a>`
-    : `<span${langAttr(item.language)}>${esc(item.title)}</span>`;
-  const badge = item.language && item.language !== 'fi'
-    ? `<span class="lang" title="${esc(languageName(item.language))}">${esc(item.language.toUpperCase())}</span> `
-    : '';
-  const day = item.published_at ? date(item.published_at) : t('item.collectedOn', { date: date(item.collected_at) });
-  const from = item.source_type === 'manual'
-    ? (item.sent_by ? t('item.sentBy', { name: item.sent_by }) : t('item.sentOnTelegram'))
-    : (item.source && item.source !== item.publisher ? t('item.from', { source: item.source }) : '');
-  const byline = [item.publisher, from].filter(Boolean).map(esc).join(' · ');
+  const kind = kindLabel(item);
+  const level = item.from_archive ? [item.details?.level, item.details?.programme].filter(Boolean).join(', ') : '';
+  const meta = [
+    ...byline(item).map((x) => `<span>${esc(x)}</span>`),
+    kind && !level ? `<span>${esc(kind)}</span>` : '',
+    level ? `<span>${esc(level)}</span>` : '',
+    `<span>${esc(date(item.published_at || item.collected_at))}</span>`,
+    item.language && item.language !== 'fi' ? `<span>${esc(languageName(item.language))}</span>` : '',
+    url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t('reader.open'))} ↗</a>` : '',
+  ].filter(Boolean).join('');
   return `
-    <article class="item ${stateClass(item)}${item.decision ? ` decided-${item.decision}` : ''}" data-item="${item.id}">
-      <div class="item-head">
-        <h3 class="title">${badge}${title}</h3>
-        <span class="when">${esc(day)}</span>
-      </div>
-      ${byline ? `<p class="by">${byline}</p>` : ''}
-      ${body(item)}
-      ${chips(item)}
-      ${decisionBar(item)}
-      ${details(item)}
-    </article>`;
+    <div class="rd-top">
+      <button type="button" class="btn ghost small rd-back" data-act="back">‹ ${esc(t('reader.back'))}</button>
+      <span class="rd-pos">${esc(t('reader.position', { place: ctx.place, n: number(ctx.index + 1), total: number(ctx.total) }))}</span>
+      <span class="rd-nav">
+        <button type="button" class="btn ghost small" data-act="prev"${ctx.canPrev ? '' : ' disabled'}>‹ ${esc(t('reader.prev'))}</button>
+        <button type="button" class="btn ghost small" data-act="next"${ctx.canNext ? '' : ' disabled'}>${esc(t('reader.next'))} ›</button>
+      </span>
+    </div>
+    <h2 class="rd-title"${langAttr(item.language)}>${esc(item.title)}</h2>
+    <p class="rd-meta">${meta}</p>
+    ${chips(item, ctx.topics)}
+    ${signalNotes(item)}
+    <div class="rd-body">${body(item)}</div>
+    ${decision(item, ctx.target)}
+    ${facts(item)}`;
+}
+
+// The YSO terms found for what the editor typed into "add a tag".
+export function termOptions(terms, active) {
+  if (!terms.length) return `<span class="addtag-none">${esc(t('reader.noTerms'))}</span>`;
+  return terms.map((x, n) => `
+    <span class="addtag-opt" role="option" id="addtag-opt-${n}" data-uri="${esc(x.uri)}" data-label="${esc(x.label)}"
+          aria-selected="${n === active}">${esc(x.label)}${x.also ? ` <small>${esc(t('reader.also', { name: x.also }))}</small>` : ''}</span>`).join('');
 }

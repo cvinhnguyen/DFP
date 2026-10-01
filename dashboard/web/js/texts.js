@@ -10,6 +10,7 @@
 
 import { fi as editorFi, en as editorEn } from './texts/editor.js';
 import { fi as newsletterFi, en as newsletterEn } from './texts/newsletter.js';
+import { fi as articlesFi, en as articlesEn } from './texts/articles.js';
 
 const fi = {
   'app.title': 'Uutiskirje · Suomen eOppimiskeskus',
@@ -82,7 +83,6 @@ const fi = {
   'when.at': '{day} klo {time}',
 
   'page.articles': 'Artikkelit',
-  'page.articlesLead': 'Kaikki kerätty, suomeksi tiivistettynä. Valitse uutiskirjeeseen sopivat.',
   'issue.subject': 'Aiherivi',
   'issue.subjectHint': 'Näkyy lukijan postilaatikossa viestin otsikkona.',
   'issue.preheader': 'Esikatseluteksti',
@@ -120,8 +120,6 @@ const fi = {
   'status.attention.other': '{n} artikkelia vaatii huomiota.',
   'status.show': 'Näytä',
 
-  'view.label': 'Näytä',
-  'view.review': 'Arvioitavat',
   'view.picked': 'Valitut',
   'view.later': 'Myöhemmin',
   'view.dismissed': 'Ei käytetä',
@@ -130,7 +128,6 @@ const fi = {
   'view.skipped': 'Ohitetut',
   'view.attention': 'Vaatii huomiota',
   'view.all': 'Kaikki',
-  'note.review': 'Uudet tiivistelmät, joista kukaan ei ole vielä päättänyt. Lisää uutiskirjeeseen, säästä myöhemmäksi tai jätä pois.',
   'note.picked': 'Nämä ovat valmisteilla olevassa uutiskirjeessä. Uutiskirje-sivulla niistä tehdään lähetettävä kirje.',
   'note.later': 'Myöhemmäksi säästetyt. Ne odottavat tässä, kunnes lisäät ne uutiskirjeeseen tai jätät pois.',
   'note.dismissed': 'Näitä ei käytetä. Päätöksen voi perua.',
@@ -139,22 +136,8 @@ const fi = {
   'note.skipped': 'Suodatin jätti nämä tekoälyltä pois, joten ne eivät maksaneet mitään. Jokaisessa kerrotaan syy, ja tiivistelmän voi silti pyytää.',
   'note.attention': 'Näiden tiivistys epäonnistui, tai lähde ei salli tekoälytiivistelmiä. Lue alkuperäinen ennen käyttöä.',
 
-  'filter.search': 'Haku',
-  'filter.searchHint': 'Otsikot ja tiivistelmät',
-  'filter.source': 'Lähde',
-  'filter.allSources': 'Kaikki lähteet',
-  'filter.language': 'Kieli',
-  'filter.allLanguages': 'Kaikki kielet',
-  'filter.period': 'Aika',
   'filter.sort': 'Järjestys',
-  'filter.topic': 'Aihe: {topic}',
-  'filter.removeTopic': 'Poista aiherajaus',
   'filter.clear': 'Tyhjennä rajaukset',
-
-  'period.any': 'Milloin tahansa',
-  'period.today': 'Tänään',
-  'period.week': 'Viimeiset 7 päivää',
-  'period.month': 'Viimeiset 30 päivää',
 
   'sort.collected': 'Uusimmat ensin',
   'sort.published': 'Julkaisupäivä',
@@ -168,9 +151,7 @@ const fi = {
   'lang.de': 'Saksa',
   'lang.unknown': 'Ei tiedossa',
 
-  'results.count': 'Näytetään {shown} / {total}.',
   'results.none': 'Rajauksia vastaavia artikkeleita ei löytynyt.',
-  'results.empty.review': 'Kaikki tiivistelmät on käyty läpi. Uudet tulevat tänne seuraavan tarkistuksen jälkeen.',
   'results.empty.picked': 'Uutiskirjeeseen ei ole vielä valittu artikkeleita.',
   'results.empty.later': 'Myöhemmäksi ei ole säästetty mitään.',
   'results.empty.dismissed': 'Mitään ei ole jätetty pois.',
@@ -181,7 +162,6 @@ const fi = {
   'results.empty.all': 'Mitään ei ole vielä kerätty. Tarkista lähteet heti painamalla Tarkista nyt.',
   'results.more': 'Näytä lisää',
 
-  'item.collectedOn': 'kerätty {date}',
   'item.from': 'lähde: {source}',
   'item.sentBy': 'lähetti Telegramissa: {name}',
   'item.sentOnTelegram': 'lähetetty Telegramissa',
@@ -197,7 +177,6 @@ const fi = {
   'item.noReason': 'syytä ei kirjattu.',
   'item.summariseAnyway': 'Tiivistä silti',
   'item.tryAgain': 'Yritä uudelleen',
-  'item.topicHint': 'Näytä vain tämän aiheen artikkelit',
   'item.alsoIn.one': 'Myös 1 muussa lähteessä',
   'item.alsoIn.other': 'Myös {n} muussa lähteessä',
   'item.details': 'Tiedot',
@@ -305,7 +284,6 @@ const en = {
   'when.at': '{day} at {time}',
 
   'page.articles': 'Articles',
-  'page.articlesLead': 'Everything collected, summarised in Finnish. Pick what belongs in the newsletter.',
   'issue.subject': 'Subject line',
   'issue.subjectHint': "What readers see as the email's subject in their inbox.",
   'issue.preheader': 'Preview text',
@@ -343,8 +321,6 @@ const en = {
   'status.attention.other': '{n} articles need attention.',
   'status.show': 'Show',
 
-  'view.label': 'Show',
-  'view.review': 'To review',
   'view.picked': 'Picked',
   'view.later': 'Later',
   'view.dismissed': 'Not used',
@@ -353,7 +329,6 @@ const en = {
   'view.skipped': 'Skipped',
   'view.attention': 'Needs attention',
   'view.all': 'All',
-  'note.review': "New summaries nobody has decided on yet. Add them to the newsletter, keep them for later, or leave them out.",
   'note.picked': 'These are in the newsletter being prepared. The Newsletter page turns them into the email.',
   'note.later': 'Kept for later. They wait here until you add them to the newsletter or leave them out.',
   'note.dismissed': 'These are not used. The decision can be taken back.',
@@ -362,22 +337,8 @@ const en = {
   'note.skipped': 'The filter kept these from the AI, so they cost nothing. Each one says why, and you can still ask for a summary.',
   'note.attention': "The AI step failed for these, or their source doesn't allow AI summaries. Read the original before using one.",
 
-  'filter.search': 'Search',
-  'filter.searchHint': 'Titles and summaries',
-  'filter.source': 'Source',
-  'filter.allSources': 'All sources',
-  'filter.language': 'Language',
-  'filter.allLanguages': 'All languages',
-  'filter.period': 'Date',
   'filter.sort': 'Order',
-  'filter.topic': 'Topic: {topic}',
-  'filter.removeTopic': 'Stop filtering by this topic',
   'filter.clear': 'Clear filters',
-
-  'period.any': 'Any time',
-  'period.today': 'Today',
-  'period.week': 'Last 7 days',
-  'period.month': 'Last 30 days',
 
   'sort.collected': 'Newest arrivals',
   'sort.published': 'Publication date',
@@ -391,9 +352,7 @@ const en = {
   'lang.de': 'German',
   'lang.unknown': 'Not known',
 
-  'results.count': 'Showing {shown} of {total}.',
   'results.none': 'No articles match these filters.',
-  'results.empty.review': 'Every summary has been looked at. New ones arrive here after the next check.',
   'results.empty.picked': 'Nothing has been picked for the newsletter yet.',
   'results.empty.later': 'Nothing is kept for later.',
   'results.empty.dismissed': 'Nothing has been left out.',
@@ -404,7 +363,6 @@ const en = {
   'results.empty.all': 'Nothing has been collected yet. Press Check now to check the sources straight away.',
   'results.more': 'Show more',
 
-  'item.collectedOn': 'collected {date}',
   'item.from': 'from {source}',
   'item.sentBy': 'sent by {name} on Telegram',
   'item.sentOnTelegram': 'sent on Telegram',
@@ -420,7 +378,6 @@ const en = {
   'item.noReason': 'no reason was recorded.',
   'item.summariseAnyway': 'Summarise anyway',
   'item.tryAgain': 'Try again',
-  'item.topicHint': 'Show only articles on this topic',
   'item.alsoIn.one': 'Also in 1 other source',
   'item.alsoIn.other': 'Also in {n} other sources',
   'item.details': 'Details',
@@ -457,10 +414,10 @@ const en = {
   'details.copies': 'The same story elsewhere',
 };
 
-// The editor's and the newsletter pages' words live in files of their own,
-// added here.
-Object.assign(fi, editorFi, newsletterFi);
-Object.assign(en, editorEn, newsletterEn);
+// The editor's, the newsletter pages' and the articles page's words live in
+// files of their own, added here.
+Object.assign(fi, editorFi, newsletterFi, articlesFi);
+Object.assign(en, editorEn, newsletterEn, articlesEn);
 
 const DICTIONARIES = { fi, en };
 const STORE = 'dfp.lang';

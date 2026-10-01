@@ -36,7 +36,9 @@ repository.
       "excerpt": "Julkaisijan oma lyhyt kuvaus.",
       "raw_text": "Koko artikkelin teksti.",
       "source_language": "fi",
-      "section": "events"
+      "section": "events",
+      "subjects": ["tekoäly", "oppiminen"],
+      "details": { "kind": "thesis", "level": "AMK-opinnäytetyö" }
     }
   ]
 }
@@ -45,6 +47,15 @@ repository.
 `source_id`, `url` and `title` are required. Everything else may be left out.
 `source_language` falls back to whatever language the source publishes in, and
 `fetched_at` is set for you. At most 200 items per request.
+
+`subjects` are the subject words the source itself gives the article, such
+as the YSO terms on a thesis, at most 30. They are stored in lower case, and
+the tagging workflow matches each one to YSO and puts the tags on the article.
+Sending an article again adds new subjects and never removes any.
+
+`details` is an object with what the source knows beyond these fields. For a
+thesis the Archive collector sends `kind` (thesis or publication), `level`,
+`programme` and `licence`. The dashboard shows them; no rule depends on them.
 
 ## What comes back
 

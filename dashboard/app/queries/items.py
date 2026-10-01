@@ -2,17 +2,35 @@
 one for a summary.
 Jira: DM42-31
 
-Search covers the title, the publisher's own description and the Finnish
-summary, two ways at once. Finnish words are matched by their stem, so
+Search covers the title, the publisher's own description, the Finnish
+summary and the tags, two ways at once. Finnish words are matched by their stem, so
 tekoäly also finds tekoälyn. And the text is matched as typed, so the start
 of a word or a name like Sitra is found too.
 """
 
 from .. import database
+from .topics import UNTOPICED, WINDOW
+
+# Uudet, what the editors go through: summarised news nobody has decided
+# about, and the theses of the topics they follow, from the days the filter
+# keeps articles for. Most theses are about other fields, so a thesis comes
+# here only through a followed topic.
+INBOX = f"""(
+    p.item_id IS NULL
+    AND i.duplicate_of IS NULL
+    AND i.created_at >= {WINDOW}
+    AND ((NOT coalesce(s.learning_tag_required, FALSE) AND i.status = 'summarised')
+         OR (coalesce(s.learning_tag_required, FALSE)
+             AND EXISTS (SELECT 1 FROM item_topics x
+                           JOIN topics t ON t.id = x.topic_id
+                          WHERE x.item_id = i.id AND t.followed)))
+)"""
 
 # What each view shows: the editors' decisions first, then what the AI step
-# did with an article.
+# did with an article. open is everything not left out, for a topic, a tag or
+# a source.
 VIEWS = {
+    "inbox": INBOX,
     "review": "i.status = 'summarised' AND p.item_id IS NULL",
     "picked": "p.decision = 'picked' AND iss.status = 'draft'",
     "later": "p.decision = 'later'",
@@ -21,6 +39,7 @@ VIEWS = {
     "waiting": "i.status IN ('new', 'queued')",
     "skipped": "i.status = 'filtered_out'",
     "attention": "i.status IN ('summary_failed', 'manual')",
+    "open": "p.decision IS DISTINCT FROM 'dismissed'",
     "all": "TRUE",
 }
 
@@ -54,6 +73,10 @@ SELECT i.id,
        CASE WHEN sm.id IS NOT NULL THEN
             jsonb_build_object('text', sm.text, 'model', sm.model, 'made_at', sm.generated_at)
        END                                     AS summary,
+       i.details,
+       coalesce(s.learning_tag_required, FALSE) AS from_archive,
+       -- the author's own abstract, which an archive item is read from
+       CASE WHEN s.learning_tag_required THEN i.raw_text END AS abstract,
        i.duplicate_of,
        d.title                                 AS duplicate_of_title,
        coalesce((SELECT jsonb_agg(jsonb_build_object('id', c.id, 'url', c.source_url,
@@ -62,11 +85,42 @@ SELECT i.id,
                    FROM items c
                    LEFT JOIN sources cs ON cs.id = c.source_id
                   WHERE c.duplicate_of = i.id), '[]'::jsonb) AS copies,
-       coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'topic', g.topic) ORDER BY g.topic)
+       coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'topic', g.topic, 'reason', g.reason)
+                                  ORDER BY g.topic)
                    FROM signal_items si
                    JOIN signals g ON g.id = si.signal_id
                   WHERE si.item_id = i.id
                     AND g.status <> 'dismissed'), '[]'::jsonb) AS signals,
+       -- The tags an editor sees: signal words first, then the editors' own,
+       -- the source's in its order, and Finto AI's by score. Hidden ones are
+       -- too general to say anything, and taken-off ones are gone.
+       coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'label', g.label, 'uri', g.uri, 'origin', it.origin)
+                                  ORDER BY CASE it.origin WHEN 'signal' THEN 0 WHEN 'editor' THEN 1
+                                                          WHEN 'source' THEN 2 ELSE 3 END,
+                                           it.position NULLS LAST, it.score DESC NULLS LAST, g.label)
+                   FROM item_tags it
+                   JOIN tags g ON g.id = it.tag_id
+                  WHERE it.item_id = i.id
+                    AND it.removed_at IS NULL
+                    AND NOT g.hidden), '[]'::jsonb) AS tags,
+       coalesce((SELECT jsonb_agg(jsonb_build_object('id', t.id, 'name', t.name) ORDER BY t.position, t.name)
+                   FROM item_topics x
+                   JOIN topics t ON t.id = x.topic_id
+                  WHERE x.item_id = i.id), '[]'::jsonb) AS topics,
+       -- An archive item only joins a topic with a learning tag; this says it
+       -- has none, so the page can say why it is in no topic.
+       (coalesce(s.learning_tag_required, FALSE)
+        AND NOT EXISTS (SELECT 1 FROM item_tags l
+                          JOIN learning_tags lt ON lt.tag_id = l.tag_id
+                         WHERE l.item_id = i.id AND l.removed_at IS NULL)) AS needs_learning_tag,
+       -- Tags are still coming: Finto AI has not read the summary yet, or a
+       -- subject word the source sent has not been matched to YSO yet.
+       ((i.status = 'summarised'
+         AND NOT EXISTS (SELECT 1 FROM item_tagging tg WHERE tg.item_id = i.id)
+         AND NOT EXISTS (SELECT 1 FROM item_subjects su WHERE su.item_id = i.id))
+        OR EXISTS (SELECT 1 FROM item_subjects su
+                    WHERE su.item_id = i.id
+                      AND NOT EXISTS (SELECT 1 FROM tag_labels tl WHERE tl.label = su.label))) AS tags_pending,
        p.decision,
        p.section                               AS pick_section,
        p.issue_id                              AS pick_issue_id,
@@ -93,6 +147,8 @@ SEARCH = f"""(
     OR sm.text      ILIKE %(like)s
     OR i.publisher  ILIKE %(like)s
     OR s.name       ILIKE %(like)s
+    OR EXISTS (SELECT 1 FROM item_tags it JOIN tags g ON g.id = it.tag_id
+                WHERE it.item_id = i.id AND it.removed_at IS NULL AND g.label ILIKE %(like)s)
 )"""
 
 # A match in the title counts twice what a match in the summary does.
@@ -122,7 +178,8 @@ def like_pattern(text):
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
-def filters(q=None, source=None, language=None, signal=None, section=None, date_from=None, date_to=None):
+def filters(q=None, source=None, language=None, signal=None, section=None, date_from=None, date_to=None,
+            topic=None, tag=None, untopiced=False):
     """The WHERE conditions and their parameters for the chosen filters. Only
     fixed SQL goes into the conditions; everything the editor typed travels as
     a parameter."""
@@ -145,6 +202,15 @@ def filters(q=None, source=None, language=None, signal=None, section=None, date_
     if section:
         where.append("p.decision = 'picked' AND p.section = %(section)s")
         params["section"] = section
+    if topic is not None:
+        where.append("EXISTS (SELECT 1 FROM item_topics x WHERE x.item_id = i.id AND x.topic_id = %(topic)s)")
+        params["topic"] = topic
+    if tag is not None:
+        where.append("EXISTS (SELECT 1 FROM item_tags it"
+                     " WHERE it.item_id = i.id AND it.tag_id = %(tag)s AND it.removed_at IS NULL)")
+        params["tag"] = tag
+    if untopiced:
+        where.append(f"({UNTOPICED})")
     # Dates are Finnish days: "from 1.10." starts at midnight in Helsinki.
     if date_from:
         where.append(f"{ARTICLE_DATE} >= (%(date_from)s::date::timestamp AT TIME ZONE 'Europe/Helsinki')")
@@ -206,3 +272,8 @@ def filter_options():
             GROUP BY g.id
             ORDER BY g.topic""")
     return {"sources": sources, "languages": languages, "signals": signals}
+
+
+def tag_name(tag_id):
+    found = database.row("SELECT label FROM tags WHERE id = %s", (tag_id,))
+    return found["label"] if found else None

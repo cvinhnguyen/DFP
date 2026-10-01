@@ -3,6 +3,7 @@ for later, or not use it.
 Jira: DM42-32
 """
 
+from ..queries import items as item_queries
 from ..queries import picks as queries
 from . import issues
 from . import items
@@ -37,6 +38,10 @@ def decide(item_id, decision, section, user, issue_id=None):
             if found.status != "draft":
                 raise NotADraft()
         queries.decide(item_id, "picked", issue_id or issues.current_id(user.id), section, user.id)
+        # A thesis waits without an AI summary until it is picked. Now it is,
+        # so it goes to the AI, in the editor's name, within 15 minutes.
+        if items.get_item(item_id).status == "on_request":
+            item_queries.request_summary(item_id, user.name)
     else:
         queries.decide(item_id, decision, None, None, user.id)
     return items.get_item(item_id)

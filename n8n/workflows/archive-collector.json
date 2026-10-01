@@ -1,0 +1,209 @@
+{
+  "id": "arch1veC0llect26",
+  "name": "Archive collector",
+  "active": true,
+  "nodes": [
+    {
+      "id": "880e6667-1702-51a3-8f29-fa93377486c2",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5f9ab849-586e-5041-9d62-924e70d51f2a",
+      "name": "Since when",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- How far back to read: a day before the newest arrival we already have, or\n-- a week back on the first check. The day of overlap catches anything the\n-- archive filed late; Keep new drops what we already have.\nSELECT coalesce(max(published_at) - interval '1 day', now() - interval '7 days') AS since\n  FROM items\n WHERE source_id = $1::int;",
+        "options": {
+          "queryReplacement": "={{ [ $json.source_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "6c6857f4-404b-589c-965e-6a4042405d1e",
+      "name": "Read the archive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// Reads the newest arrivals in a DSpace archive, page by page, until it\n// reaches what earlier checks already saw. The source's address asks the API\n// to sort by the day an item arrived, so the first older one means the rest\n// are older too. Theseus files a thesis's publication date as the year only,\n// which is why the arrival day is the date that counts.\n//\n// Only the record is read: title, abstract, subjects, university, licence.\n// The thesis file itself is never fetched.\nconst src = $('Start').first().json;\nconst since = new Date($json.since);\nconst UA = 'DFP newsletter bot (HAMK student project)';\nconst MAX_PAGES = 20;               // 2,000 items, more than a busy week in May\n\nconst first = (md, key) => ((md[key] || [])[0] || {}).value || null;\nconst all = (md, key) => (md[key] || []).map(v => v.value).filter(Boolean);\nconst clean = s => String(s || '').replace(/\\s+/g, ' ').trim();\n\n// Some values come in three languages at once:\n// \"fi=AMK-opinnäytetyö|sv=YH-examensarbete|en=Bachelor's thesis|\"\nconst finnish = value => {\n  if (!value) return null;\n  const parts = String(value).split('|').map(s => s.trim()).filter(Boolean);\n  if (!parts.length) return null;\n  const fi = parts.find(p => p.startsWith('fi='));\n  return clean(fi ? fi.slice(3) : parts[0].replace(/^[a-z]{2}=/, '')) || null;\n};\n\n// The editors read Finnish, so where a thesis has its abstract in two\n// languages the Finnish one is kept. Most abstracts carry no language mark,\n// so the one with the most common Finnish words wins.\nconst FINNISH_WORDS = /(^|\\s)(ja|on|oli|että|sekä|tämän|tavoitteena|opinnäytetyö\\S*)(?=\\s|[.,:;]|$)/gi;\nfunction abstractOf(md) {\n  const values = (md['dc.description.abstract'] || []).filter(v => clean(v.value));\n  if (!values.length) return '';\n  const marked = values.find(v => v.language === 'fi');\n  if (marked) return clean(marked.value);\n  const score = v => (String(v.value).match(FINNISH_WORDS) || []).length;\n  return clean([...values].sort((a, b) => score(b) - score(a))[0].value);\n}\n\nfunction licence(md) {\n  const value = first(md, 'dc.rights');\n  if (!value) return null;\n  return /all rights reserved/i.test(value) ? 'All rights reserved' : finnish(value);\n}\n\nconst LANGUAGE = { fin: 'fi', eng: 'en', swe: 'sv' };\n\nfunction toItem(it) {\n  const md = it.metadata || {};\n  const level = finnish(first(md, 'dc.type.ontasot'));\n  const abstract = abstractOf(md);\n  const code = first(md, 'dc.language.iso');\n  return {\n    url: first(md, 'dc.identifier.uri') || (it.handle ? `https://www.theseus.fi/handle/${it.handle}` : null),\n    title: clean(first(md, 'dc.title')).replace(/ : /g, ': ') || null,\n    published_at: first(md, 'dc.date.accessioned'),\n    publisher: finnish(first(md, 'dc.contributor.organization')) || first(md, 'dc.publisher'),\n    source_language: LANGUAGE[code] || (code ? code.slice(0, 2) : null),\n    excerpt: abstract.slice(0, 300) || null,\n    raw_text: abstract || null,\n    subjects: all(md, 'dc.subject.yso').slice(0, 30),\n    details: {\n      kind: level ? 'thesis' : 'publication',\n      level: level || finnish(first(md, 'dc.type.okm')),\n      programme: finnish(first(md, 'dc.subject.degreeprogram')),\n      licence: licence(md),\n    },\n  };\n}\n\nconst records = [];\nlet pages = 0;\nlet error = null;\ntry {\n  for (let page = 0; page < MAX_PAGES; page++) {\n    const data = await this.helpers.httpRequest({\n      url: `${src.url}&page=${page}`, json: true, timeout: 30000,\n      headers: { 'User-Agent': UA, Accept: 'application/json' },\n    });\n    pages++;\n    const result = (data._embedded || {}).searchResult || {};\n    const objects = (result._embedded || {}).objects || [];\n    let older = false;\n    for (const o of objects) {\n      const it = (o._embedded || {}).indexableObject;\n      if (!it) continue;\n      const arrived = first(it.metadata || {}, 'dc.date.accessioned');\n      if (arrived && new Date(arrived) < since) { older = true; break; }\n      records.push(toItem(it));\n    }\n    if (older || !objects.length || page + 1 >= ((result.page || {}).totalPages || 0)) break;\n  }\n} catch (e) {\n  // What was read before the archive stopped answering is still stored.\n  error = `the archive did not answer: ${e.message}`;\n}\nreturn [{ json: { records, pages, error } }];"
+      }
+    },
+    {
+      "id": "f670f5ee-f468-55e3-a759-d9aec9221676",
+      "name": "Keep new",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Only what we do not have yet, newest first. The ingest API would turn a\n-- repeat into an update anyway, but there is no reason to send it.\nSELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.published_at DESC NULLS LAST), '[]'::jsonb) AS items\n  FROM jsonb_to_recordset($1::jsonb) AS x(\n       url text, title text, published_at timestamptz, publisher text,\n       source_language text, excerpt text, raw_text text,\n       subjects jsonb, details jsonb)\n WHERE x.url IS NOT NULL\n   AND x.title IS NOT NULL\n   AND NOT EXISTS (SELECT 1 FROM items i\n                    WHERE i.canonical_url = canonicalise_url(x.url));",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($json.records) ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "071ffd0f-6427-53b3-b8b9-b0a249f0ee4d",
+      "name": "Build batches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// The ingest API takes 200 items a request, and the first check alone\n// brings a week of theses, so they go in batches. With nothing new one empty\n// batch still goes, so every run is reported the same way.\nconst src = $('Start').first().json;\nconst fresh = $json.items || [];\nconst batches = [];\nfor (let i = 0; i < fresh.length; i += 200) batches.push(fresh.slice(i, i + 200));\nif (!batches.length) batches.push([]);\nreturn batches.map(chunk => ({ json: { body: { items: chunk.map(a => ({\n  source_id: Number(src.source_id),\n  url: a.url,\n  title: a.title,\n  publisher: a.publisher || src.publisher || null,\n  published_at: a.published_at,\n  excerpt: a.excerpt || null,\n  raw_text: a.raw_text || null,\n  source_language: a.source_language || null,\n  subjects: a.subjects || [],\n  details: a.details || null,\n})) } } }));"
+      }
+    },
+    {
+      "id": "90a8404b-cf59-5719-bb40-3b60d8c6e32d",
+      "name": "Send to ingest API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/ingest",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
+    },
+    {
+      "id": "f4356bbf-65f5-5ac5-ab35-292d674244e5",
+      "name": "Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// What the schedule writes to collection_runs for this source.\nconst read = $('Read the archive').first().json;\nconst results = $input.all().flatMap(i => i.json.results || []);\nconst rejected = results.filter(r => !r.accepted);\n\nconst problems = [];\nif (read.error) problems.push(read.error);\nif (rejected.length) problems.push(`${rejected.length} rejected: ` +\n  [...new Set(rejected.map(r => r.reason))].join(', '));\n\nreturn [{ json: {\n  items_found: read.records.length,\n  items_new: results.filter(r => r.accepted && r.new).length,\n  error: problems.length ? problems.join('; ') : null,\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Since when",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Since when": {
+      "main": [
+        [
+          {
+            "node": "Read the archive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read the archive": {
+      "main": [
+        [
+          {
+            "node": "Keep new",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep new": {
+      "main": [
+        [
+          {
+            "node": "Build batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build batches": {
+      "main": [
+        [
+          {
+            "node": "Send to ingest API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to ingest API": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

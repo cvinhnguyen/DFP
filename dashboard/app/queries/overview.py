@@ -27,10 +27,18 @@ SELECT (SELECT max(finished_at) FROM collection_runs) AS last_check_at,
                    FROM latest
                   WHERE error IS NOT NULL), '[]'::jsonb) AS failed_sources,
        -- created_at, not fetched_at: the ingest API moves fetched_at forward
-       -- whenever a source sends an article it already sent.
-       (SELECT count(*) FROM items
-         WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/Helsinki')
-                             AT TIME ZONE 'Europe/Helsinki') AS new_today,
+       -- whenever a source sends an article it already sent. Theses are
+       -- counted on their own: some 45 a day would drown the news.
+       (SELECT count(*) FROM items i
+          LEFT JOIN sources s ON s.id = i.source_id
+         WHERE i.created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/Helsinki')
+                               AT TIME ZONE 'Europe/Helsinki'
+           AND s.filter_mode IS DISTINCT FROM 'on_request') AS new_today,
+       (SELECT count(*) FROM items i
+          JOIN sources s ON s.id = i.source_id
+         WHERE i.created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/Helsinki')
+                               AT TIME ZONE 'Europe/Helsinki'
+           AND s.filter_mode = 'on_request') AS new_theses_today,
        (SELECT count(*) FROM items WHERE status IN ('new', 'queued')) AS waiting,
        (SELECT count(*) FROM items
          WHERE status = 'queued' AND status_reason = '{AI_DID_NOT_ANSWER}') AS waiting_for_ai,

@@ -36,6 +36,7 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("20-topics.sql", "SELECT to_regclass('public.item_topics') IS NOT NULL AS ok"),
     ("19-member-news.sql", """SELECT pg_get_constraintdef(oid) LIKE '%member_news%' AS ok
                               FROM pg_constraint WHERE conname = 'item_picks_section_check'"""),
     ("18-editor-mailchimp.sql", "SELECT to_regclass('public.newsletter_templates') IS NOT NULL AS ok"),

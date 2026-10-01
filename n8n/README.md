@@ -21,11 +21,13 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `collection-schedule.json` | checks the sources at the times the editors set with /schedule, or straight away with /check or the dashboard's "check now" |
 | `eoppimiskeskus-crawler.json` | reads the association's own website |
 | `feed-collector.json` | reads RSS feeds and Crossref for the other sources |
+| `archive-collector.json` | reads an archive through its DSpace API: Theseus, the theses of the universities of applied sciences |
 | `ingest-api.json` | the only way new articles enter the database |
 | `summarisation.json` | runs the filter every 15 minutes, then summarises what passed |
 | `llm-call.json` | the only workflow that talks to an AI model |
 | `mailchimp.json` | the only workflow that talks to Mailchimp: creates and updates the dashboard's draft campaigns, and never sends |
 | `signal-detection.json` | finds topics that keep coming up. Run by hand for now. |
+| `tagging.json` | gives every article subject tags from YSO, every 15 minutes: Finto AI reads each summary, and the theses' own terms and the signal words are matched to YSO |
 | `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule and /help, and passes /login, /invite, /people and /remove to the dashboard |
 
 `ingest-api.json` is the write path for collected items: `POST
@@ -73,6 +75,25 @@ deleted in Mailchimp is made again on the next export. The key is the
 credential "DFP Mailchimp". Without it, every request answers that the key is
 missing, and the dashboard says so. See `docs/credentials.md` for why the key
 cannot be limited to drafts inside Mailchimp, and what limits it instead.
+
+`archive-collector.json` reads Theseus through its public DSpace API, newest
+arrivals first, from a day before the newest thesis already stored (a week
+back the first time). It sends each record's title, the Finnish abstract
+when there is one, the university, the author's YSO terms, and the level,
+degree programme and licence, through the ingest API like every collector.
+The thesis file is never fetched. Around 45 theses arrive each weekday, so
+they do not go to the AI on their own: the source's `filter_mode` is
+`on_request`, and a thesis is summarised when an editor picks it.
+
+`tagging.json` writes `tags`, `tag_labels`, `item_tags` and `item_tagging`.
+It asks two public services of the National Library of Finland, one call at
+a time as they ask: Finto's search, to match a source's subject word to a
+YSO term (an English thesis's educational technology is opetusteknologia),
+and Finto AI, which suggests YSO terms for a Finnish summary. Suggestions
+scoring below `tagging_min_score` in `app_settings` are not kept. Only the
+title and our own summary are sent, never an article. When Finto does not
+answer, the run stops and the next one carries on. Neither service needs a
+key.
 
 `signal-detection.json` fills `signals` and `signal_items`. It asks the model,
 per article, whether the article points at something new or growing, and

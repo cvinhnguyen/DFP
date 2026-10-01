@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import database, errors, middleware
 from .dependencies import current_user
-from .routes import auth, comments, images, issues, items, mailchimp, overview, telegram, templates
+from .routes import auth, comments, images, issues, items, mailchimp, overview, telegram, templates, topics
 
 log = logging.getLogger("uvicorn.error")
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -50,6 +50,7 @@ app = FastAPI(
 # left open by forgetting to ask for one.
 private = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
 private.include_router(items.router)
+private.include_router(topics.router)
 private.include_router(overview.router)
 private.include_router(issues.router)
 private.include_router(templates.router)
