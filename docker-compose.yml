@@ -5,14 +5,15 @@
 #   cp .env.example .env      then edit .env
 #   docker compose up -d
 #
-# n8n:      http://localhost:5678
-# Postgres: localhost:5432    database "newsletter"
+# Dashboard: http://localhost:8000
+# n8n:       http://localhost:5678
+# Postgres:  localhost:5432    database "newsletter"
 #
-# Both ports are bound to 127.0.0.1, so nothing is reachable from outside
+# Every port is bound to 127.0.0.1, so nothing is reachable from outside
 # your machine.
 #
 # Container names and ports can be changed in .env (CONTAINER_PREFIX,
-# N8N_PORT, POSTGRES_PORT). The defaults are what everything else assumes;
+# DASHBOARD_PORT, N8N_PORT, POSTGRES_PORT). The defaults are what everything else assumes;
 # changing them is for running a second copy next to your own, for example
 # to test a rebuild from the repository.
 
@@ -99,6 +100,45 @@ services:
       - "127.0.0.1:${N8N_PORT:-5678}:5678"
     volumes:
       - n8n_data:/home/node/.n8n
+    networks:
+      - dfp
+
+  # The editors' dashboard: the pages and the API behind them, in one
+  # service. Open http://localhost:8000 and log in with an account made by
+  #   docker compose exec dashboard python -m app.cli.users add you@example.fi --name You --role admin
+  dashboard:
+    build: ./dashboard
+    container_name: ${CONTAINER_PREFIX:-dfp}-dashboard
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # psycopg reads these itself, so the password is never written into a
+      # connection string.
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: newsletter
+      PGUSER: ${POSTGRES_USER:-dfp}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # "Check now" asks the collection schedule to run, with the same token
+      # the other workflows use for its webhook.
+      N8N_URL: http://n8n:5678
+      INGEST_TOKEN: ${INGEST_TOKEN:-}
+      TZ: ${TIMEZONE:-Europe/Helsinki}
+      # Set to true once the dashboard is served over https.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    # Lets the dashboard ask the model server on your machine whether it is
+    # answering, on Linux as well as on Mac and Windows.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8000}:8000"
+    # The code is mounted, so a change to a page shows on the next reload.
+    # A change to the Python code needs: docker compose restart dashboard
+    volumes:
+      - ./dashboard/app:/srv/app:ro
+      - ./dashboard/web:/srv/web:ro
     networks:
       - dfp
 

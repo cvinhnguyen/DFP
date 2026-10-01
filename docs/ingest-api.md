@@ -6,7 +6,7 @@ Every collection workflow posts here instead of writing to Postgres itself.
 That way a workflow with a bug cannot put bad rows in the database, and the
 schema can change without silently breaking four people's workflows.
 
-It runs as an n8n workflow (`workflows/ingest-api.json`) rather than a separate
+It runs as an n8n workflow (`n8n/workflows/ingest-api.json`) rather than a separate
 service. The criteria ask for one endpoint, not one more container for the
 association to keep running.
 

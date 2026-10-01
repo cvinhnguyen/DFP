@@ -1,0 +1,900 @@
+{
+  "id": "Mc4hD7pQw2LxV9sK",
+  "name": "Mailchimp",
+  "active": true,
+  "nodes": [
+    {
+      "id": "86684dff-a0f1-5637-a61a-55a26df9289e",
+      "name": "POST /mailchimp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mailchimp",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      },
+      "webhookId": "7c1f2b9e-5d0a-4e7b-9a43-0d5e6f7a8b90"
+    },
+    {
+      "id": "9f8a57fa-95a6-5f53-a58d-9ab546cc8cf7",
+      "name": "Read request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// What the dashboard asks for. Only these actions exist: nothing in this\n// workflow can send or schedule a campaign. Sending is a person's click in\n// Mailchimp.\nconst body = $json.body || {};\nconst action = String(body.action || '');\nconst server = String(body.server || '');\nconst known = ['account', 'upload', 'draft', 'status', 'test'];\nconst valid = known.includes(action) && /^[a-z]{2,4}\\d{1,3}$/.test(server);\nreturn [{ json: { ...body, action: valid ? action : 'invalid', base: `https://${server}.api.mailchimp.com/3.0` } }];\n"
+      }
+    },
+    {
+      "id": "5c83d48d-caa4-5c9f-925d-2a49c3a284da",
+      "name": "Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        440,
+        400
+      ],
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 6,
+        "output": "={{ ({ account: 0, upload: 1, draft: 2, status: 3, test: 4 })[$json.action] ?? 5 }}"
+      }
+    },
+    {
+      "id": "f08dee0f-cc6c-54a4-9ac2-52ded6cf19aa",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "d2e20a3d-a0f9-5592-90b8-ebdeaec9f39a",
+      "name": "Read account",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.base }}/?fields=account_id,account_name,login_id",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "96724726-5cef-5994-bab9-d7b3ed6de4a7",
+      "name": "Read audiences",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Read request').first().json.base }}/lists?count=100&fields=lists.id,lists.name,lists.stats.member_count,lists.campaign_defaults.from_name,lists.campaign_defaults.from_email",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "aa9dfe76-59b4-572b-8af0-7d2babf00cac",
+      "name": "Account answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $('Read account').first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\nif (!good) return [{ json: failed(r) }];\nconst lists = (($input.first().json.body || {}).lists || []).map((l) => ({\n  id: l.id, name: l.name, members: l.stats ? l.stats.member_count : null,\n  from_name: l.campaign_defaults ? l.campaign_defaults.from_name : null,\n  from_email: l.campaign_defaults ? l.campaign_defaults.from_email : null,\n}));\nreturn [{ json: { ok: true, account_id: r.body.account_id, account_name: r.body.account_name || r.body.login_id, audiences: lists } }];\n"
+      }
+    },
+    {
+      "id": "af52295d-11df-55cd-b285-2b519d8a9700",
+      "name": "Upload picture",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.base }}/file-manager/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.name, file_data: $json.file_data }) }}"
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "56d95f35-3ff7-5681-a050-a5ffa7c3d744",
+      "name": "Upload answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        200
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\nif (!good) return [{ json: failed(r) }];\nreturn [{ json: { ok: true, id: r.body.id, url: r.body.full_size_url } }];\n"
+      }
+    },
+    {
+      "id": "88cc3b81-608d-5731-a6cd-c2e4c2a64815",
+      "name": "Draft plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// The campaign's settings: the name the editors see, the subject line and\n// preview text the readers see, the sender, and the audience it goes to.\nconst r = $json;\nconst settings = { title: r.title || 'Newsletter', subject_line: r.subject || '', preview_text: r.preview_text || '' };\nif (r.from_name) settings.from_name = r.from_name;\nif (r.reply_to) settings.reply_to = r.reply_to;\nconst body = { settings };\nif (r.audience_id) body.recipients = { list_id: r.audience_id };\nreturn [{ json: { ...r, campaign_body: body } }];\n"
+      }
+    },
+    {
+      "id": "3d809c26-2c57-51bd-bfbb-b247408d9b45",
+      "name": "Made before?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-campaign",
+              "leftValue": "={{ $json.campaign_id || '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b771f7a2-5abd-51e9-bd50-717027bbb138",
+      "name": "Read campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        340
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.base }}/campaigns/{{ $json.campaign_id }}?fields=id,web_id,status",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "a64aced5-38fc-5b94-adea-6e372899b58a",
+      "name": "Still a draft?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        340
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\n// A draft can be changed. One deleted in Mailchimp is made again; one sent or\n// scheduled stays as it went out.\nconst plan = $('Draft plan').first().json;\nif (r.statusCode === 404) return [{ json: { ...plan, go: 'create' } }];\nif (!good) return [{ json: { ...failed(r), go: 'stop' } }];\nif (!['save', 'paused'].includes(r.body.status)) {\n  return [{ json: { ok: false, go: 'stop', code: 'mailchimp_not_draft', message: `The campaign is ${r.body.status}.`, detail: r.body.status } }];\n}\nreturn [{ json: { ...plan, go: 'update' } }];\n"
+      }
+    },
+    {
+      "id": "6cd43e87-d73f-58b9-af64-d8c586c29f8a",
+      "name": "Update or create",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1580,
+        340
+      ],
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 3,
+        "output": "={{ ({ update: 0, create: 1 })[$json.go] ?? 2 }}"
+      }
+    },
+    {
+      "id": "42c6e231-6698-59b7-9116-2b41a7688da8",
+      "name": "Update campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        260
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.base }}/campaigns/{{ $json.campaign_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.campaign_body) }}"
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "687c6426-a462-500f-a8ae-ef415cf30446",
+      "name": "Create campaign",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        500
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.base }}/campaigns",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'regular', ...$json.campaign_body }) }}"
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "daef112c-90b7-5e2e-823f-efe221e65335",
+      "name": "Campaign result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        420
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\nif (!good) return [{ json: failed(r) }];\nconst plan = $('Draft plan').first().json;\nreturn [{ json: { ok: true, base: plan.base, html: plan.html, campaign_id: r.body.id, web_id: r.body.web_id, status: r.body.status } }];\n"
+      }
+    },
+    {
+      "id": "ac4c685b-bc4d-52a2-b430-e2897e4b2832",
+      "name": "Campaign ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3cae2b00-178a-5eff-8545-c07d30ad6e54",
+      "name": "Set content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2460,
+        340
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.base }}/campaigns/{{ $json.campaign_id }}/content",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ html: $json.html }) }}"
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "b8e9fcaa-af57-560d-9907-d1a9558040d3",
+      "name": "Draft answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2680,
+        340
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\nif (!good) return [{ json: failed(r) }];\nconst c = $('Campaign result').first().json;\nreturn [{ json: { ok: true, campaign_id: c.campaign_id, web_id: c.web_id, status: c.status } }];\n"
+      }
+    },
+    {
+      "id": "ca25689a-d521-5747-a64e-5f787a8d0e14",
+      "name": "Campaign status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        640
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.base }}/campaigns/{{ $json.campaign_id }}?fields=id,web_id,status,send_time,emails_sent",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "2576de36-400f-5b49-8797-aa774e0d1b48",
+      "name": "Status answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        640
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\nif (r.statusCode === 404) return [{ json: { ok: true, missing: true } }];\nif (!good) return [{ json: failed(r) }];\nreturn [{ json: { ok: true, status: r.body.status, send_time: r.body.send_time || null, emails_sent: r.body.emails_sent ?? null, web_id: r.body.web_id } }];\n"
+      }
+    },
+    {
+      "id": "a8428082-5ebe-5be1-9bed-5462152d1b5b",
+      "name": "Send a test",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        840
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.base }}/campaigns/{{ $json.campaign_id }}/actions/test",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "mailchimpApi",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ test_emails: $json.emails, send_type: 'html' }) }}"
+      },
+      "credentials": {
+        "mailchimpApi": {
+          "id": "dfpMailchimpKey1",
+          "name": "DFP Mailchimp"
+        }
+      }
+    },
+    {
+      "id": "2800f718-f8ac-53b5-a97e-4387b125588c",
+      "name": "Test answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        840
+      ],
+      "parameters": {
+        "jsCode": "\nconst r = $input.first().json;\nfunction failed(r) {\n  const status = r.statusCode || 0;\n  const detail = String((r.body && (r.body.detail || r.body.title)) || r.statusMessage || r.error || '').slice(0, 300);\n  let code = 'mailchimp_failed';\n  if (status === 401) code = 'mailchimp_key';\n  else if (status === 403) code = 'mailchimp_forbidden';\n  else if (status === 404) code = 'mailchimp_missing';\n  else if (status === 400 && /list|audience/i.test(detail)) code = 'mailchimp_audience';\n  else if (status === 429) code = 'mailchimp_busy';\n  return { ok: false, code, status, message: `Mailchimp answered ${status || 'nothing'}`, detail };\n}\nconst good = r.statusCode >= 200 && r.statusCode < 300;\n\nif (!good) return [{ json: failed(r) }];\nreturn [{ json: { ok: true } }];\n"
+      }
+    },
+    {
+      "id": "e2ce9c96-2bb5-5caf-a2bf-d0c986a7e4de",
+      "name": "Unknown request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        1040
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { ok: false, code: 'mailchimp_bad_request', message: 'Unknown action or Mailchimp data centre.' } }];"
+      }
+    }
+  ],
+  "connections": {
+    "POST /mailchimp": {
+      "main": [
+        [
+          {
+            "node": "Read request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read request": {
+      "main": [
+        [
+          {
+            "node": "Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action": {
+      "main": [
+        [
+          {
+            "node": "Read account",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload picture",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft plan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Campaign status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a test",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read account": {
+      "main": [
+        [
+          {
+            "node": "Read audiences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read audiences": {
+      "main": [
+        [
+          {
+            "node": "Account answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Account answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload picture": {
+      "main": [
+        [
+          {
+            "node": "Upload answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft plan": {
+      "main": [
+        [
+          {
+            "node": "Made before?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Made before?": {
+      "main": [
+        [
+          {
+            "node": "Read campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create campaign",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read campaign": {
+      "main": [
+        [
+          {
+            "node": "Still a draft?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still a draft?": {
+      "main": [
+        [
+          {
+            "node": "Update or create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update or create": {
+      "main": [
+        [
+          {
+            "node": "Update campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create campaign",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update campaign": {
+      "main": [
+        [
+          {
+            "node": "Campaign result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create campaign": {
+      "main": [
+        [
+          {
+            "node": "Campaign result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign result": {
+      "main": [
+        [
+          {
+            "node": "Campaign ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign ready?": {
+      "main": [
+        [
+          {
+            "node": "Set content",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set content": {
+      "main": [
+        [
+          {
+            "node": "Draft answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Campaign status": {
+      "main": [
+        [
+          {
+            "node": "Status answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a test": {
+      "main": [
+        [
+          {
+            "node": "Test answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unknown request": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

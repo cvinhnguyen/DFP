@@ -1,10 +1,29 @@
-# Newsletter automation, development environment
+# Newsletter automation for Suomen eOppimiskeskus
 
-Local setup for the DFP Mazhar 4 project. Runs n8n and PostgreSQL on your
-own machine, so nobody waits for a shared server and we do not overwrite
-each other's workflows.
+DFP Mazhar 4. The tool collects articles from the sources the association
+follows, summarises them in Finnish, and shows them to the editors in a
+dashboard. A Telegram bot takes the links they find themselves. The editors
+put the newsletter together in the dashboard's editor, and send it from their
+own Mailchimp. The tool never sends.
 
 Architecture: https://hamk-projects-jira.atlassian.net/wiki/spaces/DM4/pages/649199627
+
+## What is where
+
+Each folder is one part of the system, with a README of its own.
+
+| Folder | What it is |
+|---|---|
+| `dashboard/` | the editors' web app: a Python API and the pages it serves |
+| `n8n/` | the workflows that collect, summarise, run the Telegram bot and make Mailchimp drafts, and the scripts that save and rebuild them |
+| `db/` | the database: every table, as numbered changes, and the client's source list |
+| `docs/` | documents for people: credentials, the ingest API, the AI cost comparison, the architecture diagram, the dashboard prototype |
+
+The parts meet in the database. n8n collects articles and writes them in
+through the ingest API, then summarises them. The dashboard reads what is
+there, and when an editor presses "check now" it asks n8n to collect. Nothing
+reaches the database except through these. Mailchimp is reached the same way:
+the dashboard asks n8n, which holds the key.
 
 ## Setup
 
@@ -15,176 +34,49 @@ cp .env.example .env
 openssl rand -hex 32          # paste the result into N8N_ENCRYPTION_KEY
 openssl rand -hex 24          # paste the result into INGEST_TOKEN
 docker compose up -d          # the database builds itself from db/init/
-./scripts/n8n-rebuild.sh      # credentials and every workflow, switched on
+./n8n/rebuild.sh              # credentials and every workflow, switched on
+docker compose exec dashboard python -m app.cli.users add you@example.fi --name You --role admin
 ```
 
-Then open http://localhost:5678 and create your owner account. That account
-is local to your machine.
+Then open http://localhost:5678 and create your n8n owner account, which is
+local to your machine, and log in to the dashboard at http://localhost:8000.
+
+To use the Telegram bot, message it once: it answers with your Telegram ID.
+Put that on your account, and from then on `/login` in the bot gets you into
+the dashboard and `/invite` brings in colleagues:
+
+```bash
+docker compose exec dashboard python -m app.cli.users telegram you@example.fi 123456789
+```
 
 The client's source list is not in this repository, because the repository is
-public. Ask the team for `db/client/sources.sql` and load it with:
+public. `db/README.md` says how to get it and load it.
 
-```bash
-docker compose exec -T postgres psql -U dfp -d newsletter < db/client/sources.sql
-```
-
-## Saving your workflow changes
-
-n8n keeps workflows in its own database, so a change made in the editor is
-not in git until you export it. After changing a workflow:
-
-```bash
-./scripts/n8n-export.sh       # writes workflows/*.json from your n8n
-git diff workflows/           # check it is the change you meant
-```
-
-Then commit as usual. The export refuses to write anything if a password or
-token from your `.env` appears in a workflow, or if a workflow calls a
-sub-workflow that is not in the repository. It also drops pinned test data,
-which can hold real articles or Telegram messages.
-
-Workflows call each other by id, and the ids in `workflows/` are the ones
-everybody uses. If you build a new workflow, export it and commit it before
-another workflow starts calling it.
+Mailchimp is optional. Put an API key in `MAILCHIMP_API_KEY` before running
+`./n8n/rebuild.sh`, or type it into the "DFP Mailchimp" credential in n8n
+afterwards. Then, as an admin, open Asetukset in the dashboard and enter the
+data centre, the end of the key after the dash, like `us4`. Read
+`docs/credentials.md` before asking anyone for a real key.
 
 On Windows, run the scripts from Git Bash.
 
-Where every password and token lives, and how the client's credentials are
-handled, is in `docs/credentials.md`.
-
-Check it worked:
-
-```bash
-docker compose ps             # both services should be healthy
-```
-
 ## What you get
 
-| Service  | Address         | Notes                                   |
-|----------|-----------------|-----------------------------------------|
-| n8n      | localhost:5678  | workflow editor                         |
-| Postgres | localhost:5432  | database `newsletter`, user from `.env` |
+| Service | Address | Notes |
+|---|---|---|
+| Dashboard | localhost:8000 | the editors' pages, and the API documentation at /api/docs |
+| n8n | localhost:5678 | the workflow editor |
+| Postgres | localhost:5432 | database `newsletter`, user from `.env` |
 
-Both are bound to 127.0.0.1, so nothing is reachable from outside your
-machine.
+Every port is bound to 127.0.0.1, so nothing is reachable from outside your
+machine. `docker compose ps` should show all three running.
 
-There are two databases on the same Postgres server. `n8n` holds n8n's own
-workflows and credentials, and we do not touch it. `newsletter` holds the
-project data.
+## Keeping secrets out of git
 
-## Connecting to the database
+`.env` is gitignored and must never be committed. It can hold a Mailchimp
+key, which reaches a real member list. Where every password and token lives,
+and how the client's credentials are handled, is in `docs/credentials.md`.
 
-```bash
-docker compose exec postgres psql -U dfp -d newsletter
-```
-
-Or from a GUI client: host `localhost`, port `5432`, database `newsletter`,
-user and password from your `.env`.
-
-## Tables
-
-Defined in `db/init/02-schema.sql`, with the AI configuration tables in
-`03-llm.sql` and the signal tables in `04-signals.sql`. Sprint 1 has `users`,
-`sources`, `items`, `summaries`, `llm_usage`, `collection_runs`, `signals` and
-`signal_items`. The newsletter tables come later.
-
-The init scripts only run when the Postgres volume is first created, so if you
-already have data, apply a new one by hand instead of wiping the volume:
-
-```bash
-docker compose exec -T postgres psql -U $POSTGRES_USER -d newsletter \
-  < db/init/04-signals.sql
-```
-
-The shared LLM workflow caps how much a model may write, using
-`llm_max_output_tokens` in `app_settings`. When a model stops because it ran
-out of room rather than because it finished, the call comes back with
-`truncated: true` and the answer is not cached, because caching half a
-sentence would hand the same half sentence to every later caller. `llm_usage`
-records it too, so we can see whether the cap is set too low instead of
-guessing.
-
-`workflows/ingest-api.json` is the write path for collected items:
-`POST /webhook/ingest` with a batch, and it answers accepted or rejected per
-item. Workflows should post there rather than writing to `items` directly, so
-one workflow with a bug cannot fill the shared database. See
-`docs/ingest-api.md`.
-
-`workflows/telegram-capture.json` lets an editor send a link to
-@DFP_Mazhar4_bot and have it join the same pipeline as crawled content. It
-asks Telegram for new messages once a minute rather than Telegram calling
-us, so no tunnel and no public address are needed. Only Telegram IDs listed
-in `users.telegram_user_id` are accepted; anyone else is refused and told
-their own id, which is how a new editor gets added. Where the page cannot be
-read, and LinkedIn almost never can, the bot uses the words the editor typed
-as the title. Set `TELEGRAM_BOT_TOKEN` in `.env`.
-
-`workflows/signal-detection.json` fills `signals` and `signal_items`. It asks
-the model, per article, whether the article points at something new or
-growing, and keeps only the ones it says yes to. Articles that name the same
-topic become one signal carrying all of them, which is what makes "this came
-up in six articles" visible. How far back it reads is `signal_window_days` in
-`app_settings`.
-
-`signals` and `signal_items` hold what the trend detection finds. A signal
-must link to at least one article, enforced by a trigger that runs at commit,
-so write the signal and its links in one statement. There is a worked example
-at the bottom of `db/init/04-signals.sql`. Re-running detection on the same day
-updates the existing signal rather than adding a copy.
-
-The important ones for the crawler:
-
-- `sources` is what we monitor, and the crawler should read its URL from
-  here rather than hardcoding one. Two rows are seeded: the Finnish
-  `ajankohtaista` section and the English `en/news` section, which carry
-  different articles. Each has a `language`, so nothing downstream has to
-  guess from the URL. If the client decides against an English edition, set
-  `active = false` on that row rather than deleting it.
-- `items` is one row per article. `source_id` is where we found it,
-  `publisher` is who wrote it, and both are needed because the publisher is
-  the attribution printed in the newsletter.
-- `author` is often empty. Nothing should depend on it.
-- `excerpt` is the publisher's own short description.
-- `raw_text` is deleted after the retention period. The link, title,
-  publisher and summary are kept.
-
-## Changing the schema
-
-The scripts in `db/init/` only run when the Postgres volume is first
-created. To pick up a change:
-
-```bash
-docker compose down -v        # deletes all local data
-docker compose up -d
-```
-
-That is fine while we are developing. Once the API service exists it will
-handle migrations properly.
-
-## Writing data
-
-For Sprint 1, write straight into Postgres from your n8n workflow using the
-Postgres node.
-
-From Sprint 2 this moves to an ingest API endpoint, so that a mistake in
-one workflow cannot corrupt data for everyone. The item format stays the
-same, so nothing you build now is wasted.
-
-## Workflows
-
-Export your workflows as JSON into this repo. Local instances drift apart
-otherwise and there is no way to review what changed or rebuild a lost
-instance.
-
-## Notes
-
-`.env` is gitignored and must never be committed. It will eventually hold
-the client's real Mailchimp key, which reaches their actual member list.
-
-`N8N_ENCRYPTION_KEY` encrypts saved credentials. Keep the same value. If
-you change it, anything already saved in n8n has to be entered again.
-
-The n8n image is pinned to 2.38.1, which is the version this setup was
-tested against. n8n execution history is pruned after 30 days by default. It stores the
-full payload of every run, including article text, so this is a retention
-setting rather than only housekeeping.
+`N8N_ENCRYPTION_KEY` encrypts the credentials saved in n8n. Keep the same
+value. If you change it, anything already saved in n8n has to be entered
+again.

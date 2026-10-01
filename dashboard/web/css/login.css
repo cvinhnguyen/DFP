@@ -1,0 +1,17 @@
+/* Logging in, with a password or with a link from the bot. */
+
+.login {
+  max-width: 400px; margin: 40px auto; padding: 28px 28px 22px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.login h2 { font-size: 23px; font-weight: 650; margin: 0 0 16px; }
+.login .lead { margin: 0 0 18px; color: var(--soft); }
+.login label { display: block; font-size: 14px; margin: 14px 0 4px; }
+.login input {
+  width: 100%; font: inherit; padding: 9px 10px; border: 1px solid var(--rule);
+  background: var(--surface); color: var(--ink); border-radius: 6px;
+}
+.login input:focus { border-color: var(--link); }
+.login .btn { margin-top: 18px; width: 100%; padding: 10px; }
+.form-error { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 6px; padding: 8px 10px; margin: 14px 0 0; font-size: 14px; }
+.hint { color: var(--soft); font-size: 13.5px; margin: 18px 0 0; }

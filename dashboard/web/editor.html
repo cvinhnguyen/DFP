@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Uutiskirjeen editori</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/ui.css">
+<link rel="stylesheet" href="css/editor.css">
+<script type="module" src="js/editor/main.js"></script>
+</head>
+<body class="editor-page">
+<header class="ed-top">
+  <a class="ed-logo" href="index.html#/newsletters" data-t-label="editor.toList">
+    <svg class="mark" width="30" height="30" viewBox="0 0 34 34" aria-hidden="true">
+      <circle class="ring" cx="17" cy="17" r="15"/>
+      <path class="letter" d="M9 19.5h13a7 7 0 1 0-7-7v14"/>
+    </svg>
+  </a>
+  <div class="ed-name-wrap"><button type="button" class="ed-name" id="ed-name"></button></div>
+  <span class="ed-saved" id="ed-saved" aria-live="polite"></span>
+  <div class="ed-top-actions">
+    <button type="button" class="btn ghost" id="ed-test" hidden><span data-icon="send" data-icon-size="18"></span> <span data-t="editor.sendTest"></span></button>
+    <div class="ed-split">
+      <button type="button" class="btn" id="ed-exit" data-t="editor.saveExit"></button>
+      <button type="button" class="btn ed-split-caret" id="ed-exit-menu" data-popover-anchor data-t-label="editor.moreSaving" data-icon="chevronDown" data-icon-size="18"></button>
+    </div>
+  </div>
+</header>
+
+<p class="ed-message problem" id="ed-message" hidden></p>
+
+<div class="ed-body">
+  <nav class="ed-rail" data-t-label="rail.label">
+    <button type="button" class="ed-rail-item" data-panel="blocks" aria-current="true"><span data-icon="blocks" data-icon-size="22"></span><span data-t="rail.blocks"></span></button>
+    <button type="button" class="ed-rail-item" data-panel="sections"><span data-icon="sections" data-icon-size="22"></span><span data-t="rail.sections"></span></button>
+    <button type="button" class="ed-rail-item" data-panel="styles"><span data-icon="styles" data-icon-size="22"></span><span data-t="rail.styles"></span></button>
+    <button type="button" class="ed-rail-item" data-panel="check"><span data-icon="check" data-icon-size="22"></span><span data-t="rail.check"></span><span class="ed-badge" id="ed-check-badge" hidden></span></button>
+  </nav>
+
+  <aside class="ed-panel" id="ed-panel">
+    <div class="ed-panel-page" id="panel-blocks"></div>
+    <div class="ed-panel-page" id="panel-sections" hidden></div>
+    <div class="ed-panel-page" id="panel-styles" hidden></div>
+    <div class="ed-panel-page" id="panel-check" hidden></div>
+    <div class="ed-panel-page ed-settings" id="panel-settings" hidden></div>
+  </aside>
+
+  <main class="ed-canvas">
+    <div class="ed-canvas-bar">
+      <div class="ed-devices" role="group" data-t-label="editor.view">
+        <button type="button" class="ed-device" id="ed-desktop" aria-pressed="true" data-t-label="editor.desktop" data-icon="desktop"></button>
+        <button type="button" class="ed-device" id="ed-mobile" aria-pressed="false" data-t-label="editor.mobile" data-icon="mobile"></button>
+      </div>
+      <div class="ed-canvas-tools">
+        <button type="button" class="ed-tool" id="ed-undo" data-t-label="editor.undo" data-icon="undo"></button>
+        <button type="button" class="ed-tool" id="ed-redo" data-t-label="editor.redo" data-icon="redo"></button>
+        <button type="button" class="ed-tool ed-tool-badge" id="ed-comments-toggle" data-t-label="editor.comments"><span data-icon="comment"></span><span class="ed-badge" id="ed-comments-badge" hidden></span></button>
+        <button type="button" class="btn ghost small" id="ed-preview" data-t="editor.preview"></button>
+      </div>
+    </div>
+    <div class="ed-texttools" id="ed-texttools" role="toolbar" data-t-label="tt.label" hidden></div>
+    <div class="ed-stage" id="ed-stage" data-device="desktop">
+      <iframe class="ed-frame" id="ed-frame" data-t-label="editor.canvas"></iframe>
+      <div class="ed-layer" id="ed-layer"></div>
+    </div>
+  </main>
+
+  <aside class="ed-comments" id="ed-comments" hidden></aside>
+</div>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Uutiskirje</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/ui.css">
+<link rel="stylesheet" href="css/login.css">
+<link rel="stylesheet" href="css/articles.css">
+<link rel="stylesheet" href="css/newsletter.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#/">
+      <svg class="mark" width="30" height="30" viewBox="0 0 34 34" aria-hidden="true">
+        <circle class="ring" cx="17" cy="17" r="15"/>
+        <path class="letter" d="M9 19.5h13a7 7 0 1 0-7-7v14"/>
+      </svg>
+      <span class="brand-text">
+        <span class="brand-name" data-t="app.name"></span>
+        <span class="brand-org" data-t="app.org"></span>
+      </span>
+    </a>
+    <nav class="mainnav" id="mainnav" data-t-label="nav.label" hidden>
+      <a href="#/" data-page="articles" data-t="nav.articles"></a>
+      <a href="#/newsletters" data-page="newsletters" data-t="nav.newsletters"></a>
+      <a href="#/settings" data-page="settings" data-t="nav.settings" data-admin hidden></a>
+    </nav>
+    <div class="topbar-end">
+      <span class="who" id="who" hidden>
+        <span class="who-name" id="who-name"></span>
+        <button type="button" class="topbar-link" id="logout" data-t="header.logout"></button>
+      </span>
+      <button type="button" class="topbar-link langswitch" id="langswitch" data-t="lang.switch"></button>
+    </div>
+  </div>
+</header>
+<main class="wrap page" id="view">
+  <p class="loading">…</p>
+</main>
+<noscript><p class="wrap">Tämä sivu tarvitsee JavaScriptin. The dashboard needs JavaScript switched on.</p></noscript>
+</body>
+</html>

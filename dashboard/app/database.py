@@ -1,0 +1,56 @@
+"""The connection pool, and the three helpers every query uses.
+
+Connections are in autocommit mode: each statement is saved as it runs. Code
+that needs several statements to succeed or fail together opens a
+transaction itself, as queries/items.request_summary does.
+"""
+
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
+pool = ConnectionPool(
+    conninfo="",
+    min_size=1,
+    max_size=5,
+    open=False,
+    kwargs={"autocommit": True, "row_factory": dict_row},
+)
+
+
+def rows(sql, params=None):
+    with pool.connection() as conn:
+        return conn.execute(sql, params).fetchall()
+
+
+def row(sql, params=None):
+    with pool.connection() as conn:
+        return conn.execute(sql, params).fetchone()
+
+
+def run(sql, params=None):
+    with pool.connection() as conn:
+        conn.execute(sql, params)
+
+
+# What the dashboard needs from db/init/, newest first. A teammate who pulls
+# new code without applying a migration is told which file to run, instead of
+# getting an error from deep inside a query.
+NEEDS = [
+    ("18-editor-mailchimp.sql", "SELECT to_regclass('public.newsletter_templates') IS NOT NULL AS ok"),
+    ("17-newsletter.sql", "SELECT to_regclass('public.item_picks') IS NOT NULL AS ok"),
+    ("16-telegram-accounts.sql", "SELECT to_regclass('public.login_links') IS NOT NULL AS ok"),
+    ("15-dashboard.sql", "SELECT to_regclass('public.sessions') IS NOT NULL AS ok"),
+    ("14-feed-sources.sql", """SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                                WHERE table_name = 'sources' AND column_name = 'publisher') AS ok"""),
+    ("11-filter.sql", "SELECT to_regproc('public.request_summary') IS NOT NULL AS ok"),
+]
+
+
+def schema_problem():
+    with pool.connection() as conn:
+        missing = [name for name, check in NEEDS if not conn.execute(check).fetchone()["ok"]]
+    if not missing:
+        return None
+    files = " and ".join(f"db/init/{name}" for name in reversed(missing))
+    return (f"The database is missing {files}. Apply it as db/README.md describes, "
+            "then restart the dashboard with: docker compose restart dashboard")

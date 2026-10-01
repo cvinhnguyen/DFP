@@ -1,0 +1,9 @@
+fastapi==0.142.2
+uvicorn==0.54.0
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+argon2-cffi==25.1.0
+# Image uploads for the newsletter: reading the form, and re-encoding the
+# picture, which also drops its location and other metadata.
+python-multipart==0.0.32
+pillow==12.3.0
