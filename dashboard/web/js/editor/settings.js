@@ -4,12 +4,13 @@
 
 import {
   findBlock, findSection, NETWORKS, NETWORK_NAMES, LAYOUTS, setLayout, FOOTER_HTML,
-  removeSection, duplicateSection, moveBlock, ARTICLE_SECTIONS,
+  removeSection, duplicateSection, moveBlock, ARTICLE_SECTIONS, isArticleSection,
 } from '../newsletter/model.js';
 import { blockPadding } from '../newsletter/render.js';
 import { FONTS } from '../newsletter/fonts.js';
 import { links as textLinks } from '../newsletter/richtext.js';
-import { SECTION_NAMES } from '../newsletter/templates.js';
+import { SECTION_NAMES, ensureArticleSection } from '../newsletter/templates.js';
+import { ADDRESS_TAGS } from '../newsletter/checks.js';
 import { t } from '../texts.js';
 import { h, clear } from '../ui/dom.js';
 import { icon, columnsIcon } from '../ui/icons.js';
@@ -19,6 +20,12 @@ import {
 } from '../ui/controls.js';
 
 const BORDER_STYLES = ['none', 'solid', 'dashed', 'dotted'];
+
+// A section's link name as a link can use it: Tapahtumat 2026 → tapahtumat-2026.
+function anchorName(text) {
+  return String(text || '').toLowerCase().replace(/[äå]/g, 'a').replace(/ö/g, 'o')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
 const ALIGN = ['left', 'center', 'right'];
 const lastTab = {};
 
@@ -49,6 +56,16 @@ export function createSettings({ store, root, actions, context }) {
     return (v) => setBlock(id, `style.${name}`, (b) => {
       if (v === '' || v === null || v === undefined) delete b.style[name];
       else b.style[name] = v;
+    });
+  }
+
+  // A button's own look: its colour, shape and size, apart from the block
+  // around it.
+  function lookSetter(id, name) {
+    return (v) => setBlock(id, `look.${name}`, (b) => {
+      b.look = b.look || {};
+      if (v === '' || v === null || v === undefined) delete b.look[name];
+      else b.look[name] = v;
     });
   }
 
@@ -126,6 +143,7 @@ export function createSettings({ store, root, actions, context }) {
       tabs: ['content', 'styles'],
       content: (b) => {
         const hasUnsub = textLinks(b.html).some((l) => l.href === '*|UNSUB|*');
+        const hasAddress = ADDRESS_TAGS.some((tag) => (b.html || '').includes(tag));
         return [
           h('p', { class: 'st-note' }, t('settings.footerNote')),
           hasUnsub ? h('p', { class: 'st-ok', html: `${icon('tick', 16)} ` }, t('settings.footerHasUnsub'))
@@ -133,6 +151,11 @@ export function createSettings({ store, root, actions, context }) {
           hasUnsub ? null : h('button', { type: 'button', class: 'btn small', onclick: () => setBlock(b.id, null, (blk) => {
             blk.html += '<p><a href="*|UNSUB|*">Peru tilaus</a></p>';
           }) }, t('settings.addUnsub')),
+          hasAddress ? h('p', { class: 'st-ok', html: `${icon('tick', 16)} ` }, t('settings.footerHasAddress'))
+            : h('p', { class: 'st-warn' }, t('settings.footerNoAddress')),
+          hasAddress ? null : h('button', { type: 'button', class: 'btn small', onclick: () => setBlock(b.id, null, (blk) => {
+            blk.html += '<p>*|LIST:ADDRESSLINE|*</p>';
+          }) }, t('settings.addAddress')),
           h('button', { type: 'button', class: 'btn ghost small', onclick: () => setBlock(b.id, null, (blk) => { blk.html = FOOTER_HTML; }) }, t('settings.resetFooter')),
         ];
       },
@@ -183,7 +206,7 @@ export function createSettings({ store, root, actions, context }) {
         field(t('settings.buttonText'), textInput(b.text, (v) => setBlock(b.id, 'text', (blk) => { blk.text = v; }), { maxlength: 80 })),
         group(t('settings.link'), linkEditor(b.link, (l) => setBlock(b.id, 'link', (blk) => { blk.link = l; }))),
       ],
-      styles: (b) => buttonStyles(b.id, { ...store.design.styles.button, ...b.style }, (name) => styleSetter(b.id, name)).concat([backgroundField(b), paddingFields(b)]),
+      styles: (b) => buttonStyles(b.id, { ...store.design.styles.button, ...(b.look || {}) }, (name) => lookSetter(b.id, name)).concat([backgroundField(b), paddingFields(b)]),
     },
 
     divider: {
@@ -343,9 +366,8 @@ export function createSettings({ store, root, actions, context }) {
             altField(b.image && b.image.alt, (v) => setBlock(b.id, 'imageAlt', (blk) => { blk.image = { ...(blk.image || {}), alt: v }; })),
             h('p', { class: 'cf-hint' }, t('settings.imageRights'))) : null,
           field(t('settings.moveTo'), select(ARTICLE_SECTIONS.map((s) => ({ value: s, label: SECTION_NAMES[s] })), b.section, (v) => {
-            const target = store.design.sections.find((s) => s.role === v);
-            if (!target) return;
             store.change((d) => {
+              const target = ensureArticleSection(d, v);
               moveBlock(d, b.id, target.id, target.blocks.filter((x) => x.id !== b.id).length);
               const f = findBlock(d, b.id);
               if (f) f.block.section = v;
@@ -404,7 +426,23 @@ export function createSettings({ store, root, actions, context }) {
       accordion(t('settings.sectionBackground'), () => h('div', {},
         field(null, colourInput(s.background || '', set('background'), { allowNone: true, noneLabel: t('settings.samePage') }), t('settings.sectionBackgroundHint'))), { open: true }),
       accordion(t('settings.contentBackground'), () => h('div', {},
-        field(null, colourInput(s.contentBackground || '', set('contentBackground'), { allowNone: true, noneLabel: t('settings.sameEmail') })))),
+        field(null, colourInput(s.contentBackground || '', set('contentBackground'), { allowNone: true, noneLabel: t('settings.sameEmail') })),
+        field(t('settings.radius'), numberInput(s.radius || 0, set('radius'), { min: 0, max: 40 })))),
+      isArticleSection(sec) ? accordion(t('settings.articleLook'), () => {
+        const look = s.articleLook || 'plain';
+        return h('div', {},
+          field(null, segmented([
+            { value: 'plain', label: t('settings.lookPlain') }, { value: 'large', label: t('settings.lookLarge') },
+            { value: 'card', label: t('settings.lookCard') }, { value: 'bar', label: t('settings.lookBar') },
+          ], look, (v) => { set('articleLook')(v === 'plain' ? '' : v); refresh(); }), t('settings.articleLookHint')),
+          look === 'card' || look === 'bar'
+            ? field(t(look === 'card' ? 'settings.cardColour' : 'settings.barColour'), colourInput(s.articleColour || '', set('articleColour'), { allowNone: true, noneLabel: t('settings.lookDefaultColour') }))
+            : null,
+          field(t('settings.newArticleLayout'), segmented([
+            { value: 'text', label: t('settings.layoutText') }, { value: 'image-left', label: t('settings.layoutLeft') },
+            { value: 'image-right', label: t('settings.layoutRight') }, { value: 'image-top', label: t('settings.layoutTop') },
+          ], s.articleLayout || 'text', (v) => set('articleLayout')(v === 'text' ? '' : v)), t('settings.newArticleLayoutHint')));
+      }, { open: true }) : null,
       accordion(t('settings.sectionText'), () => h('div', {},
         field(t('settings.textColour'), colourInput(s.textColor || '', set('textColor'), { allowNone: true, noneLabel: t('settings.sameEmail') })))),
       accordion(t('settings.sectionLink'), () => h('div', {},
@@ -413,13 +451,16 @@ export function createSettings({ store, root, actions, context }) {
         row(
           field(t('control.top'), numberInput(s.paddingTop || 0, set('paddingTop'), { max: 120 })),
           field(t('control.bottom'), numberInput(s.paddingBottom || 0, set('paddingBottom'), { max: 120 })),
-        ))),
+        ),
+        field(t('settings.spaceAbove'), numberInput(s.spaceAbove || 0, set('spaceAbove'), { max: 80 }), t('settings.spaceAboveHint')))),
       accordion(t('settings.border'), () => h('div', {},
         field(t('settings.borderStyle'), select(BORDER_STYLES.map((b) => ({ value: b, label: t(`border.${b}`) })), s.borderStyle || 'none', set('borderStyle'))),
         row(
           field(t('settings.borderWidth'), numberInput(s.borderWidth || 0, set('borderWidth'), { max: 20 })),
           field(t('settings.borderColour'), colourInput(s.borderColor || '#dde4e4', set('borderColor'))),
         ))),
+      accordion(t('settings.anchor'), () => h('div', {},
+        field(null, textInput(s.anchor || '', (v) => set('anchor')(anchorName(v)), { maxlength: 40, placeholder: 'tapahtumat' }), t('settings.anchorHint')))),
       h('div', { class: 'st-actions' },
         h('button', { type: 'button', class: 'btn ghost small', onclick: () => actions.saveSection(sec.id) }, t('settings.saveSection')),
         h('button', { type: 'button', class: 'btn ghost small', onclick: () => {
@@ -460,7 +501,10 @@ export function createSettings({ store, root, actions, context }) {
     const footer = tab === 'styles' && block.type !== 'spacer'
       ? h('div', { class: 'st-footer' },
         h('button', { type: 'button', class: 'btn ghost small', html: `${icon('clearFormat', 16)} `, onclick: () => {
-          setBlock(block.id, null, (b) => { b.style = {}; });
+          setBlock(block.id, null, (b) => {
+            b.style = {};
+            if (b.type === 'button') b.look = {};
+          });
           refresh();
         } }, t('settings.clearStyles')),
         h('button', { type: 'button', class: 'btn ghost small', html: `${icon('styles', 16)} `, onclick: () => applyToAll(block) }, t('settings.applyAll')))
@@ -471,8 +515,12 @@ export function createSettings({ store, root, actions, context }) {
   function applyToAll(block) {
     store.change((d) => {
       const style = JSON.stringify(block.style || {});
+      const look = JSON.stringify(block.look || {});
       const visit = (list) => list.forEach((b) => {
-        if (b.type === block.type && b.id !== block.id) b.style = JSON.parse(style);
+        if (b.type === block.type && b.id !== block.id) {
+          b.style = JSON.parse(style);
+          if (b.type === 'button') b.look = JSON.parse(look);
+        }
         if (b.type === 'columns') b.columns.forEach((c) => visit(c.blocks));
       });
       d.sections.forEach((s) => visit(s.blocks));

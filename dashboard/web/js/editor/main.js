@@ -88,8 +88,10 @@ function setStatus(kind, value) {
 
 // ---------- saving ----------
 
-function exportHtml() {
-  return renderEmail(store.design, { mode: 'export', issue: context.issue, t });
+// The finished email. The copy saved for the dashboard also carries the
+// preview's wireframes for pictures not added yet, which every export drops.
+function exportHtml({ markers = false } = {}) {
+  return renderEmail(store.design, { mode: 'export', issue: context.issue, t, markers });
 }
 
 async function save({ force = false } = {}) {
@@ -102,7 +104,7 @@ async function save({ force = false } = {}) {
   setStatus('saving');
   saving = (async () => {
     try {
-      const result = await api.put(`/api/issues/${issueId}/design`, { design: store.design, html: exportHtml(), based_on: basedOn, force });
+      const result = await api.put(`/api/issues/${issueId}/design`, { design: store.design, html: exportHtml({ markers: true }), based_on: basedOn, force });
       basedOn = result.saved_at;
       store.saved(version);
       setStatus(store.dirty ? 'unsaved' : 'saved', result.saved_at);

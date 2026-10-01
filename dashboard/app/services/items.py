@@ -33,9 +33,15 @@ EVENT_WORDS = re.compile(r"tapahtum|webinaar|seminaar|konferens|tilaisuu|messuil
                          r"\bevent|webinar|seminar|conference|workshop|summit", re.IGNORECASE)
 
 
+SECTIONS = ("own_news", "events", "member_news", "highlights")
+
+
 def suggest_section(found):
-    """The association's own site is its own news, events are events, and the
-    rest is news from the field."""
+    """The section a workflow gave the article, if any. Otherwise the
+    association's own site is its own news, events are events, and the rest
+    is news from the field. Members' news is the editors' choice."""
+    if found.get("section") in SECTIONS:
+        return found["section"]
     if "eoppimiskeskus.fi" in (found.get("url") or ""):
         return "own_news"
     summary = found.get("summary") or {}

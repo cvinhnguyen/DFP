@@ -9,7 +9,7 @@ import { esc, safeUrl, date, when, number, languageName } from '../format.js';
 const AI_DID_NOT_ANSWER = 'waiting for the AI to answer again';
 
 // The newsletter sections an article can be picked into.
-const SECTIONS = ['highlights', 'events', 'own_news'];
+const SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
 
 function stateClass(item) {
   return {

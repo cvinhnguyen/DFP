@@ -17,7 +17,7 @@ export const WIDTH = 660;
 // The sections the tool fills from picked articles. A section of these with
 // no article left in it is not sent: the editors asked for empty sections to
 // be dropped rather than shown.
-export const ARTICLE_SECTIONS = ['own_news', 'events', 'highlights'];
+export const ARTICLE_SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
 
 export const BLOCK_TYPES = ['text', 'image', 'button', 'divider', 'spacer', 'social', 'video', 'logo', 'footer', 'columns', 'article'];
 
@@ -42,8 +42,11 @@ export function clone(value) {
 
 // ---------- the look of the whole email ----------
 
-// The association's own look, from the emails its members already get: teal
-// and pink, Helvetica, 15-pixel text.
+// The association's own look, from the newsletter its members already get:
+// near-black text at 17 pixels, teal links and buttons, pink boxes, 660
+// pixels wide. Their emails use DM Sans, which is loaded from Google; the
+// editor offers only fonts every email program has, and Helvetica is the
+// nearest.
 export function defaultStyles() {
   const text = (size, mobileSize, lineHeight, color, bold, spacing, extra = {}) => ({
     font: 'helvetica', size, mobileSize, lineHeight, color, letterSpacing: 0, align: 'left',
@@ -52,11 +55,11 @@ export function defaultStyles() {
   return {
     background: { page: '#f3f4f4', content: '#ffffff', margin: 24, mobilePadding: 16 },
     text: {
-      p: text(15, 15, 1.6, '#384446', false, 12),
-      h1: text(30, 26, 1.2, '#1f2b2d', true, 12),
-      h2: text(21, 20, 1.3, '#104f55', true, 12),
-      h3: text(18, 17, 1.35, '#1f2b2d', true, 6),
-      h4: text(14, 14, 1.4, '#104f55', true, 6, { letterSpacing: 1 }),
+      p: text(17, 16, 1.55, '#101010', false, 14),
+      h1: text(30, 26, 1.2, '#101010', true, 14),
+      h2: text(25, 22, 1.25, '#101010', true, 12),
+      h3: text(20, 18, 1.3, '#101010', true, 8),
+      h4: text(13, 13, 1.4, '#101010', true, 6, { letterSpacing: 1 }),
     },
     link: { color: '#104f55', underline: true },
     button: {
@@ -107,8 +110,11 @@ export function imageBlock(fields = {}) {
   });
 }
 
+// look holds what this button changes from the email's button style (its
+// colour, shape, size). style is the block around it, like every block's:
+// padding, background, border.
 export function buttonBlock(text = 'Painikkeen teksti', url = '', extra = {}) {
-  return base('button', { text, link: { url, blank: true }, ...extra });
+  return base('button', { text, link: { url, blank: true }, look: {}, ...extra });
 }
 
 export function dividerBlock(extra = {}) {
@@ -138,8 +144,12 @@ export function logoBlock(fields = {}) {
   return base('logo', { src: '', alt: '', width: 160, link: { url: '', blank: true }, ...fields });
 }
 
-export const FOOTER_HTML = '<p><strong>Suomen eOppimiskeskus ry</strong><br><a href="https://eoppimiskeskus.fi/">eoppimiskeskus.fi</a></p>'
-  + '<p><a href="*|UPDATE_PROFILE|*">Päivitä tietosi</a> · <a href="*|UNSUB|*">Peru tilaus</a> · <a href="*|ARCHIVE|*">Näytä selaimessa</a></p>';
+// The association's name and postal address, which Mailchimp requires and
+// fills in from the audience's settings, the links every email needs, and a
+// way to subscribe for someone who was forwarded the email.
+export const FOOTER_HTML = '<p><strong>Suomen eOppimiskeskus ry</strong><br>*|LIST:ADDRESSLINE|*<br><a href="https://eoppimiskeskus.fi/">eoppimiskeskus.fi</a></p>'
+  + '<p><a href="*|UPDATE_PROFILE|*">Päivitä tietosi</a> · <a href="*|UNSUB|*">Peru tilaus</a> · <a href="*|ARCHIVE|*">Näytä selaimessa</a></p>'
+  + '<p>Saitko tämän edelleenlähetettynä? <a href="*|LIST:SUBSCRIBE|*">Tilaa uutiskirje</a>.</p>';
 
 export function footerBlock(html = FOOTER_HTML, extra = {}) {
   return base('footer', { html, ...extra });
@@ -176,10 +186,10 @@ export function setLayout(block, layout) {
 // ---------- articles ----------
 
 // How a picked article is written depends on its section, the way the
-// editors already do it: news from the field ends with "Publisher: original
-// title", an event gets a sign-up button, the association's own news a link
-// to read on.
-export const VARIANT_OF = { highlights: 'highlight', events: 'event', own_news: 'own' };
+// editors already do it: news from the field and from members ends with
+// "Publisher: original title", an event gets a sign-up button, the
+// association's own news a link to read on.
+export const VARIANT_OF = { highlights: 'highlight', events: 'event', own_news: 'own', member_news: 'highlight' };
 
 function sourceLine(article, variant) {
   const url = escapeAttrSafe(article.url);
@@ -250,6 +260,7 @@ export function readDesign(stored) {
     b.id = b.id || newId();
     b.style = b.style || {};
     if (b.type === 'columns') b.columns.forEach((c) => { c.id = c.id || newId('c'); c.blocks = c.blocks || []; });
+    if (b.type === 'button') b.look = b.look || {};
   });
   return design;
 }

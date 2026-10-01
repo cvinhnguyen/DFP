@@ -9,6 +9,7 @@ there. Sending happens in Mailchimp, by a person; marking an issue sent
 here, by hand or when Mailchimp says so, records that it went out.
 """
 
+import base64
 import hashlib
 import re
 import zipfile
@@ -160,6 +161,28 @@ MARKERS = re.compile(r'\sdata-[a-z0-9-]+="[^"]*"')
 LOCAL_IMAGE = re.compile(r'(src|href)="(/media/[0-9a-f-]{36}|/img/social/[a-z]+-[a-z]+\.png)"')
 
 
+# Where a picture has not been added yet, the editor saves the block twice:
+# as it goes out, and as the preview inside the dashboard shows it, with a
+# wireframe where the picture will be, in a note around it.
+PREVIEW_NOTE = re.compile(r"<!--dfp-preview:([A-Za-z0-9+/=]*)-->(.*?)<!--/dfp-preview-->", re.DOTALL)
+
+
+def without_notes(html):
+    """The email as it goes out: the blocks kept, the notes dropped."""
+    return PREVIEW_NOTE.sub(lambda m: m.group(2), html or "")
+
+
+def with_wireframes(html):
+    """The email as the dashboard previews it: each noted block as the
+    preview shows it."""
+    def shown(m):
+        try:
+            return base64.b64decode(m.group(1)).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return m.group(2)
+    return PREVIEW_NOTE.sub(shown, html or "")
+
+
 def _base():
     return (settings.get("dashboard_url") or "").rstrip("/")
 
@@ -171,14 +194,15 @@ def absolute(html):
     return LOCAL_IMAGE.sub(lambda m: f'{m.group(1)}="{base}{m.group(2)}"', html)
 
 
-def export_document(issue_id):
+def export_document(issue_id, preview=False):
     """The finished email as a complete HTML document, ready for Mailchimp or
-    for saving as a file."""
+    for saving as a file. preview=True keeps the wireframes of pictures not
+    added yet, for the preview inside the dashboard."""
     issue = get(issue_id)
     if not issue.html:
         return None
     if issue.html.lstrip().lower().startswith("<!doctype"):
-        return absolute(issue.html)
+        return absolute(with_wireframes(issue.html) if preview else without_notes(issue.html))
     # An email saved by the old editor: only its body was kept.
     body = absolute(MARKERS.sub("", issue.html))
     preheader = (f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{escape(issue.preheader)}</div>'
@@ -230,7 +254,7 @@ def export_zip(issue_id):
     issue = get(issue_id)
     if not issue.html:
         return None, None
-    html = issue.html if issue.html.lstrip().lower().startswith("<!doctype") else export_document(issue_id)
+    html = without_notes(issue.html) if issue.html.lstrip().lower().startswith("<!doctype") else export_document(issue_id)
     names = {}
     out = BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:

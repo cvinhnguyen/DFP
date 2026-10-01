@@ -1,23 +1,27 @@
 // Valitse pohja: what an issue starts from, like Mailchimp's template
-// gallery. The association's own layout, a few plainer ones, the designs
-// the editors saved, or an earlier issue. Each card shows the template
-// filled with this issue's picked articles, so what you see is what you get.
+// gallery. The ready-made templates by kind (newsletters, events,
+// announcements, training, greetings, basic layouts), the designs the
+// editors saved, or an earlier issue. Each card shows the template filled
+// with this issue's picked articles, so what you see is what you get.
 
-import { builtInTemplates, startDesign } from '../newsletter/templates.js';
+import { builtInGroups, startDesign } from '../newsletter/templates.js';
 import { t } from '../texts.js';
 import { when, date } from '../format.js';
 import { h, clear, fill } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { modal } from '../ui/dialogs.js';
+import { segmented } from '../ui/controls.js';
 import { thumbnail } from './panels/sections.js';
 import { openPreview } from './preview.js';
 
 export function chooseTemplate({ api, issue, articles, closable, onChoose, backHref }) {
   let tab = 'builtin';
+  let kind = 'all';
   let saved = null;
   let past = null;
   const grid = h('div', { class: 'ch-grid' });
   const tabBar = h('div', { class: 'st-tabs ch-tabs', role: 'tablist' });
+  const filterBar = h('div', { class: 'ch-filter' });
 
   function card(name, description, source, meta) {
     const design = startDesign(source, issue, articles);
@@ -46,8 +50,20 @@ export function chooseTemplate({ api, issue, articles, closable, onChoose, backH
       },
     }, t(`chooser.tab.${name}`))));
     clear(grid);
+    clear(filterBar);
     if (tab === 'builtin') {
-      builtInTemplates().forEach((key) => grid.append(card(t(`template.${key}`), t(`template.${key}.lead`), { kind: 'builtin', key, recommended: key === 'eok' })));
+      const groups = builtInGroups();
+      filterBar.append(segmented(
+        [{ value: 'all', label: t('chooser.all') }, ...groups.map((g) => ({ value: g.group, label: t(`chooser.group.${g.group}`) }))],
+        kind, (v) => {
+          kind = v;
+          draw();
+        }, { label: t('chooser.filter') }));
+      for (const g of groups) {
+        if (kind !== 'all' && kind !== g.group) continue;
+        grid.append(h('h3', { class: 'ch-group' }, t(`chooser.group.${g.group}`)));
+        g.keys.forEach((key) => grid.append(card(t(`template.${key}`), t(`template.${key}.lead`), { kind: 'builtin', key, recommended: key === 'eok' })));
+      }
       return;
     }
     if (tab === 'saved') {
@@ -88,7 +104,7 @@ export function chooseTemplate({ api, issue, articles, closable, onChoose, backH
     body: h('div', { class: 'ch' },
       h('div', { class: 'ch-top' }, h('p', { class: 'ch-lead' }, t('chooser.lead')),
         backHref ? h('a', { class: 'btn ghost small', href: backHref }, t('chooser.back')) : null),
-      tabBar, grid),
+      tabBar, filterBar, grid),
     wide: true,
     className: 'md-chooser',
     closable,

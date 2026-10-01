@@ -184,6 +184,14 @@ function borderCss(look) {
     ? `${px(look.borderWidth)} ${look.borderStyle} ${look.borderColor}` : undefined;
 }
 
+const PICTURES = new Set(['image', 'video']);
+
+// How an article section can show its articles, set on the section.
+export const ARTICLE_LOOKS = ['plain', 'large', 'card', 'bar'];
+// An article on a card: a white box with round corners, inset from the
+// section's edges.
+const CARD_STYLE = { radius: 10, paddingTop: 22, paddingRight: 24, paddingBottom: 22, paddingLeft: 24, marginRight: 24, marginBottom: 14, marginLeft: 24 };
+
 // Every block is a one-cell table: its padding, background and border.
 function frame(block, inner, ctx, extra = {}) {
   const pad = blockPadding(block, ctx.styles);
@@ -192,11 +200,14 @@ function frame(block, inner, ctx, extra = {}) {
   // On a phone the side padding shrinks to the email's mobile padding, for
   // blocks that have more than that.
   const shrink = !ctx.inColumn && (pad.left > mobile || pad.right > mobile);
+  // A picture's border and rounded corners are the picture's own, drawn on
+  // the image; every other block draws them around itself.
+  const boxed = !PICTURES.has(block.type);
   const cell = {
     padding: `${px(pad.top)} ${px(pad.right)} ${px(pad.bottom)} ${px(pad.left)}`,
     'background-color': s.background || undefined,
-    border: borderCss(s),
-    'border-radius': s.radius ? px(s.radius) : undefined,
+    border: boxed ? borderCss(s) : undefined,
+    'border-radius': boxed && s.radius ? px(s.radius) : undefined,
     'text-align': extra.align && extra.align !== 'left' ? extra.align : undefined,
     ...(extra.cell || {}),
   };
@@ -236,6 +247,49 @@ function editable(name, inner, ctx, extraClass = '') {
 function placeholderBox(text, ctx, height = 120) {
   if (ctx.mode !== 'canvas') return '';
   return `<div class="nl-ph" style="min-height:${px(height)}">${escapeText(text)}</div>`;
+}
+
+// In a template's thumbnail, a grey shape where a picture will go, so the
+// template shows its layout before anyone has added pictures.
+function shape(width, height, radius = 3, colour = '#d5dddd') {
+  return `<div style="${css({
+    width: width ? px(width) : '100%', height: px(height), 'background-color': colour, 'border-radius': px(radius),
+    display: width ? 'inline-block' : 'block', 'margin-right': width ? '10px' : undefined,
+  })}"></div>`;
+}
+
+const PICTURE_ICON = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#8a9898" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="M21 16l-5-5L5 20"></path></svg>`;
+const PLAY_ICON = (size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="#8a9898" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M10 8.5l5 3.5-5 3.5z"></path></svg>`;
+
+// A picture not added yet, as a wireframe: a light box with a picture icon,
+// and in a preview a word saying what goes there. Only the dashboard shows
+// these; the email that leaves it has nothing in their place.
+function wireBox(width, height, { label = '', video = false, radius = 4 } = {}) {
+  const small = height < 70;
+  const icon = (video ? PLAY_ICON : PICTURE_ICON)(small ? 20 : 34);
+  return `<div style="${css({
+    width: width ? px(width) : '100%', height: px(height), 'box-sizing': 'border-box', 'background-color': '#eef2f2',
+    border: '1px dashed #b7c3c3', 'border-radius': px(radius), display: 'flex', 'flex-direction': 'column',
+    'align-items': 'center', 'justify-content': 'center', gap: '6px', overflow: 'hidden', margin: '0 auto',
+    color: '#5f6d6d', 'font-family': 'Helvetica, Arial, sans-serif', 'font-size': '13px', 'line-height': '1.3', 'text-align': 'center',
+  })}">${icon}${label && !small ? `<span>${escapeText(label)}</span>` : ''}</div>`;
+}
+
+// A thumbnail's or a preview's picture not added yet: the wireframe, with
+// its word only in a preview, where it can be read.
+function sketch(kind, block, ctx) {
+  const label = ctx.wireframe ? ctx.t(kind === 'video' ? 'preview.videoHere' : kind === 'logo' ? 'preview.logoHere' : 'preview.pictureHere') : '';
+  if (kind === 'logo') return wireBox(150, 48, { label });
+  if (kind === 'social') return [0, 1, 2].map(() => shape(30, 30, 15, '#b8c4c4')).join('');
+  const width = innerWidth(block, ctx);
+  return wireBox(0, emptyHeight(block, width, kind === 'video' ? 0.56 : 0.62, 40, 320), { label, video: kind === 'video', radius: Number(block.style.radius) || 4 });
+}
+
+// How tall a picture not added yet is drawn: in the shape the template
+// expects, like a wide banner, when it says one; otherwise a usual photo.
+function emptyHeight(block, width, ratio, min, max) {
+  const known = Number(block.naturalWidth) > 0 && Number(block.naturalHeight) > 0 ? Number(block.naturalHeight) / Number(block.naturalWidth) : ratio;
+  return Math.max(min, Math.min(max, Math.round(width * known)));
 }
 
 // ---------- the blocks ----------
@@ -280,8 +334,8 @@ const BLOCKS = {
     const look = { ...ctx.styles.image, ...block.style };
     const align = block.style.align || ctx.styles.image.align;
     if (!block.src) {
-      if (ctx.mode !== 'canvas') return '';
-      return frame(block, placeholderBox(ctx.t('canvas.addImage'), ctx, 160), ctx);
+      if (ctx.mode !== 'canvas') return ctx.sketch || ctx.wireframe ? frame(block, sketch('image', block, ctx), ctx) : '';
+      return frame(block, placeholderBox(ctx.t('canvas.addImage'), ctx, emptyHeight(block, innerWidth(block, ctx), 0.27, 60, 240)), ctx);
     }
     const width = imageWidth(block, innerWidth(block, ctx));
     const img = imageTag(block.src, block.alt, width, look, ctx, { align, fill: block.size === 'fill', mcEdit: `${block.id}_img` });
@@ -291,7 +345,7 @@ const BLOCKS = {
   logo(block, ctx) {
     const align = block.style.align || ctx.styles.logo.align;
     if (!block.src) {
-      if (ctx.mode !== 'canvas') return '';
+      if (ctx.mode !== 'canvas') return ctx.sketch || ctx.wireframe ? frame(block, sketch('logo', block, ctx), ctx, { align }) : '';
       return frame(block, placeholderBox(ctx.t('canvas.addLogo'), ctx, 60), ctx, { align });
     }
     const width = Math.min(Number(block.width) || 160, innerWidth(block, ctx));
@@ -300,7 +354,7 @@ const BLOCKS = {
   },
 
   button(block, ctx) {
-    return frame(block, buttonHtml(block.text, block.link, buttonLook(ctx.styles, block.style), ctx, 'button'), ctx);
+    return frame(block, buttonHtml(block.text, block.link, buttonLook(ctx.styles, block.look || {}), ctx, 'button'), ctx);
   },
 
   divider(block, ctx) {
@@ -319,7 +373,7 @@ const BLOCKS = {
   social(block, ctx) {
     const items = (block.items || []).filter((i) => ctx.mode === 'canvas' || cleanHref(i.url));
     if (!items.length) {
-      if (ctx.mode !== 'canvas') return '';
+      if (ctx.mode !== 'canvas') return ctx.sketch || ctx.wireframe ? frame(block, sketch('social', block, ctx), ctx, { align: block.style.align }) : '';
       return frame(block, placeholderBox(ctx.t('canvas.addSocial'), ctx, 40), ctx);
     }
     const align = block.style.align || 'left';
@@ -352,7 +406,7 @@ const BLOCKS = {
     const align = block.style.align || 'center';
     const look = { ...ctx.styles.image, ...block.style };
     if (!block.thumb || !block.thumb.src) {
-      if (ctx.mode !== 'canvas') return '';
+      if (ctx.mode !== 'canvas') return ctx.sketch || ctx.wireframe ? frame(block, sketch('video', block, ctx), ctx) : '';
       return frame(block, placeholderBox(ctx.t('canvas.addVideo'), ctx, 160), ctx);
     }
     const width = Math.min(Number(block.thumb.width) || innerWidth(block, ctx), innerWidth(block, ctx));
@@ -377,18 +431,33 @@ const BLOCKS = {
         'background-color': block.style.columnBackground || undefined,
       };
       return `<td${keep ? '' : ' class="nl-col"'}${reverse ? ' dir="ltr"' : ''} width="${width}" valign="${escapeAttr(block.valign || 'top')}"${attrs} style="${css(cell)}">${inner}${empty}</td>`;
-    }).join('');
-    const row = `<table ${TABLE} width="100%" style="width:100%;border-collapse:collapse;"><tr${reverse ? ' dir="rtl"' : ''}>${cells}</tr></table>`;
+    });
+    // Stacked in reverse on a phone: the cells are written last column first
+    // in a right-to-left table, so a computer still shows them in order and
+    // a phone stacks them as written.
+    const row = `<table ${TABLE} width="100%"${reverse ? ' dir="rtl"' : ''} style="width:100%;border-collapse:collapse;">`
+      + `<tr>${(reverse ? cells.reverse() : cells).join('')}</tr></table>`;
     return frame(block, row, ctx);
   },
 
   article(block, ctx) {
-    const width = innerWidth(block, ctx);
+    // How the section shows its articles: plain, with a large title, each on
+    // a card, or with its title in a coloured bar across the email.
+    const look = ARTICLE_LOOKS.includes(ctx.sectionStyle.articleLook) ? ctx.sectionStyle.articleLook : 'plain';
+    const colour = ctx.sectionStyle.articleColour;
+    const pad = blockPadding(block, ctx.styles);
+    const shown = look === 'card' ? { ...block, style: { ...CARD_STYLE, background: colour || '#ffffff', ...block.style } }
+      : look === 'bar' ? { ...block, style: { ...block.style, paddingTop: block.style.paddingTop ?? 0, paddingRight: 0, paddingBottom: 0, paddingLeft: 0 } }
+        : block;
+    const width = look === 'bar' ? Math.max(40, ctx.width - pad.left - pad.right) : innerWidth(shown, ctx);
     const parts = [];
+    const tag = look === 'large' ? 'h2' : 'h3';
     const title = escapeText(block.title || '');
     const titleInner = block.linkTitle && cleanHref(block.url)
       ? `<a href="${escapeAttr(cleanHref(block.url))}" target="_blank" style="${css({ ...linkCss(ctx), color: 'inherit' })}">${title}</a>` : title;
-    parts.push(editable('title', `<h3 class="nl-h3" style="${css(textCss('h3', ctx))}">${titleInner || '<br>'}</h3>`, ctx, 'nl-edit-line'));
+    const titleCss = look === 'bar' ? { ...textCss('h3', ctx), color: '#ffffff', margin: '0' } : textCss(tag, ctx);
+    const titleHtml = editable('title', `<${tag} class="nl-${tag}" style="${css(titleCss)}">${titleInner || '<br>'}</${tag}>`, ctx, 'nl-edit-line');
+    if (look !== 'bar') parts.push(titleHtml);
     if (block.summary && toText(block.summary)) parts.push(editable('summary', renderRich(block.summary, { ...ctx }), ctx));
     else if (ctx.mode === 'canvas') parts.push(editable('summary', `<p class="nl-p" style="${css({ ...textCss('p', ctx), margin: '0' })}"><br></p>`, ctx));
     if (block.source && !block.hideSource && toText(block.source)) {
@@ -400,20 +469,39 @@ const BLOCKS = {
     const text = parts.join('');
     const mc = ctx.mode === 'export' ? ` mc:edit="${escapeAttr(block.id)}"` : '';
     const img = block.image && block.image.src;
+    const layout = ['image-left', 'image-right', 'image-top'].includes(block.layout) ? block.layout : 'text';
+    const sideWidth = Math.floor(width / 3) - 12;
+    // The picture, or where it will go: a hint on the canvas and a grey
+    // shape in a template's thumbnail. An email without it is just text.
+    const pictureOf = (w, high) => {
+      if (img) return linked({ url: block.url, blank: true }, imageTag(block.image.src, block.image.alt, w, ctx.styles.image, ctx, { fill: true, mcEdit: `${block.id}_img` }));
+      if (ctx.mode === 'canvas') return placeholderBox(ctx.t('canvas.addArticleImage'), ctx, high);
+      if (ctx.sketch || ctx.wireframe) return wireBox(0, high, { label: ctx.wireframe ? ctx.t('preview.pictureHere') : '' });
+      return '';
+    };
+    const picture = layout === 'text' ? '' : pictureOf(layout === 'image-top' ? width : sideWidth, layout === 'image-top' ? Math.round(width * 0.45) : Math.round(sideWidth * 0.75));
     let inner;
-    if (img && (block.layout === 'image-left' || block.layout === 'image-right')) {
-      const imgWidth = Math.floor(width / 3) - 12;
-      const picture = linked({ url: block.url, blank: true }, imageTag(block.image.src, block.image.alt, imgWidth, ctx.styles.image, ctx, { fill: true, mcEdit: `${block.id}_img` }));
-      const imageCell = `<td class="nl-col" width="${imgWidth + 12}" valign="top" style="width:${px(imgWidth + 12)};padding:0 ${block.layout === 'image-left' ? '12px' : '0'} 0 ${block.layout === 'image-right' ? '12px' : '0'};">${picture}</td>`;
-      const textCell = `<td class="nl-col"${mc} valign="top" style="vertical-align:top;">${text}</td>`;
-      inner = `<table ${TABLE} width="100%" style="width:100%;"><tr>${block.layout === 'image-left' ? imageCell + textCell : textCell + imageCell}</tr></table>`;
-    } else if (img && block.layout === 'image-top') {
-      const picture = linked({ url: block.url, blank: true }, imageTag(block.image.src, block.image.alt, width, ctx.styles.image, ctx, { fill: true, mcEdit: `${block.id}_img` }));
+    if (picture && (layout === 'image-left' || layout === 'image-right')) {
+      // The picture comes first in the code either way, so a phone shows it
+      // above the text; a right-to-left table puts it on the right on a
+      // computer.
+      const right = layout === 'image-right';
+      const ltr = right ? ' dir="ltr"' : '';
+      const imageCell = `<td class="nl-col"${ltr} width="${sideWidth + 12}" valign="top" style="width:${px(sideWidth + 12)};padding:0 ${right ? '0' : '12px'} 0 ${right ? '12px' : '0'};">${picture}</td>`;
+      const textCell = `<td class="nl-col"${ltr}${mc} valign="top" style="vertical-align:top;">${text}</td>`;
+      inner = `<table ${TABLE} width="100%"${right ? ' dir="rtl"' : ''} style="width:100%;"><tr>${imageCell}${textCell}</tr></table>`;
+    } else if (picture && layout === 'image-top') {
       inner = `${picture}<table ${TABLE} width="100%" style="width:100%;"><tr><td${mc} style="padding-top:12px;">${text}</td></tr></table>`;
     } else {
       inner = `<table ${TABLE} width="100%" style="width:100%;"><tr><td${mc}>${text}</td></tr></table>`;
     }
-    return frame(block, inner, ctx);
+    if (look === 'bar') {
+      const bar = colour || '#4e8f27';
+      const barEdit = ctx.mode === 'export' ? ` mc:edit="${escapeAttr(block.id)}_title"` : '';
+      inner = `<table ${TABLE} width="100%" style="width:100%;"><tr><td class="nl-pad"${barEdit} bgcolor="${escapeAttr(bar)}" style="${css({ 'background-color': bar, padding: `14px ${px(pad.right)} 14px ${px(pad.left)}` })}">${titleHtml}</td></tr></table>`
+        + `<table ${TABLE} width="100%" style="width:100%;"><tr><td class="nl-pad" style="${css({ padding: `16px ${px(pad.right)} ${px(pad.bottom)} ${px(pad.left)}` })}">${inner}</td></tr></table>`;
+    }
+    return frame(shown, inner, ctx);
   },
 };
 
@@ -452,6 +540,24 @@ function renderBlock(block, ctx) {
   return draw ? draw(block, ctx) : '';
 }
 
+// UTF-8 text as base64, the same in the browser and in Node.
+function toBase64(text) {
+  let binary = '';
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+// A block of the email the dashboard saves. Where its preview differs, a
+// picture not added yet, the block as the preview shows it rides along in a
+// note around it. The preview inside the dashboard puts that in its place;
+// everything that leaves the dashboard drops the note and keeps the block.
+function savedBlock(block, ctx) {
+  const plain = renderBlock(block, ctx);
+  if (!ctx.markers) return plain;
+  const shown = renderBlock(block, { ...ctx, wireframe: true });
+  return shown === plain ? plain : `<!--dfp-preview:${toBase64(shown)}-->${plain}<!--/dfp-preview-->`;
+}
+
 // ---------- sections and the whole email ----------
 
 function renderSection(sec, ctx) {
@@ -459,7 +565,7 @@ function renderSection(sec, ctx) {
   const local = { ...ctx, sectionStyle: s, width: WIDTH };
   const sent = isSent(sec);
   if (!sent && ctx.mode !== 'canvas') return '';
-  let inner = sec.blocks.map((b) => renderBlock(b, local)).join('');
+  let inner = sec.blocks.map((b) => savedBlock(b, local)).join('');
   if (ctx.mode === 'canvas') {
     if (!sec.blocks.length) inner += `<div class="nl-ph nl-ph-section">${escapeText(ctx.t('canvas.emptySection'))}</div>`;
     if (isArticleSection(sec) && !sent) inner += `<div class="nl-note">${escapeText(ctx.t('canvas.noArticles'))}</div>`;
@@ -467,6 +573,9 @@ function renderSection(sec, ctx) {
   const content = s.contentBackground || ctx.styles.background.content;
   const border = s.borderWidth && s.borderStyle && s.borderStyle !== 'none'
     ? `${px(s.borderWidth)} ${s.borderStyle} ${s.borderColor || '#dde4e4'}` : undefined;
+  // Round corners need the table's borders kept apart; Outlook on Windows
+  // shows them square.
+  const radius = Math.max(0, Math.min(40, Number(s.radius) || 0));
   const cell = {
     padding: `${px(s.paddingTop || 0)} 0 ${px(s.paddingBottom || 0)} 0`,
     'border-top': border, 'border-bottom': border,
@@ -474,10 +583,19 @@ function renderSection(sec, ctx) {
   const attrs = ctx.mode === 'canvas'
     ? ` data-section-id="${escapeAttr(sec.id)}"${sent ? '' : ' data-unsent="true"'}` : '';
   const outerBg = s.background ? ` bgcolor="${escapeAttr(s.background)}"` : '';
+  // A name a link can jump to, like #tapahtumat, for a list of contents.
+  const anchor = /^[a-z0-9][a-z0-9-]{0,39}$/.test(s.anchor || '') ? `<a name="${s.anchor}" id="${s.anchor}"></a>` : '';
+  // White space above the section, in the email's own colour, so boxes of
+  // colour stand apart the way the association's newsletter shows them.
+  const space = Math.max(0, Math.min(80, Number(s.spaceAbove) || 0));
+  const gap = space ? '<tr><td align="center" valign="top" style="padding:0;">'
+    + `<table ${TABLE} class="nl-container" width="${WIDTH}" bgcolor="${escapeAttr(ctx.styles.background.content)}" style="${css({ width: px(WIDTH), 'max-width': px(WIDTH), 'background-color': ctx.styles.background.content })}">`
+    + `<tr><td height="${space}" style="height:${px(space)};font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>` : '';
   return `<table ${TABLE} width="100%" style="${css({ width: '100%', 'border-collapse': 'collapse', 'background-color': s.background || undefined })}"${outerBg}${attrs}>`
+    + gap
     + '<tr><td align="center" valign="top" style="padding:0;">'
-    + `<table ${TABLE} class="nl-container" width="${WIDTH}" bgcolor="${escapeAttr(content)}" style="${css({ width: px(WIDTH), 'max-width': px(WIDTH), 'background-color': content, 'border-collapse': 'collapse' })}">`
-    + `<tr><td valign="top" style="${css(cell)}">${inner}</td></tr></table>`
+    + `<table ${TABLE} class="nl-container" width="${WIDTH}" bgcolor="${escapeAttr(content)}" style="${css({ width: px(WIDTH), 'max-width': px(WIDTH), 'background-color': content, 'border-collapse': radius ? 'separate' : 'collapse', 'border-radius': radius ? px(radius) : undefined })}">`
+    + `<tr><td valign="top" style="${css(cell)}">${anchor}${inner}</td></tr></table>`
     + '</td></tr></table>';
 }
 
@@ -518,7 +636,10 @@ table[data-unsent="true"]{opacity:.55;}
 
 // The email's pieces: the CSS for its <style>, the page colour, and the
 // body. The editor's canvas keeps one document and swaps these into it.
-// options: { mode, t (texts for hints), mapSrc (image addresses) }
+// options: { mode, t (texts for hints), mapSrc (image addresses), sketch
+// (wireframes for pictures not added yet, for thumbnails), wireframe (the
+// same with words, for previews), markers (notes carrying the preview's
+// version of a block, in the email the dashboard saves) }
 export function renderParts(design, options = {}) {
   const mode = options.mode || 'export';
   const styles = design.styles;
@@ -530,6 +651,9 @@ export function renderParts(design, options = {}) {
     inColumn: false,
     t: options.t || ((key) => key),
     mapSrc: options.mapSrc || ((src) => src),
+    sketch: !!options.sketch,
+    wireframe: !!options.wireframe,
+    markers: !!options.markers && mode === 'export',
   };
   const page = styles.background.page;
   const margin = Math.max(0, Number(styles.background.margin) || 0);

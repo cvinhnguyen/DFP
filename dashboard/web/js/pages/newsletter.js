@@ -15,7 +15,7 @@ import { icon } from '../ui/icons.js';
 import { toast, confirmDialog, promptDialog } from '../ui/dialogs.js';
 import { mailchimpLine } from './newsletters.js';
 
-const SECTION_ORDER = ['own_news', 'events', 'highlights'];
+const SECTION_ORDER = ['own_news', 'events', 'member_news', 'highlights'];
 
 export function showNewsletter(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');

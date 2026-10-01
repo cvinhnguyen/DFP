@@ -116,6 +116,9 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
     draftButton.disabled = true;
     draftButton.textContent = t('handoff.exporting');
     try {
+      // The pictures this window started copying are waited for, so they
+      // go into Mailchimp once.
+      await copyPictures().catch(() => {});
       current = await api.post(`/api/issues/${current.id}/mailchimp`);
       toast(t('handoff.exportedToast'));
       onChanged(current);

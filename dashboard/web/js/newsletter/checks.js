@@ -1,8 +1,8 @@
 // What still needs a look before the newsletter goes to Mailchimp. Worked out
 // from the design, so the editor and the newsletter page say the same.
 //
-// Errors are what Mailchimp itself would refuse (no unsubscribe link,
-// placeholder text, no subject line) and what Kaisa asked for: a person reads
+// Errors are what Mailchimp itself would refuse (no unsubscribe link, no
+// postal address, placeholder text, no subject line) and what Kaisa asked for: a person reads
 // every AI-written text before it goes out. That reading is the "checked"
 // tick on each article; it is also what lets AI-written text go out without
 // an AI label under the EU's transparency rules, because a person has
@@ -20,6 +20,10 @@ import { PLACEHOLDERS } from './templates.js';
 export const GMAIL_CLIP = 102 * 1024;
 
 const MERGE_TAG = /\*\|[A-Z0-9_:]+\|\*/g;
+// Mailchimp requires the sender's postal address in every email; an email
+// coded outside its builder has to carry one of these, which Mailchimp fills
+// in from the audience's settings.
+export const ADDRESS_TAGS = ['*|LIST:ADDRESS|*', '*|LIST:ADDRESSLINE|*', '*|HTML:LIST_ADDRESS_HTML|*'];
 const DEFAULT_BUTTON = 'Painikkeen teksti';
 
 // A few words that say which block is meant: the text it starts with, an
@@ -78,7 +82,15 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
   add(errors, 'placeholders', sent.filter(({ block }) => hasPlaceholder(block)).map(({ block, sec }) => item(block, sec)));
 
   const links = collectLinks(design);
+  const mergeTags = new Set();
+  for (const { block } of sent) {
+    const text = [block.html, block.summary, block.source, block.text, block.title].filter(Boolean).join(' ');
+    (text.match(MERGE_TAG) || []).forEach((m) => mergeTags.add(m));
+  }
+  links.forEach((l) => (l.url.match(MERGE_TAG) || []).forEach((m) => mergeTags.add(m)));
+
   if (!links.some((l) => l.url === '*|UNSUB|*')) add(errors, 'unsubscribe', true);
+  if (!ADDRESS_TAGS.some((tag) => mergeTags.has(tag))) add(errors, 'address', true);
   if (!String(issue.subject || '').trim()) add(errors, 'subject', true);
 
   // A headline left in the original language, in a Finnish email.
@@ -105,7 +117,11 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
     if (missingAlt) images.push(item(block, sec));
   }
   add(warnings, 'alt', images);
-  add(warnings, 'emptyImages', sent.filter(({ block }) => (block.type === 'image' && !block.src) || (block.type === 'video' && !(block.thumb && block.thumb.src)))
+  // Every place a picture was meant to go and none has: the preview shows a
+  // wireframe there, and the email that goes out leaves it out.
+  add(warnings, 'emptyImages', sent.filter(({ block }) => ((block.type === 'image' || block.type === 'logo') && !block.src)
+    || (block.type === 'video' && !(block.thumb && block.thumb.src))
+    || (block.type === 'article' && block.layout && block.layout !== 'text' && !(block.image && block.image.src)))
     .map(({ block, sec }) => item(block, sec)));
 
   const emptyLinks = links.filter((l) => l.kind !== 'social' && (l.url === '' || l.url === '#'));
@@ -114,13 +130,6 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
     .map((l) => ({ blockId: l.blockId, sectionId: l.sectionId, snippet: l.text, type: 'link' })));
 
   if (size > GMAIL_CLIP) add(warnings, 'size', true, { kb: Math.round(size / 1024) });
-
-  const mergeTags = new Set();
-  for (const { block } of sent) {
-    const text = [block.html, block.summary, block.source, block.text, block.title].filter(Boolean).join(' ');
-    (text.match(MERGE_TAG) || []).forEach((m) => mergeTags.add(m));
-  }
-  links.forEach((l) => (l.url.match(MERGE_TAG) || []).forEach((m) => mergeTags.add(m)));
 
   return {
     errors,

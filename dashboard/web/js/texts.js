@@ -204,7 +204,8 @@ const fi = {
 
   'section.highlights': 'Nostoja kentältä',
   'section.events': 'Tapahtumat',
-  'section.own_news': 'Kuulumisia toimistolta',
+  'section.own_news': 'Ajankohtaista yhdistykseltä',
+  'section.member_news': 'Jäsenkuulumisia',
   'pick.add': 'Lisää uutiskirjeeseen',
   'pick.suggested': '{section} (ehdotus)',
   'pick.later': 'Myöhemmin',
@@ -426,7 +427,8 @@ const en = {
 
   'section.highlights': 'Highlights from the field',
   'section.events': 'Events',
-  'section.own_news': 'News from the office',
+  'section.own_news': 'News from the association',
+  'section.member_news': 'Member news',
   'pick.add': 'Add to the newsletter',
   'pick.suggested': '{section} (suggested)',
   'pick.later': 'Later',

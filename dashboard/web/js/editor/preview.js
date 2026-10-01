@@ -13,8 +13,9 @@ import { modal } from '../ui/dialogs.js';
 const checkedLinks = new Set();
 
 export function openPreview({ design, issue, from, onEditBlock, onSendTest, title }) {
-  const html = renderEmail(design, { mode: 'export', issue, t });
-  const size = byteSize(html);
+  // Pictures not added yet show as wireframes; the size is the email's own.
+  const html = renderEmail(design, { mode: 'export', issue, t, wireframe: true });
+  const size = byteSize(renderEmail(design, { mode: 'export', issue, t }));
   const links = collectLinks(design);
   let device = 'desktop';
 

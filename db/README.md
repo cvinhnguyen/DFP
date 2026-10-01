@@ -57,7 +57,7 @@ docker compose up -d
 | `sessions` | dashboard logins, as hashes of the cookie's token | `15-dashboard.sql` |
 | `login_links`, `invites` | the bot's one-time /login links and /invite codes, as hashes | `16-telegram-accounts.sql` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
-| `item_picks` | what the editors decided about each article: picked (for which issue and section), later, or not used | `17-newsletter.sql` |
+| `item_picks` | what the editors decided about each article: picked (for which issue and which of the four sections), later, or not used | `17-newsletter.sql`, `19` |
 | `images` | pictures uploaded in the newsletter editor | `17-newsletter.sql` |
 | `newsletter_templates` | templates and sections the editors saved, to start a newsletter from | `18-editor-mailchimp.sql` |
 | `issue_comments` | the editors' comments on a newsletter, each on one block or on the whole email | `18-editor-mailchimp.sql` |

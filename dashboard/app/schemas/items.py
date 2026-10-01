@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 View = Literal["review", "picked", "later", "dismissed", "used", "waiting", "skipped", "attention", "all"]
 Sort = Literal["collected", "published", "relevance"]
 # The newsletter sections an article can be picked into.
-Section = Literal["highlights", "events", "own_news"]
+Section = Literal["highlights", "events", "own_news", "member_news"]
 
 
 class Summary(BaseModel):
@@ -60,7 +60,7 @@ class Item(BaseModel):
     signals: list[SignalRef] = Field(description="Topics the signal detection linked to this article")
     can_request_summary: bool = Field(description="Whether POST /api/items/{id}/summarise would accept it")
     decision: str | None = Field(description="picked, later or dismissed, or null if nobody has decided")
-    pick_section: str | None = Field(description="For a picked article: highlights, events or own_news")
+    pick_section: str | None = Field(description="For a picked article: own_news, events, member_news or highlights")
     pick_issue_id: int | None
     pick_issue_name: str | None
     pick_issue_status: str | None = Field(description="draft, or sent once that newsletter has gone out")

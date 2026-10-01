@@ -7,13 +7,13 @@ from pydantic import BaseModel, Field
 
 # The parts of the newsletter the tool fills from collected articles. The
 # rest (the greeting, tips, the calendar) the editors write themselves.
-SectionKey = Literal["highlights", "events", "own_news"]
+SectionKey = Literal["highlights", "events", "own_news", "member_news"]
 DecisionKind = Literal["picked", "later", "dismissed"]
 
 
 class DecisionIn(BaseModel):
     decision: DecisionKind | None = Field(description="picked, later or dismissed; null takes the decision back")
-    section: SectionKey | None = Field(default=None, description="Where a picked article goes: highlights, events or own_news")
+    section: SectionKey | None = Field(default=None, description="Where a picked article goes: own_news, events, member_news or highlights")
     issue_id: int | None = Field(default=None, description="Which draft a picked article goes into; the current one when left out")
 
 

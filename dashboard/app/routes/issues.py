@@ -112,7 +112,7 @@ PREVIEW_POLICY = ("default-src 'none'; style-src 'unsafe-inline'; img-src 'self'
             responses={200: {"content": {"text/html": {}}}})
 def preview(issue_id: int):
     try:
-        document = issues.export_document(issue_id)
+        document = issues.export_document(issue_id, preview=True)
     except issues.NotFound:
         raise ApiError(*NOT_FOUND)
     if document is None:

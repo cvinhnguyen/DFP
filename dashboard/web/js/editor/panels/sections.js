@@ -18,7 +18,7 @@ let tab = 'manage';
 // to fit its box, however wide the box is.
 export function thumbnail(design, { height = 120 } = {}) {
   const WIDTH = 700;
-  const html = renderEmail(design, { mode: 'export', t: (k) => k });
+  const html = renderEmail(design, { mode: 'export', t: (k) => k, sketch: true });
   const frame = h('iframe', { class: 'thumb-frame', title: '', tabindex: '-1', 'aria-hidden': 'true', sandbox: 'allow-same-origin', loading: 'lazy' });
   frame.srcdoc = html;
   frame.style.width = `${WIDTH}px`;
@@ -146,7 +146,7 @@ export function createSectionsPanel({ store, dnd, root, context, actions, api })
   function prebuilt() {
     return PREBUILT_GROUPS.map((group) => h('div', { class: 'sp-group' },
       h('h3', { class: 'panel-subtitle' }, t(`sections.group.${group}`)),
-      h('div', { class: 'sp-cards' }, PREBUILT.filter((p) => p.group === group).map((p) => sectionCard(p.name, () => p.create(context.issue))))));
+      h('div', { class: 'sp-cards' }, PREBUILT.filter((p) => p.group === group).map((p) => sectionCard(p.name, () => p.create(context.issue, store.design))))));
   }
 
   async function loadSaved() {

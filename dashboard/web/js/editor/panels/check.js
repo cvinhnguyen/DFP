@@ -51,6 +51,14 @@ export function createCheckPanel({ store, root, context, actions }) {
         else d.sections.push(section('Alatunniste', 'footer', [footerBlock(FOOTER_HTML)]));
       }) }, t('check.addUnsub'));
     }
+    if (entry.code === 'address') {
+      return h('button', { type: 'button', class: 'btn small', onclick: () => store.change((d) => {
+        let footer = null;
+        d.sections.forEach((s) => s.blocks.forEach((b) => { if (b.type === 'footer') footer = b; }));
+        if (footer) footer.html += '<p>*|LIST:ADDRESSLINE|*</p>';
+        else d.sections.push(section('Alatunniste', 'footer', [footerBlock(FOOTER_HTML)]));
+      }) }, t('check.addAddress'));
+    }
     if (entry.code === 'subject') return h('button', { type: 'button', class: 'btn small', onclick: () => actions.editSubject() }, t('check.addSubject'));
     if (entry.code === 'unchecked' && entry.count > 1) {
       return h('button', { type: 'button', class: 'btn ghost small', onclick: async () => {

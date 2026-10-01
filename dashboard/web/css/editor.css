@@ -353,6 +353,10 @@
 .ch-meta { font-size: 12px !important; }
 .ch-use { margin-top: auto; padding-top: 8px; align-self: flex-start; text-decoration: none; font-weight: 600; }
 .ch-empty { color: var(--soft); grid-column: 1 / -1; }
+.ch-filter { margin: 0 0 6px; }
+.ch-filter .cf-seg { width: auto; display: inline-flex; }
+.ch-group { grid-column: 1 / -1; margin: 14px 0 -4px; font-size: 16px; }
+.ch-group:first-child { margin-top: 0; }
 
 /* ---------- comments ---------- */
 

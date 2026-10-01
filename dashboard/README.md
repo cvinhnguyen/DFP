@@ -60,28 +60,38 @@ Give them one with `password` rather than adding them again.
 
 ## From articles to Mailchimp
 
-1. Pick articles on Artikkelit. They go into the newest draft, marked "Uudet
-   valinnat tulevat tähän" on Uutiskirjeet. One is made and named after the
+1. Pick articles on Artikkelit, each into one of the newsletter's four
+   sections: Ajankohtaista yhdistykseltä (the association's own news and
+   projects), Tapahtumat, Jäsenkuulumisia and Nostoja kentältä. They go into
+   the newest draft, marked "Uudet valinnat tulevat tähän" on Uutiskirjeet. One is made and named after the
    month the first time it is needed, and an editor can start another with
    Luo uutiskirje.
 2. Open the newsletter. Its checklist shows what is done: the articles, the
    subject line and preview text, the content, and Mailchimp.
-3. Open the editor. The first time, it asks for a template: the
-   association's own layout, a simpler one, one with large pictures, an
-   empty one, a template saved earlier, or an earlier newsletter's look. The
-   picked articles go into their sections. A section with nothing picked is
-   left out.
+3. Open the editor. The first time, it asks for a template, grouped the way
+   Mailchimp's gallery is: newsletters, events, announcements and surveys,
+   membership, training, greetings, and basic layouts. The first two are the
+   association's own: the newsletter as it goes out from its Mailchimp today,
+   and the member letter. The others share their look. A template saved
+   earlier or an earlier newsletter's look works too. The picked articles go
+   into their sections, and a section with nothing picked is left out. Every
+   template is the association's own design: Mailchimp's templates are
+   Mailchimp's, and its terms forbid copying them.
 4. Edit. Drag a block or a ready-made section in, click any text to write,
    and use the toolbar for headings, bold, links, colours and merge tags such
    as the reader's first name. Pictures come from Kuvapankki, which keeps
    every picture uploaded, and a video link becomes its preview picture with
-   a play button. Styles sets the colours and fonts of the whole email.
-5. Check. Each article starts as its Finnish summary, outlined in amber
-   until someone ticks it as checked. Tarkistus lists what stops the email
-   (unchecked articles, placeholder text, no unsubscribe link, no subject
-   line) and what is worth a look (headlines left in English, pictures
+   a play button. Styles sets the colours and fonts of the whole email. A
+   section's settings say how its articles look: plain, with a large title,
+   on cards, or with the title in a coloured bar.
+5. Check. Each article starts as its Finnish summary, outlined in amber until
+   someone ticks it as checked. Tarkistus lists what stops the email (unchecked
+   articles, placeholder text, no unsubscribe link, no postal address, no
+   subject line) and what is worth a look (headlines left in English, pictures
    without a description, empty links, an email big enough for Gmail to cut
-   short). Clicking an item shows the block.
+   short). Clicking an item shows the block. Every preview shows a
+   wireframe, a grey box with a picture icon, where a picture has not been
+   added yet; the email that goes out leaves those places out.
 6. The editor saves by itself a moment after each change. If someone else
    saved in between, it asks which version stays. Tallenna ja poistu runs
    the check first and lists what is still open.
@@ -124,6 +134,18 @@ On Asetukset an admin sets:
 
 "Testaa yhteys" there asks Mailchimp again; otherwise the answer is kept for
 two minutes.
+
+Mailchimp requires the sender's postal address in every email, and an email
+made outside its builder has to carry it itself. The footers carry
+`*|LIST:ADDRESSLINE|*`, which Mailchimp fills in from the audience's
+settings, and Tarkistus says so if it goes missing.
+
+An email cannot hold a working form: most email programs will not send one,
+and Mailchimp's own advice is to link to a form on the web instead. So a
+sign-up in an email is a button to a form on the web: the membership page for
+joining, an event's own registration form, or Mailchimp's sign-up form
+(`*|LIST:SUBSCRIBE|*`), which the footers offer to someone who was forwarded
+the email.
 
 Images uploaded in the editor are resized for email and saved again, which
 drops the camera's metadata, including where a photo was taken. Each has an

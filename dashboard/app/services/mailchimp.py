@@ -22,6 +22,7 @@ import base64
 import hashlib
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -39,6 +40,10 @@ PLANS = ("essentials", "standard", "unknown")
 # not ask Mailchimp again.
 ACCOUNT_CACHE_SECONDS = 120
 _account_cache = {"at": 0.0, "value": None}
+# One copying of pictures at a time. Opening the way into Mailchimp starts
+# one, and creating the draft straight after starts another; without this
+# both would upload the same pictures before either had remembered them.
+_pictures_lock = threading.Lock()
 
 
 class MailchimpProblem(Exception):
@@ -137,6 +142,11 @@ def upload_pictures(html):
     """Copies every picture the email shows into Mailchimp's Content Studio,
     once each, and returns where Mailchimp keeps each: {"/media/<key>": url}."""
     account_id = _account_id()
+    with _pictures_lock:
+        return _upload_pictures(html, account_id)
+
+
+def _upload_pictures(html, account_id):
     mapping = {}
     for path in issues.local_images(html):
         data, mime = issues.picture_bytes(path)
@@ -197,7 +207,7 @@ def export_draft(issue_id, user_id):
         raise MailchimpProblem("not_designed_yet", "Open the newsletter in the editor and save it first.")
     s = _settings()
     audience_id, reply_to = _audience(s)
-    html = issue.html if issue.html.lstrip().lower().startswith("<!doctype") else issues.export_document(issue_id)
+    html = issues.without_notes(issue.html) if issue.html.lstrip().lower().startswith("<!doctype") else issues.export_document(issue_id)
     html = with_pictures(html, upload_pictures(html))
     payload = {
         "campaign_id": issue.mailchimp_campaign_id,
