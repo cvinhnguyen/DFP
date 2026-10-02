@@ -45,7 +45,7 @@ docker compose up -d
 |---|---|---|
 | `sources` | the sites, feeds, journals and archives we follow, and how each is read | `02-schema.sql`, `07`, `11`, `14`, `20` |
 | `items` | one row per article or thesis | `02-schema.sql`, `10`, `11`, `20` |
-| `summaries` | the Finnish summaries, each carrying its source link and publisher | `02-schema.sql`, `12`, `15` |
+| `summaries` | the Finnish summaries, each carrying its source link and publisher, a Finnish title and, for an event, its dates, time, place and deadline | `02-schema.sql`, `12`, `15`, `21` |
 | `collection_runs` | one row each time a source is checked, with any error | `02-schema.sql` |
 | `filter_runs` | what the filter skipped and the tokens that saved | `11-filter.sql` |
 | `signals`, `signal_items` | topics that keep coming up, and the articles behind each | `04-signals.sql` |
@@ -54,6 +54,7 @@ docker compose up -d
 | `item_tagging` | which summaries Finto AI has read | `20-topics.sql` |
 | `topics`, `topic_tags` | what the editors read by: a name, its YSO terms, and whether its theses come to Uudet | `20-topics.sql` |
 | `learning_tags` | the terms a thesis also needs before it joins a topic | `20-topics.sql` |
+| `item_views` | which articles each editor has opened, so each sees what is new to them | `21-titles-events.sql` |
 | `llm_usage` | every AI call: tokens, cost, time | `02-schema.sql`, `03`, `05` |
 | `llm_cache` | answers kept so the same text is never paid for twice | `03-llm.sql` |
 | `llm_pricing` | token prices per model | `03-llm.sql`, `06` |
@@ -89,6 +90,9 @@ The ones most code touches:
 - Which topics an article is in comes from the `item_topics` view, never
   from code: one of its tags is a term of the topic, and an item from a
   source with `learning_tag_required` also has a learning tag.
+- `summaries.version` says which instruction made the summary: 1 the summary
+  alone, 2 with the Finnish title and the event details. The summarisation
+  workflow makes version 1 summaries again when its queue leaves room.
 
 A signal must link to at least one article, which a trigger checks at commit,
 so write the signal and its links in one statement. There is a worked example

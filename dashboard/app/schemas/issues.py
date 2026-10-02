@@ -21,6 +21,8 @@ class PickedArticle(BaseModel):
     id: int
     section: str
     title: str
+    title_fi: str | None = Field(default=None, description="The AI's Finnish title, for an article in another language")
+    event_line: str | None = Field(default=None, description="For an event, the line it starts with: 17.9.2026 | Tampere")
     url: str
     publisher: str | None
     source: str | None

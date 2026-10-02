@@ -193,6 +193,25 @@ Keys, whenever no text box has the focus: J and K move down and up the list,
 1 to 4 add the article to a section, L keeps it for later, X leaves it out.
 After each decision a note offers to take it back.
 
+**Muokkaa aiheita** at the end of the topics opens the topics themselves: the
+list shows each topic, and the pane on the right renames it, follows it, adds
+YSO terms through the same search as the tags, or deletes it. Under the terms
+it says what the topic brings: its news from the last 30 days, and last
+week's theses with and without the learning rule, listed with links.
+
+An article in another language shows the Finnish title the AI wrote with the
+summary, with the original under it. For an event the AI picks out the
+dates, time, place and the last day to sign up, and the article shows the
+line the newsletter starts every event with, such as 21.–23.4.2027 |
+Tampere. An event goes to Tapahtumat by default, and once its day has passed
+it leaves Uudet. An article picked into the newsletter starts with the
+Finnish title, keeps the original in its source line, and in Tapahtumat
+starts with the event line.
+
+Each editor sees what is new to them: an article not opened yet has a dot,
+and Uudet says how many are unread. Opening one for a moment marks it read
+for that editor only.
+
 ## How the code is laid out
 
 Each folder holds one kind of work, so a change usually touches one place.

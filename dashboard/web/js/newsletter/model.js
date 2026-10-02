@@ -205,6 +205,14 @@ function escapeAttrSafe(url) {
   return /^https?:\/\//i.test(v) ? v.replace(/&/g, '&amp;').replace(/"/g, '%22').replace(/</g, '%3C').replace(/>/g, '%3E') : '';
 }
 
+// The text an article starts from: its Finnish summary, or the publisher's
+// own description. An event picked for Tapahtumat starts with the line the
+// association's newsletter starts every event with, 17.9.2026 | Tampere.
+function startingText(article, variant) {
+  const text = article.summary || article.excerpt || '';
+  return variant === 'event' && article.event_line ? `${article.event_line}\n\n${text}` : text;
+}
+
 export function articleBlock(article, section = article.section) {
   const variant = VARIANT_OF[section] || 'highlight';
   return base('article', {
@@ -215,11 +223,13 @@ export function articleBlock(article, section = article.section) {
     // it, and it is what lets AI-written text go out without an AI label.
     checked: false,
     lang: article.language || '',
+    // A title in another language starts in Finnish, as the AI wrote it. The
+    // source line keeps the original, which is what the publisher used.
     originalTitle: article.title || '',
-    title: article.title || '',
+    title: article.title_fi || article.title || '',
     url: article.url || '',
     linkTitle: false,
-    summary: fromText(article.summary || article.excerpt || ''),
+    summary: fromText(startingText(article, variant)),
     source: sourceLine(article, variant),
     button: { show: variant === 'event', text: 'Tutustu ja ilmoittaudu' },
     image: { src: '', alt: '', naturalWidth: 0, naturalHeight: 0 },

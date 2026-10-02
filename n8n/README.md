@@ -36,13 +36,23 @@ item. Workflows post there rather than writing to `items` directly, so one
 workflow with a bug cannot fill the shared database. See
 `docs/ingest-api.md`.
 
+`summarisation.json` asks for three things in one call, as JSON: the title
+in Finnish, the summary (Mikko's instruction, word for word, DM42-71), and
+for an event its dates, time, place and the last day to sign up (DM42-8). A
+date the article does not give stays empty. When the queue leaves room, each
+run also makes again up to 20 summaries made before this, newest first; those
+articles stay summarised meanwhile and nobody is told about them on Telegram
+again. The Telegram bot still writes its quick summary with the instruction
+alone, and the next run adds the title and the event details.
+
 `llm-call.json` caps how much a model may write, using
 `llm_max_output_tokens` in `app_settings`. When a model stops because it ran
 out of room rather than because it finished, the call comes back with
 `truncated: true` and the answer is not cached, because caching half a
 sentence would hand the same half sentence to every later caller.
 `llm_usage` records it too, so we can see whether the cap is set too low
-instead of guessing.
+instead of guessing. A caller that sends `json: true` gets an answer the
+model server keeps to JSON, which is how the summarisation gets its fields.
 
 `telegram-capture.json` lets an editor send a link to @DFP_Mazhar4_bot and
 have it join the same pipeline as crawled content. It asks Telegram for new

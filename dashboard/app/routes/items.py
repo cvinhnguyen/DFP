@@ -37,16 +37,17 @@ def list_items(
     sort: Sort = "collected",
     page: Annotated[int, Query(ge=1, le=10000)] = 1,
     per_page: Annotated[int, Query(ge=1, le=100)] = 25,
+    user: User = Depends(current_user),
 ):
-    return items.list_items(view, sort, page, per_page, q=q, source=source, language=language,
+    return items.list_items(view, sort, page, per_page, user.id, q=q, source=source, language=language,
                             signal=signal, section=section, date_from=date_from, date_to=date_to,
                             topic=topic, tag=tag, untopiced=untopiced)
 
 
 @router.get("/items/{item_id}", response_model=Item, summary="One article")
-def get_item(item_id: int):
+def get_item(item_id: int, user: User = Depends(current_user)):
     try:
-        return items.get_item(item_id)
+        return items.get_item(item_id, user.id)
     except items.NotFound:
         raise ApiError(404, "no_such_article", "There is no article with that number.")
 
@@ -57,7 +58,7 @@ def summarise_anyway(item_id: int, user: User = Depends(current_user)):
     """Queues a skipped or failed article for the AI. The summarisation
     workflow picks it up on its next run, within 15 minutes."""
     try:
-        return items.summarise_anyway(item_id, user.name)
+        return items.summarise_anyway(item_id, user.name, user.id)
     except items.NotFound:
         raise ApiError(404, "no_such_article", "There is no article with that number.")
     except items.CannotSummarise as e:
@@ -82,6 +83,16 @@ def decide(item_id: int, body: DecisionIn, user: User = Depends(current_user)):
         raise ApiError(404, "no_such_issue", "There is no newsletter with that number.")
     except picks.AlreadyUsed as e:
         raise ApiError(409, "already_used", str(e), issue=e.issue_name)
+
+
+@router.post("/items/{item_id}/seen", status_code=204, summary="The editor opened an article")
+def mark_seen(item_id: int, user: User = Depends(current_user)):
+    """After this the article is no longer new to this editor. The other
+    editors still see it as new until they open it."""
+    try:
+        items.mark_seen(item_id, user.id)
+    except items.NotFound:
+        raise ApiError(404, "no_such_article", "There is no article with that number.")
 
 
 @router.post("/items/{item_id}/tags", response_model=Item, summary="Add a tag to an article",

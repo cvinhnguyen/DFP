@@ -76,6 +76,27 @@ function stateChip(item) {
   return '';
 }
 
+// 2026-11-02 as 2.11.2026.
+function fiDay(iso) {
+  const [y, m, d] = String(iso || '').split('-').map(Number);
+  return y && m && d ? `${d}.${m}.${y}` : '';
+}
+
+// The event's dates, and its time, from the line the API makes: the part
+// before " | " when the article gave a date.
+function eventWhen(event) {
+  return event && event.starts && event.line ? event.line.split(' | ')[0] : '';
+}
+
+// In the list: the dates, or the deadline when only that is known.
+function eventChip(item) {
+  const e = item.event;
+  if (!e) return '';
+  const when = eventWhen(e).split(' klo ')[0];
+  const text = when || (e.deadline ? t('row.deadline', { date: fiDay(e.deadline) }) : '');
+  return text ? `<span class="chip-when">${esc(text)}</span>` : '';
+}
+
 function topicDots(item, topics) {
   return item.topics.map((x) => {
     const found = topics.get(x.id);
@@ -90,10 +111,14 @@ export function articleRow(item, { selected = false, topics = new Map() } = {}) 
   let tags = item.tags.slice(0, 3).map((g) => `<span class="tg${g.origin === 'signal' ? ' sig' : ''}">${esc(g.label)}</span>`).join('');
   if (!tags && item.tags_pending) tags = `<span class="tg none">${esc(t('row.tagsComing'))}</span>`;
   else if (!tags && (item.status === 'summarised' || item.from_archive)) tags = `<span class="tg none">${esc(t('row.noTags'))}</span>`;
+  // A Finnish title from the AI is shown in its own language, Finnish.
+  const title = item.title_fi
+    ? `<span lang="fi">${esc(item.title_fi)}</span>`
+    : `<span${langAttr(item.language)}>${esc(item.title)}</span>`;
   return `
-    <button type="button" class="ar-row${item.decision ? ' decided' : ''}" data-id="${item.id}" aria-current="${selected}">
-      <span class="ar-row-title">${langBadge(item)}<span${langAttr(item.language)}>${esc(item.title)}</span></span>
-      <span class="ar-row-meta"><span class="ar-row-by">${meta}</span><span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
+    <button type="button" class="ar-row${item.decision ? ' decided' : ''}${item.seen ? '' : ' unseen'}" data-id="${item.id}" aria-current="${selected}">
+      <span class="ar-row-title">${langBadge(item)}${title}</span>
+      <span class="ar-row-meta"><span class="ar-row-by">${meta}</span>${eventChip(item)}<span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
       ${tags ? `<span class="ar-row-tags">${tags}</span>` : ''}
     </button>`;
 }
@@ -130,12 +155,30 @@ function chips(item, topics) {
     <div class="rd-chips"><span class="rd-lbl">${esc(t('reader.tags'))}</span>${tagChips}
       ${item.tags_pending ? `<span class="rd-soft">${esc(t('reader.tagsComing'))}</span>` : ''}
       <span class="addtag">
-        <input type="text" id="addtag" autocomplete="off" spellcheck="false" maxlength="100"
+        <input type="text" id="addtag" data-yso="tag" autocomplete="off" spellcheck="false" maxlength="100"
                placeholder="+ ${esc(t('reader.addTag'))}" aria-label="${esc(t('reader.addTag'))}"
                role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="addtag-list">
         <span class="addtag-list" id="addtag-list" role="listbox" hidden></span>
       </span>
     </div>`;
+}
+
+// When, where and the deadline, and the line the newsletter will start the
+// event with. The AI read these out of the article, so they are marked so.
+function eventBox(item) {
+  const e = item.event;
+  if (!e) return '';
+  const rows = [
+    eventWhen(e) && [t('event.when'), eventWhen(e)],
+    e.place && [t('event.where'), e.place],
+    e.deadline && [t('event.deadline'), fiDay(e.deadline)],
+  ].filter(Boolean);
+  return `
+    <dl class="rd-event">
+      ${rows.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join('')}
+      ${e.line ? `<dd class="rd-event-line">${esc(t('event.line'))}: <strong>${esc(e.line)}</strong></dd>` : ''}
+      <dd class="rd-event-note">${esc(t('event.byAi'))}</dd>
+    </dl>`;
 }
 
 function signalNotes(item) {
@@ -262,8 +305,12 @@ export function articleReader(item, ctx) {
         <button type="button" class="btn ghost small" data-act="next"${ctx.canNext ? '' : ' disabled'}>${esc(t('reader.next'))} ›</button>
       </span>
     </div>
-    <h2 class="rd-title"${langAttr(item.language)}>${esc(item.title)}</h2>
+    ${item.title_fi
+    ? `<h2 class="rd-title" lang="fi">${esc(item.title_fi)}</h2>
+       <p class="rd-original">${esc(t('reader.originalTitle'))}: <span${langAttr(item.language)}>${esc(item.title)}</span>. ${esc(t('reader.titleByAi'))}</p>`
+    : `<h2 class="rd-title"${langAttr(item.language)}>${esc(item.title)}</h2>`}
     <p class="rd-meta">${meta}</p>
+    ${eventBox(item)}
     ${chips(item, ctx.topics)}
     ${signalNotes(item)}
     <div class="rd-body">${body(item)}</div>

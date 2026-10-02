@@ -1,6 +1,6 @@
 """What the article endpoints return."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -34,6 +34,15 @@ class SignalRef(BaseModel):
     reason: str | None = Field(default=None, description="Why signal detection flagged it, in Finnish")
 
 
+class EventInfo(BaseModel):
+    starts: date | None = Field(description="The first day, as the article gives it")
+    ends: date | None = Field(description="The last day, for an event of several days")
+    time: str | None = Field(description="The time as written, 13–16")
+    place: str | None = Field(description="The city, or Verkko for an online event")
+    deadline: date | None = Field(description="The last day to sign up or to send a proposal")
+    line: str | None = Field(description="The newsletter's event line: 17.9.2026 | Tampere")
+
+
 class TagRef(BaseModel):
     id: int
     label: str = Field(description="The YSO term's Finnish name")
@@ -56,6 +65,7 @@ class Copy(BaseModel):
 class Item(BaseModel):
     id: int
     title: str
+    title_fi: str | None = Field(default=None, description="The AI's Finnish title, for an article in another language")
     url: str
     publisher: str | None = Field(description="Who wrote it. Printed with the summary in the newsletter.")
     source_id: int | None
@@ -86,6 +96,8 @@ class Item(BaseModel):
     topics: list[TopicRef] = Field(description="The topics its tags put it in")
     needs_learning_tag: bool = Field(description="An archive item with no learning tag, so in no topic")
     tags_pending: bool = Field(description="Its tags are still being made, within 15 minutes")
+    event: EventInfo | None = Field(default=None, description="For an event: when, where and the last day to sign up")
+    seen: bool = Field(default=False, description="The editor asking has opened it")
     can_request_summary: bool = Field(description="Whether POST /api/items/{id}/summarise would accept it")
     decision: str | None = Field(description="picked, later or dismissed, or null if nobody has decided")
     pick_section: str | None = Field(description="For a picked article: own_news, events, member_news or highlights")
@@ -99,6 +111,7 @@ class Item(BaseModel):
 
 class Counts(BaseModel):
     inbox: int
+    unseen: int = Field(description="Of those in inbox, the ones the editor asking has not opened")
     review: int
     picked: int
     later: int

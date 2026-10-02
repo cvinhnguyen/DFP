@@ -69,10 +69,10 @@ export function createBlocksPanel({ store, dnd, root, context, actions }) {
     const el = h('div', { class: 'bp-article', tabindex: '0', role: 'button', title: t('blocks.articleHint') },
       h('span', { class: 'bp-article-icon', html: icon('article', 18) }),
       h('span', { class: 'bp-article-text' },
-        h('span', { class: 'bp-article-title' }, article.title),
+        h('span', { class: 'bp-article-title' }, article.title_fi || article.title),
         h('span', { class: 'bp-article-meta' }, `${SECTION_NAMES[article.section] || ''}${article.publisher ? ` · ${article.publisher}` : ''}`)));
     el.addEventListener('pointerdown', (event) => dnd.begin(event, {
-      kind: 'new', blockType: 'article', label: article.title.slice(0, 40), iconName: 'article',
+      kind: 'new', blockType: 'article', label: (article.title_fi || article.title).slice(0, 40), iconName: 'article',
       create: () => articleBlock(article, article.section),
       onClick: () => placeOne(article),
     }));

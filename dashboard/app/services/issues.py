@@ -22,6 +22,7 @@ from ..queries import images as image_queries
 from ..queries import issues as queries
 from ..queries import settings
 from ..schemas.issues import Issue, IssueSummary, PickedArticle
+from . import events
 from .collection import HELSINKI
 
 WEB = Path(__file__).resolve().parent.parent.parent / "web"
@@ -89,7 +90,9 @@ def get(issue_id):
     changed = bool(found["mailchimp_exported_hash"]) and found["mailchimp_exported_hash"] != content_hash(found)
     return Issue(**found, current=found["id"] == current, mailchimp_changed=changed,
                  mailchimp_url=mailchimp_url(found["mailchimp_web_id"]),
-                 articles=[PickedArticle(**a) for a in queries.articles(issue_id)])
+                 articles=[PickedArticle(**a, event_line=events.line(a["event_starts"], a["event_ends"],
+                                                                     a["event_time"], a["event_place"]))
+                           for a in queries.articles(issue_id)])
 
 
 def summaries():

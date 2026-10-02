@@ -5,6 +5,7 @@ that needs several statements to succeed or fail together opens a
 transaction itself, as queries/items.request_summary does.
 """
 
+from psycopg.errors import UniqueViolation  # noqa: F401  (for the queries)
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -36,6 +37,7 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("21-titles-events.sql", "SELECT to_regclass('public.item_views') IS NOT NULL AS ok"),
     ("20-topics.sql", "SELECT to_regclass('public.item_topics') IS NOT NULL AS ok"),
     ("19-member-news.sql", """SELECT pg_get_constraintdef(oid) LIKE '%member_news%' AS ok
                               FROM pg_constraint WHERE conname = 'item_picks_section_check'"""),

@@ -58,7 +58,8 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
   return `
     <button type="button" class="side-close btn ghost small" data-act="side">${esc(t('side.close'))}</button>
     <div class="side-group">
-      ${entry('inbox', current, `<span class="side-name">${esc(t('place.inbox'))}</span>`, c.inbox, { extra: ' big' })}
+      ${entry('inbox', current, `<span class="side-name">${esc(t('place.inbox'))}</span>${c.unseen
+        ? `<span class="side-unseen">${esc(t('side.unseen', { n: number(c.unseen) }))}</span>` : ''}`, c.inbox, { extra: ' big' })}
       ${entry('picked', current, `<span class="side-name">${esc(t('view.picked'))}</span>`, c.picked, { muted: true })}
       ${entry('later', current, `<span class="side-name">${esc(t('view.later'))}</span>`, c.later, { muted: true })}
       ${entry('dismissed', current, `<span class="side-name">${esc(t('view.dismissed'))}</span>`, c.dismissed, { muted: true })}
@@ -73,6 +74,7 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
       ${other.map((x) => topicRow(x, current)).join('')}
       <div class="side-row">${entry('none', current, `<span class="dot" aria-hidden="true"></span><span class="side-name">${esc(t('side.none'))}</span>`,
         untopiced ? untopiced.new : null, { muted: true, extra: ' off' })}</div>
+      ${entry('topics', current, `<span class="side-name">${esc(t('side.editTopics'))} ›</span>`, null, { extra: ' quiet' })}
     </div>
     <details class="side-group side-more"${sourceOpen ? ' open' : ''}>
       <summary class="side-h">${esc(t('side.sources'))}</summary>

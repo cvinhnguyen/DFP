@@ -9,10 +9,13 @@ import { t, tn } from '../texts.js';
 import { esc, number, finnishDay } from '../format.js';
 import { articleRow, articleReader, dayHeading, termOptions, SECTIONS } from '../components/article.js';
 import { sideHtml } from '../components/side.js';
+import { topicRows, topicEditor } from '../components/topics.js';
 import { statusLines } from '../components/status.js';
+import { confirmDialog } from '../ui/dialogs.js';
 
 // The lists of the editors' own decisions and of what the AI did. A topic, a
 // tag, a source or "no topic" is a place too: topic:3, tag:12, source:5, none.
+// topics is where the topics themselves are edited.
 const VIEWS = ['inbox', 'picked', 'later', 'dismissed', 'used', 'waiting', 'skipped', 'attention', 'all'];
 const SORTS = ['collected', 'published', 'relevance'];
 const DEFAULTS = { place: 'inbox', q: '', sort: 'collected', item: '' };
@@ -24,7 +27,7 @@ const NARROW = window.matchMedia('(max-width: 760px)');
 function parsePlace(text) {
   const [kind, raw, extra] = String(text || '').split(':');
   if (extra === undefined && raw === undefined && VIEWS.includes(kind)) return { kind: 'view', view: kind };
-  if (kind === 'none' && raw === undefined) return { kind: 'none' };
+  if ((kind === 'none' || kind === 'topics') && raw === undefined) return { kind };
   const id = Number(raw);
   if (extra === undefined && ['topic', 'tag', 'source'].includes(kind) && Number.isInteger(id) && id > 0) return { kind, id };
   return { kind: 'view', view: 'inbox' };
@@ -32,7 +35,8 @@ function parsePlace(text) {
 
 function placeKey(place) {
   if (place.kind === 'view') return place.view;
-  return place.kind === 'none' ? 'none' : `${place.kind}:${place.id}`;
+  if (place.kind === 'none' || place.kind === 'topics') return place.kind;
+  return `${place.kind}:${place.id}`;
 }
 
 function placeParams(place) {
@@ -137,7 +141,12 @@ export function showArticles(root) {
   let searchTimer = null;
   let toastTimer = null;
   let sideTimer = null;
-  const terms = { timer: null, latest: 0, list: [], active: -1 };
+  // The YSO search under the box being typed in: a tag for the article, or a
+  // term for the topic being edited.
+  const terms = { timer: null, latest: 0, list: [], active: -1, input: null };
+  // The topics view: what the topic being edited would bring.
+  const tv = { preview: null, showDropped: false, creating: false };
+  let seenTimer = null;
 
   root.classList.add('wide');
   root.innerHTML = layout();
@@ -183,6 +192,8 @@ export function showArticles(root) {
     if (filters.status === 'fulfilled' && filters.value) side.sources = filters.value.sources;
     renderSide();
     renderHead();
+    // Never while a new topic's name is being typed.
+    if (place.kind === 'topics' && !tv.creating) renderRows();
   }
 
   // The numbers in the column catch up shortly after a decision, in one go
@@ -197,6 +208,7 @@ export function showArticles(root) {
   function placeName() {
     if (place.kind === 'view') return place.view === 'inbox' ? t('place.inbox') : t(`view.${place.view}`);
     if (place.kind === 'none') return t('place.none');
+    if (place.kind === 'topics') return t('place.topics');
     if (place.kind === 'topic') return topicsById.get(place.id)?.name ?? '…';
     if (place.kind === 'tag') return t('place.tag', { tag: tagLabel ?? '…' });
     return side.sources.find((s) => s.id === place.id)?.name ?? '…';
@@ -205,6 +217,7 @@ export function showArticles(root) {
   function placeNote() {
     if (place.kind === 'view') return place.view === 'inbox' ? t('place.note.inbox', { days: side.windowDays }) : t(`note.${place.view}`);
     if (place.kind === 'none') return t('place.note.none');
+    if (place.kind === 'topics') return t('place.note.topics');
     if (place.kind === 'topic') {
       const topic = topicsById.get(place.id);
       return topic ? t('place.note.topic', { terms: topic.tags.map((x) => x.label).join(', ') }) : '';
@@ -215,8 +228,9 @@ export function showArticles(root) {
 
   function renderHead() {
     $('place-name').textContent = placeName();
-    $('place-count').textContent = tn('count', total, { n: number(total) });
+    $('place-count').textContent = place.kind === 'topics' ? '' : tn('count', total, { n: number(total) });
     $('place-note').textContent = placeNote();
+    $('tools').hidden = place.kind === 'topics';
   }
 
   function dayOf(item) {
@@ -235,6 +249,10 @@ export function showArticles(root) {
   }
 
   function renderRows() {
+    if (place.kind === 'topics') {
+      rowsEl.innerHTML = topicRows(side.topics, Number(state.item) || null, { creating: tv.creating });
+      return;
+    }
     if (!rows.length) {
       rowsEl.innerHTML = emptyHtml();
       return;
@@ -258,10 +276,22 @@ export function showArticles(root) {
   }
 
   function current() {
+    if (place.kind === 'topics') return null;
     return rows.find((r) => String(r.id) === state.item) || null;
   }
 
+  function currentTopic() {
+    return place.kind === 'topics' ? side.topics.find((x) => String(x.id) === state.item) || null : null;
+  }
+
   function renderReader({ focus = false } = {}) {
+    if (place.kind === 'topics') {
+      const topic = currentTopic();
+      read.innerHTML = topic
+        ? topicEditor(topic, tv.preview, { showDropped: tv.showDropped })
+        : `<p class="ar-empty-read">${esc(t(side.topics.length ? 'topic.pick' : 'topic.none'))}</p>`;
+      return;
+    }
     const item = current();
     if (!item) {
       read.innerHTML = rows.length ? `<p class="ar-empty-read">${esc(t('reader.empty'))}</p>` : '';
@@ -286,6 +316,29 @@ export function showArticles(root) {
     if (!id) ar.classList.remove('reading');
     const row = rowsEl.querySelector(`.ar-row[data-id="${state.item}"]`);
     if (row && scroll) row.scrollIntoView({ block: 'nearest' });
+    seeLater(id);
+  }
+
+  // An article open for a moment is no longer new to this editor. Going
+  // quickly past one with J does not count.
+  function seeLater(id) {
+    clearTimeout(seenTimer);
+    const item = rows.find((r) => String(r.id) === String(id));
+    if (!item || item.seen) return;
+    seenTimer = setTimeout(async () => {
+      if (state.item !== String(item.id)) return;
+      try {
+        await api.post(`/api/items/${item.id}/seen`);
+      } catch {
+        return;
+      }
+      item.seen = true;
+      rowsEl.querySelector(`.ar-row[data-id="${item.id}"]`)?.classList.remove('unseen');
+      if (side.counts && side.counts.unseen > 0 && !item.decision) {
+        side.counts.unseen -= 1;
+        renderSide();
+      }
+    }, 800);
   }
 
   // Opens an article the editor chose. On a phone the article takes the
@@ -299,6 +352,7 @@ export function showArticles(root) {
   }
 
   async function loadList({ append = false, keep = null } = {}) {
+    if (place.kind === 'topics') return loadTopics();
     const mine = ++latest;
     const nextPage = append ? page + 1 : 1;
     rowsEl.setAttribute('aria-busy', 'true');
@@ -341,7 +395,154 @@ export function showArticles(root) {
     renderHead();
     rowsEl.innerHTML = '';
     read.innerHTML = '';
-    loadList();
+    show();
+  }
+
+  // The place's list: articles, or in the topics view the topics.
+  function show(options = {}) {
+    if (place.kind === 'topics') return loadTopics();
+    return loadList(options);
+  }
+
+  // ---------- editing topics ----------
+
+  async function loadTopics() {
+    tv.creating = false;
+    await loadSide().catch(() => {});
+    renderHead();
+    renderRows();
+    const wanted = side.topics.find((x) => String(x.id) === state.item) || (!NARROW.matches && side.topics[0]);
+    if (wanted) selectTopic(wanted.id, { open: false });
+    else renderReader();
+  }
+
+  async function selectTopic(id, { open = true } = {}) {
+    state.item = String(id);
+    writeState(state);
+    tv.preview = null;
+    tv.showDropped = false;
+    rowsEl.querySelectorAll('.tp-row').forEach((row) => row.setAttribute('aria-current', String(row.dataset.topicRow === state.item)));
+    renderReader();
+    if (open && NARROW.matches) {
+      ar.classList.add('reading');
+      window.scrollTo({ top: ar.getBoundingClientRect().top + window.scrollY - 8 });
+    }
+    await loadPreview();
+  }
+
+  async function loadPreview() {
+    const id = state.item;
+    try {
+      const found = await api.get(`/api/topics/${id}/preview`);
+      if (place.kind !== 'topics' || state.item !== id) return;
+      tv.preview = found;
+      renderReaderKeepingFocus();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  // Draws the editor again, then puts the focus and the text being typed
+  // back where they were, so a count arriving never interrupts typing.
+  function renderReaderKeepingFocus() {
+    const focused = document.activeElement && read.contains(document.activeElement) ? document.activeElement.id : null;
+    const typed = focused ? document.getElementById(focused)?.value : null;
+    renderReader();
+    if (!focused) return;
+    const again = document.getElementById(focused);
+    if (!again) return;
+    if (typed !== null && typed !== undefined && 'value' in again) again.value = typed;
+    again.focus({ preventScroll: true });
+  }
+
+  function putTopic(updated) {
+    const at = side.topics.findIndex((x) => x.id === updated.id);
+    if (at >= 0) side.topics[at] = updated;
+    topicsById = new Map(side.topics.map((x) => [x.id, x]));
+  }
+
+  async function createTopic(name) {
+    try {
+      const made = await api.post('/api/topics', { name });
+      tv.creating = false;
+      await loadSide();
+      await selectTopic(made.id);
+      toast(t('topic.created', { name: made.name }));
+      read.querySelector('#addterm')?.focus();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function changeTopic(changes) {
+    const topic = currentTopic();
+    if (!topic) return;
+    try {
+      const updated = await api.patch(`/api/topics/${topic.id}`, changes);
+      putTopic(updated);
+      renderRows();
+      refreshSide();
+      if ('name' in changes) {
+        const note = read.querySelector('#tp-saved');
+        if (note) note.hidden = false;
+      }
+      if ('followed' in changes) {
+        toast(t(changes.followed ? 'toast.followed' : 'toast.unfollowed', { topic: updated.name }));
+        loadPreview();
+      }
+    } catch (e) {
+      toast(e.message);
+      renderReader();
+    }
+  }
+
+  async function addTerm(uri) {
+    const topic = currentTopic();
+    if (!topic || !uri) return;
+    try {
+      const updated = await api.post(`/api/topics/${topic.id}/terms`, { uri });
+      putTopic(updated);
+      const added = updated.tags.find((g) => g.uri === uri);
+      renderRows();
+      renderReader();
+      toast(t('topic.termAdded', { term: added ? added.label : '' }));
+      read.querySelector('#addterm')?.focus();
+      refreshSide();
+      loadPreview();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function removeTerm(tagId) {
+    const topic = currentTopic();
+    const term = topic?.tags.find((g) => String(g.id) === String(tagId));
+    if (!topic || !term) return;
+    try {
+      putTopic(await api.del(`/api/topics/${topic.id}/terms/${term.id}`));
+      renderRows();
+      renderReader();
+      toast(t('topic.termRemoved', { term: term.label }), () => addTerm(term.uri));
+      refreshSide();
+      loadPreview();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  async function deleteTopic() {
+    const topic = currentTopic();
+    if (!topic) return;
+    if (!(await confirmDialog(t('topic.deleteConfirm', { name: topic.name }), { danger: true, okLabel: t('topic.delete') }))) return;
+    try {
+      await api.del(`/api/topics/${topic.id}`);
+      toast(t('topic.deleted', { name: topic.name }));
+      state.item = '';
+      ar.classList.remove('reading');
+      await loadTopics();
+    } catch (e) {
+      toast(e.message);
+    }
   }
 
   async function move(step) {
@@ -498,9 +699,11 @@ export function showArticles(root) {
     }
   }
 
-  // The "add a tag" box asks YSO as the editor types, through the dashboard.
+  // The boxes for a tag or a topic term ask YSO as the editor types, through
+  // the dashboard. Whichever box is being typed in gets the list under it.
   function termsBox() {
-    return { input: read.querySelector('#addtag'), list: read.querySelector('#addtag-list') };
+    const input = terms.input && read.contains(terms.input) ? terms.input : null;
+    return { input, list: input ? read.querySelector(`#${input.id}-list`) : null };
   }
 
   function showTerms() {
@@ -548,10 +751,12 @@ export function showArticles(root) {
   }
 
   function chooseTerm(uri) {
-    const input = termsBox().input;
+    const { input } = termsBox();
+    const kind = input ? input.dataset.yso : 'tag';
     hideTerms();
     if (input) input.value = '';
-    addTag(uri);
+    if (kind === 'term') addTerm(uri);
+    else addTag(uri);
   }
 
   // ---------- the status line ----------
@@ -611,7 +816,7 @@ export function showArticles(root) {
       checking = null;
       showStatus({ done: added ? tn('status.checkDone', added) : t('status.checkDoneNothing') });
       loadSide({ sources: true }).catch(() => {});
-      loadList({ keep: state.item });
+      show({ keep: state.item });
     }, 3000);
   }
 
@@ -641,10 +846,14 @@ export function showArticles(root) {
       chooseTerm(option.dataset.uri);
       return;
     }
-    const target = event.target.closest('[data-place], [data-act], .ar-row');
+    const target = event.target.closest('[data-place], [data-act], [data-topic-row], .ar-row');
     if (!target) return;
     if (target.dataset.place) {
       goPlace(target.dataset.place);
+      return;
+    }
+    if (target.dataset.topicRow) {
+      selectTopic(Number(target.dataset.topicRow));
       return;
     }
     if (target.classList.contains('ar-row')) {
@@ -669,7 +878,19 @@ export function showArticles(root) {
     else if (act === 'unfollow') follow(target.dataset.topic, false);
     else if (act === 'side') ar.classList.toggle('side-open');
     else if (act === 'more') loadList({ append: true, keep: state.item });
-    else if (act === 'retry') loadList();
+    else if (act === 'retry') show();
+    else if (act === 'topic-new') {
+      tv.creating = true;
+      renderRows();
+      rowsEl.querySelector('#tp-new-name')?.focus();
+    } else if (act === 'topic-new-cancel') {
+      tv.creating = false;
+      renderRows();
+    } else if (act === 'term-remove') removeTerm(target.dataset.tag);
+    else if (act === 'toggle-dropped') {
+      tv.showDropped = !tv.showDropped;
+      renderReader();
+    } else if (act === 'topic-delete') deleteTopic();
     else if (act === 'clear-search') {
       q.value = '';
       applySearch();
@@ -688,20 +909,44 @@ export function showArticles(root) {
       saveTarget(side.target);
       renderSide();
       renderReader();
+    } else if (event.target.id === 'tp-follow') {
+      changeTopic({ followed: event.target.checked });
+    } else if (event.target.id === 'tp-name') {
+      const name = event.target.value.trim();
+      const topic = currentTopic();
+      if (topic && name && name !== topic.name) changeTopic({ name });
+    }
+  });
+
+  root.addEventListener('submit', (event) => {
+    if (event.target.id === 'tp-new') {
+      event.preventDefault();
+      const name = event.target.querySelector('#tp-new-name').value.trim();
+      if (name) createTopic(name);
+    } else if (event.target.id === 'tp-name-form') {
+      event.preventDefault();
+      event.target.querySelector('#tp-name').blur();
     }
   });
 
   root.addEventListener('input', (event) => {
-    if (event.target.id === 'addtag') searchTerms(event.target.value);
+    if (event.target.dataset.yso) {
+      terms.input = event.target;
+      searchTerms(event.target.value);
+    }
+    if (event.target.id === 'tp-name') {
+      const note = read.querySelector('#tp-saved');
+      if (note) note.hidden = true;
+    }
   });
 
   root.addEventListener('focusout', (event) => {
-    if (event.target.id === 'addtag') hideTerms();
+    if (event.target.dataset && event.target.dataset.yso) hideTerms();
   });
 
   // Keys for going through the list fast. Never while typing.
   function onKey(event) {
-    if (event.target.id === 'addtag') {
+    if (event.target.dataset && event.target.dataset.yso) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         if (!terms.list.length) return;
         event.preventDefault();
@@ -724,6 +969,7 @@ export function showArticles(root) {
       ar.classList.remove('side-open');
       return;
     }
+    if (place.kind === 'topics') return;
     if (key === 'j') move(1);
     else if (key === 'k') move(-1);
     else if (!current()) return;
@@ -779,7 +1025,7 @@ export function showArticles(root) {
     q.value = state.q;
     fillSort();
     renderSide();
-    loadList();
+    show();
   }
   window.addEventListener('hashchange', onHash);
   window.addEventListener('resize', fit);
@@ -800,7 +1046,7 @@ export function showArticles(root) {
   renderHead();
   fit();
   loadOverview();
-  loadSide({ sources: true }).catch(() => {}).finally(() => loadList());
+  loadSide({ sources: true }).catch(() => {}).finally(() => show());
 
   return {
     leave() {
@@ -809,6 +1055,7 @@ export function showArticles(root) {
       clearTimeout(toastTimer);
       clearTimeout(sideTimer);
       clearTimeout(terms.timer);
+      clearTimeout(seenTimer);
       clearInterval(refresh);
       window.removeEventListener('hashchange', onHash);
       window.removeEventListener('resize', fit);

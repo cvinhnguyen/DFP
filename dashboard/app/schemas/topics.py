@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class TopicTerm(BaseModel):
     id: int
     label: str = Field(description="The term's Finnish name in YSO")
+    uri: str = Field(description="The term's address in YSO")
 
 
 class Topic(BaseModel):
@@ -31,6 +32,36 @@ class TopicList(BaseModel):
 
 class FollowIn(BaseModel):
     followed: bool
+
+
+class TopicIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class TopicUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    followed: bool | None = None
+
+
+class TermIn(BaseModel):
+    uri: str = Field(pattern=r"^http://www\.yso\.fi/onto/yso/p\d{1,9}$",
+                     description="A YSO term, from GET /api/yso")
+
+
+class PreviewThesis(BaseModel):
+    id: int
+    title: str
+    url: str
+    publisher: str | None
+    kept: bool = Field(description="It has a learning tag, so it is in the topic")
+
+
+class TopicPreview(BaseModel):
+    news: int = Field(description="News in the topic, from the days the Uudet list covers")
+    theses: int = Field(description="Theses that arrived in the last 7 days and are in the topic")
+    theses_without_rule: int = Field(description="Theses of the last 7 days with one of its terms, learning tag or not")
+    window_days: int
+    theses_list: list[PreviewThesis] = Field(description="Those theses, the ones in the topic first")
 
 
 class YsoTerm(BaseModel):

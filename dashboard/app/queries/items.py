@@ -14,11 +14,13 @@ from .topics import UNTOPICED, WINDOW
 # Uudet, what the editors go through: summarised news nobody has decided
 # about, and the theses of the topics they follow, from the days the filter
 # keeps articles for. Most theses are about other fields, so a thesis comes
-# here only through a followed topic.
+# here only through a followed topic. An event that is over leaves it.
 INBOX = f"""(
     p.item_id IS NULL
     AND i.duplicate_of IS NULL
     AND i.created_at >= {WINDOW}
+    AND (coalesce(sm.event_ends, sm.event_starts) IS NULL
+         OR coalesce(sm.event_ends, sm.event_starts) >= (now() AT TIME ZONE 'Europe/Helsinki')::date)
     AND ((NOT coalesce(s.learning_tag_required, FALSE) AND i.status = 'summarised')
          OR (coalesce(s.learning_tag_required, FALSE)
              AND EXISTS (SELECT 1 FROM item_topics x
@@ -73,6 +75,13 @@ SELECT i.id,
        CASE WHEN sm.id IS NOT NULL THEN
             jsonb_build_object('text', sm.text, 'model', sm.model, 'made_at', sm.generated_at)
        END                                     AS summary,
+       -- the AI's title in Finnish, for an article in another language
+       CASE WHEN coalesce(i.source_language, s.language) IS DISTINCT FROM 'fi'
+             AND lower(btrim(sm.title)) <> lower(btrim(i.title))
+            THEN nullif(btrim(sm.title), '') END AS title_fi,
+       sm.event_starts, sm.event_ends, sm.event_time, sm.event_place, sm.event_deadline,
+       -- opened by the editor asking, see 21-titles-events.sql
+       EXISTS (SELECT 1 FROM item_views v WHERE v.item_id = i.id AND v.user_id = %(user)s) AS seen,
        i.details,
        coalesce(s.learning_tag_required, FALSE) AS from_archive,
        -- the author's own abstract, which an archive item is read from
@@ -135,7 +144,10 @@ SELECT i.id,
 """
 
 COUNTS = "SELECT " + ",\n       ".join(
-    f'count(*) FILTER (WHERE {condition}) AS "{view}"' for view, condition in VIEWS.items()) + FROM
+    [f'count(*) FILTER (WHERE {condition}) AS "{view}"' for view, condition in VIEWS.items()]
+    # Uudet the editor asking has not opened yet.
+    + [f"""count(*) FILTER (WHERE {INBOX} AND NOT EXISTS (
+            SELECT 1 FROM item_views v WHERE v.item_id = i.id AND v.user_id = %(user)s)) AS unseen"""]) + FROM
 
 TITLE_TEXT = "to_tsvector('finnish', coalesce(i.title, '') || ' ' || coalesce(i.excerpt, ''))"
 QUERY = "websearch_to_tsquery('finnish', %(q)s)"
@@ -145,6 +157,7 @@ SEARCH = f"""(
     OR sm.search    @@ {QUERY}
     OR i.title      ILIKE %(like)s
     OR sm.text      ILIKE %(like)s
+    OR sm.title     ILIKE %(like)s
     OR i.publisher  ILIKE %(like)s
     OR s.name       ILIKE %(like)s
     OR EXISTS (SELECT 1 FROM item_tags it JOIN tags g ON g.id = it.tag_id
@@ -236,8 +249,15 @@ def page(where, params, view, sort, limit, offset):
         {**params, "limit": limit, "offset": offset})
 
 
-def one(item_id):
-    return database.row(COLUMNS + " WHERE i.id = %(id)s", {"id": item_id})
+def one(item_id, user_id=None):
+    return database.row(COLUMNS + " WHERE i.id = %(id)s", {"id": item_id, "user": user_id})
+
+
+def mark_seen(item_id, user_id):
+    database.run(
+        """INSERT INTO item_views (user_id, item_id) VALUES (%s, %s)
+           ON CONFLICT (user_id, item_id) DO UPDATE SET seen_at = now()""",
+        (user_id, item_id))
 
 
 def request_summary(item_id, requested_by):

@@ -67,7 +67,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Up to 20 items per run, newest first, so a backlog clears over a few runs\n-- instead of one long run that overlaps the next.\n--\n-- A source that does not allow summaries is copyright, not quality: those\n-- items go to a person instead and are never sent to the model, even when an\n-- editor asked.\nWITH held AS (\n    UPDATE items i\n       SET status = 'manual',\n           status_reason = 'the source does not allow AI summaries, handle by hand'\n      FROM sources s\n     WHERE s.id = i.source_id\n       AND i.status = 'queued'\n       AND NOT s.summarization_allowed\n    RETURNING i.id\n)\nSELECT i.id, i.title, i.raw_text,\n       (SELECT value FROM app_settings WHERE key = 'llm_provider') AS llm_provider,\n       (SELECT value FROM app_settings WHERE key = 'llm_base_url') AS llm_base_url\n  FROM items i\n  LEFT JOIN sources s ON s.id = i.source_id\n WHERE i.status = 'queued'\n   AND coalesce(s.summarization_allowed, TRUE)\n ORDER BY coalesce(i.published_at, i.fetched_at) DESC\n LIMIT 20;",
+        "query": "-- Up to 20 items per run, newest first, so a backlog clears over a few runs\n-- instead of one long run that overlaps the next.\n--\n-- A source that does not allow summaries is copyright, not quality: those\n-- items go to a person instead and are never sent to the model, even when an\n-- editor asked.\n--\n-- When the queue leaves room, summaries made with an earlier instruction are\n-- made again, newest first, so every article gets its Finnish title and event\n-- details (db/init/21-titles-events.sql). Those articles stay summarised\n-- meanwhile, and nobody is told about them on Telegram again.\nWITH held AS (\n    UPDATE items i\n       SET status = 'manual',\n           status_reason = 'the source does not allow AI summaries, handle by hand'\n      FROM sources s\n     WHERE s.id = i.source_id\n       AND i.status = 'queued'\n       AND NOT s.summarization_allowed\n    RETURNING i.id\n),\nqueued AS (\n    SELECT i.id, i.title, i.raw_text, coalesce(i.published_at, i.fetched_at) AS published, FALSE AS refresh\n      FROM items i\n      LEFT JOIN sources s ON s.id = i.source_id\n     WHERE i.status = 'queued'\n       AND coalesce(s.summarization_allowed, TRUE)\n     ORDER BY coalesce(i.published_at, i.fetched_at) DESC\n     LIMIT 20\n),\nolder AS (\n    SELECT i.id, i.title, i.raw_text, coalesce(i.published_at, i.fetched_at) AS published, TRUE AS refresh\n      FROM items i\n      JOIN summaries sm   ON sm.item_id = i.id AND sm.language = 'fi'\n      LEFT JOIN sources s ON s.id = i.source_id\n     WHERE i.status = 'summarised'\n       AND sm.version < 2\n       AND coalesce(s.summarization_allowed, TRUE)\n       AND length(coalesce(i.raw_text, '')) >= (SELECT value::int FROM app_settings WHERE key = 'filter_min_text_chars')\n     ORDER BY i.created_at DESC\n     LIMIT 20\n)\nSELECT x.id, x.title, x.raw_text, x.refresh,\n       to_char(x.published AT TIME ZONE 'Europe/Helsinki', 'YYYY-MM-DD') AS published,\n       (SELECT value FROM app_settings WHERE key = 'llm_provider') AS llm_provider,\n       (SELECT value FROM app_settings WHERE key = 'llm_base_url') AS llm_base_url\n  FROM (SELECT * FROM queued UNION ALL SELECT * FROM older) x\n ORDER BY x.refresh, x.published DESC\n LIMIT 20;",
         "options": {}
       },
       "credentials": {
@@ -88,7 +88,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// The same instruction the Telegram bot uses, so a summary reads the same\n// whichever way the article arrived. Improving it is Mikko's part.\nreturn { json: {\n  task: 'summarise',\n  item_id: $json.id,\n  system_prompt: 'Tiivistä seuraava uutinen jäsenkirjeeseen kolmella lyhyellä suomenkielisellä lauseella. Kerro vain se mitä tekstissä lukee. Älä keksi mitään lisää.',\n  user_text: `${$json.title}\\n\\n${$json.raw_text}`,\n} };"
+        "jsCode": "// The summary instruction is the one Mikko wrote (DM42-71), word for word,\n// and the Telegram bot still uses it on its own. Around it the model is asked,\n// in the same call, for the title in Finnish and an event's details (DM42-8),\n// as JSON, so one call gives everything the newsletter needs. Improving the\n// instruction is Mikko's part.\nconst SYSTEM = \"You prepare articles for the member newsletter of a Finnish association. Answer with JSON only, no markdown fence, exactly this shape:\\n{\\\"title\\\": \\\"...\\\", \\\"summary\\\": \\\"...\\\", \\\"event\\\": null}\\n\\ntitle: the article's title in Finnish. If the original title is already in Finnish, copy it unchanged. Otherwise translate it into short, natural Finnish that says the same thing and adds nothing.\\n\\nsummary: Tiivistä seuraava uutinen jäsenkirjeeseen kolmella lyhyellä suomenkielisellä lauseella. Kerro vain se mitä tekstissä lukee. Älä keksi mitään lisää.\\n\\nevent: null, unless the article announces an event people can attend or take part in, such as a conference, a webinar, a seminar, a training or a workshop. Then give:\\n{\\\"starts\\\": \\\"YYYY-MM-DD\\\", \\\"ends\\\": \\\"YYYY-MM-DD\\\", \\\"time\\\": \\\"13-16\\\", \\\"place\\\": \\\"the city, or Verkko for an online event\\\", \\\"deadline\\\": \\\"YYYY-MM-DD\\\"}\\nUse only what the text says, and null for anything it does not give. ends is only for an event of several days. When a date has no year, take the year from the publication date. deadline is the last day to sign up or to send a proposal.\";\n\nreturn { json: {\n  task: 'summarise',\n  item_id: $json.id,\n  // an older summary being made again, see Pick queued\n  refresh: $json.refresh === true,\n  json: true,\n  system_prompt: SYSTEM,\n  user_text: `Title: ${$json.title}\\nPublished: ${$json.published}\\n\\n${$json.raw_text}`,\n} };"
       }
     },
     {
@@ -128,6 +128,19 @@
       }
     },
     {
+      "id": "5f025563-1c78-583c-a0b5-2d26d05f148f",
+      "name": "Read answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1310,
+        340
+      ],
+      "parameters": {
+        "jsCode": "// The model answers with JSON: the title in Finnish, the summary, and an\n// event's details. Only what passes the checks is kept: a date has to be a\n// real date, and a missing one stays empty rather than guessed. With no\n// summary at all the article is marked failed, or for an older summary being\n// made again, the old one stays.\nconst r = $input.first().json;\nconst asked = $('One at a time').first().json;\nconst out = {\n  item_id: asked.item_id, refresh: asked.refresh === true,\n  provider: r.provider || '', model: r.model || '',\n  summary: '', title: null, starts: null, ends: null, time: null, place: null, deadline: null,\n  error: (r.error && (r.error.message || r.error)) || '',\n};\nconst text = (value, max) => {\n  const v = typeof value === 'string' ? value.replace(/\\s+/g, ' ').trim() : '';\n  return v && v.length <= max ? v : null;\n};\nconst day = (value) => {\n  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;\n  const d = new Date(`${value}T00:00:00Z`);\n  const year = d.getUTCFullYear();\n  return !isNaN(d) && d.toISOString().slice(0, 10) === value && year >= 2000 && year <= 2100 ? value : null;\n};\n\nif (!out.error && r.text) {\n  let answer = null;\n  try {\n    answer = JSON.parse(String(r.text).trim().replace(/^```(json)?\\s*/i, '').replace(/\\s*```$/, ''));\n  } catch (e) {\n    answer = null;\n  }\n  if (answer && typeof answer === 'object') {\n    out.summary = text(answer.summary, 3000) || '';\n    out.title = text(answer.title, 300);\n    const e = answer.event && typeof answer.event === 'object' ? answer.event : null;\n    if (e) {\n      out.starts = day(e.starts);\n      out.ends = day(e.ends);\n      if (out.ends && (!out.starts || out.ends <= out.starts)) out.ends = null;\n      out.time = text(typeof e.time === 'string' ? e.time.replace(/-/g, '–') : null, 40);\n      out.place = text(e.place, 120);\n      out.deadline = day(e.deadline);\n    }\n    if (!out.summary) out.error = 'the model gave no summary';\n  } else {\n    out.error = r.truncated ? 'the answer was cut off before it ended' : 'the answer was not the JSON asked for';\n  }\n}\nreturn [{ json: out }];"
+      }
+    },
+    {
       "id": "011e2215-1a31-5313-9498-e6b68501934a",
       "name": "Save summary",
       "type": "n8n-nodes-base.postgres",
@@ -138,9 +151,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- One statement, so an item is never marked summarised without a summary.\n-- A failed call is written down with its reason instead of leaving the item\n-- looking as if it is still waiting. Link and publisher are added by the\n-- database, see db/init/12-summaries.sql.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model)\n    SELECT $1::bigint, 'fi', btrim($2), $3, $4\n     WHERE nullif(btrim($2), '') IS NOT NULL\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, provider = EXCLUDED.provider,\n           model = EXCLUDED.model, generated_at = now()\n    RETURNING item_id\n)\n-- If the AI could not be reached at all, the article goes back to the queue\n-- for the next run. Only an answer that was no use marks it failed.\nUPDATE items\n   SET status        = CASE WHEN EXISTS (SELECT 1 FROM s) THEN 'summarised'\n                            WHEN $5 ~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n                              THEN 'queued'\n                            ELSE 'summary_failed' END,\n       status_reason = CASE WHEN EXISTS (SELECT 1 FROM s) THEN status_reason\n                            WHEN $5 ~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n                              THEN 'waiting for the AI to answer again'\n                            ELSE left(coalesce(nullif($5, ''), 'the model returned no text'), 300) END\n WHERE id = $1::bigint\nRETURNING id, status, status_reason, title,\n          -- set when an editor sent this link to the bot\n          (SELECT u.telegram_user_id FROM users u WHERE u.id = items.captured_by) AS telegram_user_id;",
+        "query": "-- One statement, so an item is never marked summarised without a summary.\n-- A failed call is written down with its reason instead of leaving the item\n-- looking as if it is still waiting. Link and publisher are added by the\n-- database, see db/init/12-summaries.sql.\n--\n-- An older summary being made again ($12) leaves its article summarised\n-- whatever happens. If the answer was no use, the old summary stays and is\n-- marked done, so it is not asked about again every run; if the AI did not\n-- answer at all, it is tried again later.\nWITH s AS (\n    INSERT INTO summaries (item_id, language, text, provider, model, title, event_starts,\n                           event_ends, event_time, event_place, event_deadline, version)\n    SELECT $1::bigint, 'fi', btrim($2), $3, $4, nullif($6, ''), nullif($7, '')::date,\n           nullif($8, '')::date, nullif($9, ''), nullif($10, ''), nullif($11, '')::date, 2\n     WHERE nullif(btrim($2), '') IS NOT NULL\n    ON CONFLICT (item_id, language) DO UPDATE\n       SET text = EXCLUDED.text, provider = EXCLUDED.provider, model = EXCLUDED.model,\n           title = EXCLUDED.title, event_starts = EXCLUDED.event_starts,\n           event_ends = EXCLUDED.event_ends, event_time = EXCLUDED.event_time,\n           event_place = EXCLUDED.event_place, event_deadline = EXCLUDED.event_deadline,\n           version = 2, generated_at = now()\n    RETURNING item_id\n),\ngiven_up AS (\n    UPDATE summaries SET version = 2\n     WHERE item_id = $1::bigint AND language = 'fi'\n       AND $12::boolean\n       AND NOT EXISTS (SELECT 1 FROM s)\n       AND $5 !~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n    RETURNING item_id\n)\n-- If the AI could not be reached at all, the article goes back to the queue\n-- for the next run. Only an answer that was no use marks it failed.\nUPDATE items\n   SET status        = CASE WHEN $12::boolean THEN status\n                            WHEN EXISTS (SELECT 1 FROM s) THEN 'summarised'\n                            WHEN $5 ~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n                              THEN 'queued'\n                            ELSE 'summary_failed' END,\n       status_reason = CASE WHEN $12::boolean OR EXISTS (SELECT 1 FROM s) THEN status_reason\n                            WHEN $5 ~* '(ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|timed? ?out|socket hang up|status code (5[0-9]{2}|429))'\n                              THEN 'waiting for the AI to answer again'\n                            ELSE left(coalesce(nullif($5, ''), 'the model returned no text'), 300) END\n WHERE id = $1::bigint\nRETURNING id, status, status_reason, title, $12::boolean AS refresh,\n          -- set when an editor sent this link to the bot\n          (SELECT u.telegram_user_id FROM users u WHERE u.id = items.captured_by) AS telegram_user_id;",
         "options": {
-          "queryReplacement": "={{ [ $('One at a time').first().json.item_id, $json.text || '', $json.provider || '', $json.model || '', ($json.error && ($json.error.message || $json.error)) || '' ] }}"
+          "queryReplacement": "={{ [ $json.item_id, $json.summary || '', $json.provider || '', $json.model || '', $json.error || '', $json.title || '', $json.starts || '', $json.ends || '', $json.time || '', $json.place || '', $json.deadline || '', $json.refresh === true ] }}"
         }
       },
       "credentials": {
@@ -160,7 +173,7 @@
         180
       ],
       "parameters": {
-        "jsCode": "// A link an editor sent to the bot while the AI was down gets its summary\n// here, and the bot promised to send it. Anything else just carries on.\n// A failed message never stops the loop: the summary is saved either way.\nconst r = $json;\nif (r.status === 'summarised' && r.telegram_user_id) {\n  const text = ($('Summarise').first().json.text || '').trim();\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n      body: { chat_id: r.telegram_user_id, text: `Summary for: ${r.title}\\n\\n${text}`,\n              disable_web_page_preview: true },\n      json: true,\n    });\n  } catch (e) { /* nothing more to do */ }\n}\nreturn [{ json: r }];"
+        "jsCode": "// A link an editor sent to the bot while the AI was down gets its summary\n// here, and the bot promised to send it. Anything else just carries on.\n// A failed message never stops the loop: the summary is saved either way.\nconst r = $json;\nif (r.status === 'summarised' && r.telegram_user_id && !r.refresh) {\n  const text = ($('Read answer').first().json.summary || '').trim();\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n      body: { chat_id: r.telegram_user_id, text: `Summary for: ${r.title}\\n\\n${text}`,\n              disable_web_page_preview: true },\n      json: true,\n    });\n  } catch (e) { /* nothing more to do */ }\n}\nreturn [{ json: r }];"
       }
     },
     {
@@ -237,7 +250,7 @@
       "main": [
         [
           {
-            "node": "Save summary",
+            "node": "Read answer",
             "type": "main",
             "index": 0
           }
@@ -283,6 +296,17 @@
         [
           {
             "node": "Build request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read answer": {
+      "main": [
+        [
+          {
+            "node": "Save summary",
             "type": "main",
             "index": 0
           }

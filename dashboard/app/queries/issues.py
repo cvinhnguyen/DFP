@@ -43,6 +43,11 @@ SELECT i.id, p.section, i.title, i.source_url AS url,
        s.name AS source,
        coalesce(i.source_language, s.language) AS language,
        sm.text AS summary,
+       -- the AI's Finnish title, for an article in another language
+       CASE WHEN coalesce(i.source_language, s.language) IS DISTINCT FROM 'fi'
+             AND lower(btrim(sm.title)) <> lower(btrim(i.title))
+            THEN nullif(btrim(sm.title), '') END AS title_fi,
+       sm.event_starts, sm.event_ends, sm.event_time, sm.event_place,
        nullif(btrim(i.excerpt), '') AS excerpt,
        i.published_at,
        u.display_name AS decided_by,

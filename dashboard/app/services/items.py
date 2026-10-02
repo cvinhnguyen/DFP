@@ -8,6 +8,7 @@ import re
 from ..queries import items as queries
 from ..queries import settings
 from ..schemas.items import Counts, FilterOptions, Item, ItemPage
+from . import events
 
 
 class NotFound(Exception):
@@ -37,11 +38,15 @@ SECTIONS = ("own_news", "events", "member_news", "highlights")
 
 
 def suggest_section(found):
-    """The section a workflow gave the article, if any. Otherwise the
-    association's own site is its own news, events are events, and the rest
-    is news from the field. Members' news is the editors' choice."""
+    """The section a workflow gave the article, if any. Otherwise an event
+    the AI found in the article goes to Tapahtumat, the association's own
+    events too, as its newsletter has them; the association's own site is its
+    own news, other events are events, and the rest is news from the field.
+    Members' news is the editors' choice."""
     if found.get("section") in SECTIONS:
         return found["section"]
+    if found.get("event_starts"):
+        return "events"
     if "eoppimiskeskus.fi" in (found.get("url") or ""):
         return "own_news"
     summary = found.get("summary") or {}
@@ -57,14 +62,17 @@ def _as_item(found, min_chars):
     can_request = (found["status"] in ("filtered_out", "summary_failed", "on_request")
                    and found["duplicate_of"] is None
                    and found["text_length"] >= min_chars)
-    return Item(**found, can_request_summary=can_request, suggested_section=suggest_section(found))
+    return Item(**found, can_request_summary=can_request, suggested_section=suggest_section(found),
+                event=events.details(found))
 
 
-def list_items(view, sort, page, per_page, **chosen):
+def list_items(view, sort, page, per_page, user_id=None, **chosen):
+    """user_id is the editor asking: whether each article is new to them."""
     chosen["q"] = (chosen.get("q") or "").strip() or None
     if sort == "relevance" and not chosen["q"]:
         sort = "collected"
     where, params = queries.filters(**chosen)
+    params["user"] = user_id
     counts = queries.counts(where, params)
     found = queries.page(where, params, view, sort, per_page, (page - 1) * per_page)
     min_chars = _min_chars()
@@ -74,18 +82,18 @@ def list_items(view, sort, page, per_page, **chosen):
                     tag_label=queries.tag_name(tag) if tag is not None else None)
 
 
-def get_item(item_id):
-    found = queries.one(item_id)
+def get_item(item_id, user_id=None):
+    found = queries.one(item_id, user_id)
     if not found:
         raise NotFound()
     return _as_item(found, _min_chars())
 
 
-def summarise_anyway(item_id, requested_by):
+def summarise_anyway(item_id, requested_by, user_id=None):
     """The filter keeps an article from the AI when it looks off topic or old,
     but an editor knows better. The article is queued, and the summarisation
     workflow picks it up on its next run, within 15 minutes."""
-    item = get_item(item_id)
+    item = get_item(item_id, user_id)
     if item.duplicate_of is not None:
         raise CannotSummarise("duplicate", f"This is the same story as article {item.duplicate_of}. Use that one.",
                               id=item.duplicate_of)
@@ -93,7 +101,13 @@ def summarise_anyway(item_id, requested_by):
         raise CannotSummarise("too_little_text", "There is only a title or a few lines here, so nothing to summarise.")
     if not queries.request_summary(item_id, requested_by):
         raise CannotSummarise("cannot_summarise", "Only skipped or failed articles can be sent to the AI again.")
-    return get_item(item_id)
+    return get_item(item_id, user_id)
+
+
+def mark_seen(item_id, user_id):
+    """The editor opened the article, so it is no longer new to them."""
+    get_item(item_id)   # raises NotFound
+    queries.mark_seen(item_id, user_id)
 
 
 def filter_options():
