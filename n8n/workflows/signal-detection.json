@@ -1,7 +1,7 @@
 {
   "id": "SG2X1CCtMzSAkQ3i",
   "name": "Signal detection",
-  "active": false,
+  "active": true,
   "nodes": [
     {
       "parameters": {},
@@ -12,7 +12,54 @@
         0
       ],
       "id": "a1e4b296-f24e-43a1-9580-02f5bb59cf76",
-      "name": "When clicking ‘Execute workflow’"
+      "name": "Run now"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "id": "76149d82-59d7-5b6a-bb79-f3398a55a2bd",
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "signals",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "411a8982-6ff4-5f8f-8fad-fb89f58f719c",
+      "name": "POST /signals",
+      "webhookId": "733952db-be42-506e-a43e-360dd5c6282c",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
     },
     {
       "id": "g1",
@@ -26,14 +73,15 @@
       "parameters": {
         "operation": "executeQuery",
         "options": {},
-        "query": "-- Items skipped on purpose before the AI step are left out, and so is\n-- anything without a publication date, because frequency over time needs one.\n-- The window is configuration, not a number typed in here.\nSELECT i.id AS item_id,\n       i.title,\n       i.published_at,\n       coalesce(s.text, i.excerpt, '') AS body\n  FROM items i\n  LEFT JOIN summaries s\n         ON s.item_id = i.id AND s.language = i.source_language\n WHERE i.status <> 'filtered_out'\n   AND i.published_at IS NOT NULL\n   AND i.published_at >= now() - make_interval(days => (\n         SELECT value::int FROM app_settings WHERE key = 'signal_window_days'))\n ORDER BY i.published_at DESC;"
+        "query": "-- The articles of the last signal_window_days that have a summary in\n-- Finnish: the news that passed the filter, and the theses an editor asked\n-- for. The model reads the summary, so every article is read the same way\n-- whatever language it was written in, and the AI's cache answers for an\n-- article it has read before. Theses nobody asked for have no summary and are\n-- left out, and so is anything without a publication date, because frequency\n-- over time needs one. The window is configuration, not a number typed in\n-- here. When this month's AI budget is used up, nothing is read\n-- (db/init/24-ai-budget.sql).\nSELECT i.id AS item_id,\n       i.title,\n       i.published_at,\n       s.text AS body\n  FROM items i\n  JOIN summaries s ON s.item_id = i.id AND s.language = 'fi'\n WHERE i.status = 'summarised'\n   AND i.published_at IS NOT NULL\n   AND i.published_at >= now() - make_interval(days => (\n         SELECT value::int FROM app_settings WHERE key = 'signal_window_days'))\n   AND NOT (SELECT over FROM ai_budget)\n ORDER BY i.published_at DESC;"
       },
       "credentials": {
         "postgres": {
           "id": "9iauudkzEoz4bDay",
           "name": "DFP Postgres"
         }
-      }
+      },
+      "executeOnce": true
     },
     {
       "id": "b1",
@@ -120,17 +168,6 @@
     }
   ],
   "connections": {
-    "When clicking ‘Execute workflow’": {
-      "main": [
-        [
-          {
-            "node": "Get articles",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Get articles": {
       "main": [
         [
@@ -185,10 +222,44 @@
           }
         ]
       ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Get articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Get articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST /signals": {
+      "main": [
+        [
+          {
+            "node": "Get articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "errorWorkflow": "a1ertsW0rkflow26"
   }
 }

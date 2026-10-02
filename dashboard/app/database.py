@@ -37,6 +37,11 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("26-archive.sql", "SELECT to_regclass('public.archive_entries') IS NOT NULL AS ok"),
+    ("25-retention.sql", "SELECT to_regclass('public.retention_runs') IS NOT NULL AS ok"),
+    ("24-ai-budget.sql", "SELECT to_regclass('public.ai_budget') IS NOT NULL AS ok"),
+    ("23-alerts.sql", "SELECT to_regclass('public.alerts') IS NOT NULL AS ok"),
+    ("22-password-links.sql", "SELECT to_regclass('public.password_links') IS NOT NULL AS ok"),
     ("21-titles-events.sql", "SELECT to_regclass('public.item_views') IS NOT NULL AS ok"),
     ("20-topics.sql", "SELECT to_regclass('public.item_topics') IS NOT NULL AS ok"),
     ("19-member-news.sql", """SELECT pg_get_constraintdef(oid) LIKE '%member_news%' AS ok

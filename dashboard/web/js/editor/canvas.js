@@ -222,7 +222,7 @@ export function createCanvas({ store, stage, frame, layer, actions }) {
 
   function drawToolbar(block, r, o) {
     const buttons = [];
-    if (block.type === 'article') {
+    if (block.type === 'article' || block.ai) {
       buttons.push(toolButton('tick', block.checked ? t('canvas.markUnchecked') : t('canvas.markChecked'), () => {
         store.change((d) => {
           const f = findBlock(d, block.id);

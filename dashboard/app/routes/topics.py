@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from ..dependencies import current_user
+from ..dependencies import current_user, not_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.topics import FollowIn, TermIn, Topic, TopicIn, TopicList, TopicPreview, TopicUpdate, YsoTerm
@@ -54,7 +54,7 @@ def update(topic_id: int, body: TopicUpdate, user: User = Depends(current_user))
         raise ApiError(*NAME_TAKEN)
 
 
-@router.delete("/topics/{topic_id}", status_code=204, summary="Delete a topic")
+@router.delete("/topics/{topic_id}", status_code=204, summary="Delete a topic", dependencies=[Depends(not_demo)])
 def delete(topic_id: int):
     """Its list of terms goes with it. The articles and their tags stay."""
     try:

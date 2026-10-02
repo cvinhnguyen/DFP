@@ -5,7 +5,7 @@
   "nodes": [
     {
       "id": "t1",
-      "name": "Every minute",
+      "name": "Every 20 seconds",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -16,8 +16,8 @@
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 1
+              "field": "seconds",
+              "secondsInterval": 20
             }
           ]
         }
@@ -92,7 +92,7 @@
         0
       ],
       "parameters": {
-        "jsCode": "// Telegram hands back everything since next_offset and only forgets a message\n// once we ask for the one after it, so the marker is advanced at the end of the\n// run rather than here. Handling a message twice is harmless. Losing one is not.\nconst state = $('Load state').first().json;\nconst allow = new Map((state.allowlist || []).map(a => [String(a.telegram_user_id), a]));\nconst updates = ($input.first().json || {}).result || [];\n\nconst URL_RE = /https?:\\/\\/[^\\s<>()]+/i;\nlet nextOffset = Number(state.next_offset) || 0;\nconst out = [];\n\nfor (const u of updates) {\n  if (u.update_id >= nextOffset) nextOffset = u.update_id + 1;\n  const msg = u.message;\n  if (!msg || !msg.text) continue;\n\n  const fromId = String(msg.from && msg.from.id);\n  const who = allow.get(fromId) || null;\n  const text = String(msg.text).trim();\n  // \"/schedule 8:00\" gives command \"schedule\" and args \"8:00\". In a group\n  // Telegram adds the bot's name, as in /check@DFP_Mazhar4_bot.\n  const cmd = text.match(/^\\/([a-z]+)(?:@\\S+)?\\s*(.*)$/i);\n  const command = cmd ? cmd[1].toLowerCase() : null;\n  const args = cmd ? cmd[2].trim() : '';\n  const found = command ? null : text.match(URL_RE);\n  const url = found ? found[0].replace(/[.,;:)\\]]+$/, '') : null;\n  // whatever the editor typed around the link: their own note, and the title\n  // we fall back to when the page cannot be read\n  const note = found ? text.replace(found[0], ' ').replace(/\\s+/g, ' ').trim() : '';\n\n  out.push({ json: {\n    update_id: u.update_id,\n    chat_id: msg.chat.id,\n    from_id: fromId,\n    from_name: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' '),\n    allowed: !!who,\n    role: who ? who.role : null,\n    chat_type: msg.chat.type,\n    text, url, note, command, args,\n  }});\n}\n\n// Updates that carry nothing we handle still have to move the marker, or we\n// would ask for them again every minute forever.\nif (out.length === 0) {\n  return updates.length ? [{ json: { skip: true, next_offset: nextOffset } }] : [];\n}\nfor (const o of out) o.json.next_offset = nextOffset;\nreturn out;"
+        "jsCode": "// Telegram hands back everything since next_offset and only forgets a message\n// once we ask for the one after it, so the marker is advanced at the end of the\n// run rather than here. Handling a message twice is harmless. Losing one is not.\nconst state = $('Load state').first().json;\nconst allow = new Map((state.allowlist || []).map(a => [String(a.telegram_user_id), a]));\nconst updates = ($input.first().json || {}).result || [];\n\nconst URL_RE = /https?:\\/\\/[^\\s<>()]+/i;\nlet nextOffset = Number(state.next_offset) || 0;\nconst out = [];\n\nfor (const u of updates) {\n  if (u.update_id >= nextOffset) nextOffset = u.update_id + 1;\n  const msg = u.message;\n  if (!msg || !msg.text) continue;\n\n  const fromId = String(msg.from && msg.from.id);\n  const who = allow.get(fromId) || null;\n  const text = String(msg.text).trim();\n  // \"/schedule 8:00\" gives command \"schedule\" and args \"8:00\". In a group\n  // Telegram adds the bot's name, as in /check@DFP_Mazhar4_bot.\n  const cmd = text.match(/^\\/([a-z]+)(?:@\\S+)?\\s*(.*)$/i);\n  const command = cmd ? cmd[1].toLowerCase() : null;\n  const args = cmd ? cmd[2].trim() : '';\n  const found = command ? null : text.match(URL_RE);\n  const url = found ? found[0].replace(/[.,;:)\\]]+$/, '') : null;\n  // whatever the editor typed around the link: their own note, and the title\n  // we fall back to when the page cannot be read\n  const note = found ? text.replace(found[0], ' ').replace(/\\s+/g, ' ').trim() : '';\n\n  out.push({ json: {\n    update_id: u.update_id,\n    chat_id: msg.chat.id,\n    from_id: fromId,\n    from_name: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' '),\n    allowed: !!who,\n    role: who ? who.role : null,\n    chat_type: msg.chat.type,\n    text, url, note, command, args,\n  }});\n}\n\n// Updates that carry nothing we handle still have to move the marker, or we\n// would ask for them again on every poll, for ever.\nif (out.length === 0) {\n  return updates.length ? [{ json: { skip: true, next_offset: nextOffset } }] : [];\n}\nfor (const o of out) o.json.next_offset = nextOffset;\nreturn out;"
       }
     },
     {
@@ -238,7 +238,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Tell the editor what happened, in their words rather than ours.\n//\n// Nothing is read from $json here: the two branches of \"Worth summarising\"\n// arrive carrying different things, so every value is fetched from the node\n// that owns it.\nconst m  = $('Fetch page').item.json;    // the message and the page\nconst db = $('Save capture').item.json;  // what the database did\nlet llm = null;\ntry { llm = $('Summarise').item.json; } catch (e) { llm = null; }  // only one branch summarises\n\nconst cost = (llm && llm.cost_eur != null) ? Number(llm.cost_eur) : null;\nconst tokens = llm ? (Number(llm.tokens_in || 0) + Number(llm.tokens_out || 0)) : 0;\n\nlet reply = null;\nif (m.skip) {\n  reply = null;\n} else if (!m.allowed) {\n  // Telling an unknown sender their own id is how someone gets added without a\n  // round trip. It gives away nothing: they can read it from any bot.\n  reply = `I only take links from people on the list.\\n\\nTo join, ask an admin for an invite link. They get one by sending me /invite.\\n\\nYour Telegram ID is ${m.from_id}, if they would rather add you by hand.`;\n} else if (m.command) {\n  // /start and /help, and any command we do not have\n  reply = (['start', 'help'].includes(m.command) ? '' : `I do not know /${m.command}.\\n\\n`)\n        + 'Send me a link and I will save and summarise it for the newsletter. You can put a note after the link.\\n\\n'\n        + '/check  check all sources now\\n'\n        + '/schedule  see when I check\\n'\n        + '/schedule 8:00 14:00  check at these times every day\\n'\n        + '/schedule off  only check when you ask\\n'\n        + '/login  a link to log in to the dashboard'\n        + (m.role === 'admin'\n            ? '\\n\\nAs an admin:\\n'\n              + '/invite  an invite link for a new colleague\\n'\n              + '/invite admin  the same, for a new admin\\n'\n              + '/people  who can use me\\n'\n              + '/remove Name  take someone off the list'\n            : '');\n} else if (!m.url) {\n  reply = 'Send me a link and I will save it for the newsletter. You can put a note after the link. Send /help to see what else I can do.';\n} else if (!m.page_ok && !m.note) {\n  reply = 'I could not read that page. Send the link again with a title after it and I will save that instead.';\n} else if (db.item_id) {\n  const lines = [`Saved: ${m.title}`];\n  if (m.publisher) lines.push(m.publisher);\n  if (llm && llm.text) {\n    lines.push('', llm.text.trim());\n    // What the client asked about in the kickoff, on their own article,\n    // rather than as a number on a slide.\n    lines.push('', `${tokens} tokens${cost != null ? ` · €${cost.toFixed(4)}` : ''}${cost === 0 ? ' (free tier)' : ''}`);\n  } else if (db.duplicate_of) {\n    lines.push('', 'I already have this story from another source, so I linked the two and did not summarise it again.');\n  } else if (llm && (llm.error || llm.text === '')) {\n    // Only when the AI step ran and failed. n8n hands back an empty object for\n    // a step that did not run at all, so checking llm alone is not enough.\n    // The AI was asked but gave nothing back, usually because it is down. The\n    // link is saved as new, so the scheduled summarisation picks it up and\n    // sends the summary here when it has one.\n    lines.push('', 'The AI is not answering right now. I will send you the summary when it is back.');\n  } else if (!m.page_ok) {\n    lines.push('', 'I could not read the page, so I used your own words as the title.');\n  } else {\n    lines.push('', 'Saved without a summary: there was too little text on the page.');\n  }\n  reply = lines.join('\\n');\n} else if (db.already_known) {\n  reply = 'I already have that link.';\n} else {\n  reply = 'Something went wrong saving that. Try again, or tell Vinh.';\n}\n\nreturn { json: { ...m, reply, item_id: db.item_id ?? null, summarised: !!(llm && llm.text) } };"
+        "jsCode": "// Tell the editor what happened, in their words rather than ours.\n//\n// Nothing is read from $json here: the two branches of \"Worth summarising\"\n// arrive carrying different things, so every value is fetched from the node\n// that owns it.\nconst m  = $('Fetch page').item.json;    // the message and the page\nconst db = $('Save capture').item.json;  // what the database did\nlet llm = null;\ntry { llm = $('Summarise').item.json; } catch (e) { llm = null; }  // only one branch summarises\n\nconst cost = (llm && llm.cost_eur != null) ? Number(llm.cost_eur) : null;\nconst tokens = llm ? (Number(llm.tokens_in || 0) + Number(llm.tokens_out || 0)) : 0;\n\nlet reply = null;\nif (m.skip) {\n  reply = null;\n} else if (!m.allowed) {\n  // Their own id is how someone gets on the list, with\n  // python -m app.cli.users telegram. It gives away nothing: any bot can read it.\n  reply = `I only work for the newsletter team of Suomen eOppimiskeskus.\\n\\nYour Telegram ID is ${m.from_id}. If you are on the team, send it to whoever looks after me, and they can put you on the list.`;\n} else if (m.command) {\n  // /start and /help, and any command we do not have\n  reply = (['start', 'help'].includes(m.command) ? '' : `I do not know /${m.command}.\\n\\n`)\n        + 'Send me a link and I will save and summarise it for the newsletter. You can put a note after the link.\\n\\n'\n        + '/login  a link that opens the dashboard\\n'\n        + '/password  choose a password, to log in without Telegram\\n'\n        + '/check  check all sources now\\n'\n        + '/schedule  see when I check\\n'\n        + '/schedule 8:00 14:00  check at these times every day\\n'\n        + '/reschedule 7:00 15:00  change the times\\n'\n        + '/schedule off  only check when you ask'\n        + (m.role === 'admin'\n            ? '\\n\\nFor admins:\\n'\n              + '/adduser email Name  an account for the dashboard: they log in with that email and a password they choose\\n'\n              + '/adduser admin email Name  the same, for a new admin\\n'\n              + '/password email  a new password link for someone else\\n'\n              + '/people  who can use me and the dashboard\\n'\n              + '/remove Name  take someone off the list\\n'\n              + '/alerts  where I report problems'\n            : '');\n} else if (!m.url) {\n  reply = 'Send me a link and I will save it for the newsletter. You can put a note after the link. Send /help to see what else I can do.';\n} else if (!m.page_ok && !m.note) {\n  reply = 'I could not read that page. Send the link again with a title after it and I will save that instead.';\n} else if (db.item_id) {\n  const lines = [`Saved: ${m.title}`];\n  if (m.publisher) lines.push(m.publisher);\n  if (llm && llm.text) {\n    lines.push('', llm.text.trim());\n    // What the client asked about in the kickoff, on their own article,\n    // rather than as a number on a slide.\n    lines.push('', `${tokens} tokens${cost != null ? ` · €${cost.toFixed(4)}` : ''}${cost === 0 ? ' (free tier)' : ''}`);\n  } else if (db.duplicate_of) {\n    lines.push('', 'I already have this story from another source, so I linked the two and did not summarise it again.');\n  } else if (llm && (llm.error || llm.text === '')) {\n    // Only when the AI step ran and failed. n8n hands back an empty object for\n    // a step that did not run at all, so checking llm alone is not enough.\n    // The AI was asked but gave nothing back, usually because it is down. The\n    // link is saved as new, so the scheduled summarisation picks it up and\n    // sends the summary here when it has one.\n    lines.push('', 'The AI is not answering right now. I will send you the summary when it is back.');\n  } else if (!m.page_ok) {\n    lines.push('', 'I could not read the page, so I used your own words as the title.');\n  } else {\n    lines.push('', 'Saved without a summary: there was too little text on the page.');\n  }\n  reply = lines.join('\\n');\n} else if (db.already_known) {\n  reply = 'I already have that link.';\n} else {\n  reply = 'Something went wrong saving that. Try again, or tell Vinh.';\n}\n\nreturn { json: { ...m, reply, item_id: db.item_id ?? null, summarised: !!(llm && llm.text) } };"
       }
     },
     {
@@ -252,7 +252,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Nothing to say for a message we did not act on.\nconst m = $json;\nif (!m.reply) return { json: m };\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n  body: { chat_id: m.chat_id, text: m.reply, disable_web_page_preview: true },\n  json: true,\n});\nreturn { json: m };"
+        "jsCode": "// Nothing to say for a message we did not act on. An account command can\n// answer with a button under its message that opens a link; everything\n// else answers with one text.\nconst m = $json;\nconst messages = Array.isArray(m.messages) && m.messages.length ? m.messages : (m.reply ? [{ text: m.reply }] : []);\nif (!messages.length) return { json: m };\n\nconst send = (body) => this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n  body: { chat_id: m.chat_id, disable_web_page_preview: true, ...body },\n  json: true,\n});\n\nfor (const message of messages) {\n  const button = message.button;\n  if (!button) {\n    await send({ text: message.text });\n    continue;\n  }\n  try {\n    await send({ text: message.text, reply_markup: { inline_keyboard: [[{ text: button.text, url: button.url }]] } });\n  } catch (e) {\n    // Telegram turns down a button to an address it will not open. The\n    // address goes in the text instead, where it can still be copied.\n    await send({ text: message.text.includes(button.url) ? message.text : `${message.text}\\n\\n${button.url}` });\n  }\n}\nreturn { json: m };"
       }
     },
     {
@@ -333,7 +333,7 @@
           "conditions": [
             {
               "id": "nisschedule",
-              "leftValue": "={{ $json.allowed === true && $json.command === 'schedule' }}",
+              "leftValue": "={{ $json.allowed === true && ['schedule', 'reschedule'].includes($json.command) }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -395,7 +395,7 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- /schedule on its own shows the times. With times it replaces them, and off\n-- stops automatic checking. Anything else is answered, not saved, so a typo\n-- cannot switch the checking off by accident.\nWITH arg AS (\n    SELECT lower(btrim(coalesce($1, ''))) AS a\n),\nwanted AS (\n    SELECT CASE\n             WHEN a = '' THEN NULL\n             WHEN a IN ('off', 'pois') THEN 'off'\n             WHEN a ~ '^([01]?[0-9]|2[0-3])[:.][0-5][0-9]([ ,]+([01]?[0-9]|2[0-3])[:.][0-5][0-9])*$' THEN\n               (SELECT string_agg(DISTINCT to_char(replace(t, '.', ':')::time, 'HH24:MI'), ' '\n                                  ORDER BY to_char(replace(t, '.', ':')::time, 'HH24:MI'))\n                  FROM regexp_split_to_table(a, '[ ,]+') AS t)\n             ELSE 'invalid'\n           END AS v\n      FROM arg\n),\nsaved AS (\n    UPDATE app_settings s\n       SET value = w.v, updated_at = now()\n      FROM wanted w\n     WHERE s.key = 'collection_times'\n       AND w.v IS NOT NULL AND w.v <> 'invalid'\n    RETURNING s.value\n)\nSELECT coalesce((SELECT value FROM saved),\n                (SELECT value FROM app_settings WHERE key = 'collection_times')) AS times,\n       coalesce((SELECT v = 'invalid' FROM wanted), false) AS invalid,\n       EXISTS (SELECT 1 FROM saved) AS changed;",
+        "query": "-- /schedule on its own shows the times. With times it replaces them, and off\n-- stops automatic checking. /reschedule does the same, for changing the times. Anything else is answered, not saved, so a typo\n-- cannot switch the checking off by accident.\nWITH arg AS (\n    SELECT lower(btrim(coalesce($1, ''))) AS a\n),\nwanted AS (\n    SELECT CASE\n             WHEN a = '' THEN NULL\n             WHEN a IN ('off', 'pois') THEN 'off'\n             WHEN a ~ '^([01]?[0-9]|2[0-3])[:.][0-5][0-9]([ ,]+([01]?[0-9]|2[0-3])[:.][0-5][0-9])*$' THEN\n               (SELECT string_agg(DISTINCT to_char(replace(t, '.', ':')::time, 'HH24:MI'), ' '\n                                  ORDER BY to_char(replace(t, '.', ':')::time, 'HH24:MI'))\n                  FROM regexp_split_to_table(a, '[ ,]+') AS t)\n             ELSE 'invalid'\n           END AS v\n      FROM arg\n),\nsaved AS (\n    UPDATE app_settings s\n       SET value = w.v, updated_at = now()\n      FROM wanted w\n     WHERE s.key = 'collection_times'\n       AND w.v IS NOT NULL AND w.v <> 'invalid'\n    RETURNING s.value\n)\nSELECT coalesce((SELECT value FROM saved),\n                (SELECT value FROM app_settings WHERE key = 'collection_times')) AS times,\n       coalesce((SELECT v = 'invalid' FROM wanted), false) AS invalid,\n       EXISTS (SELECT 1 FROM saved) AS changed;",
         "options": {
           "queryReplacement": "={{ [ $json.args || '' ] }}"
         }
@@ -418,7 +418,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const m = $('Read messages').item.json;\nconst r = $json;\nconst times = (r.times || '').split(' ').filter(Boolean);\nlet reply;\nif (r.invalid) {\n  reply = 'I did not understand that. Examples:\\n/schedule 8:00\\n/schedule 8:00 14:00\\n/schedule off';\n} else if (r.times === 'off' || !times.length) {\n  reply = 'Automatic checking is off. I check only when you send /check.\\n\\nTo turn it on: /schedule 8:00';\n} else {\n  const when = times.length === 1 ? times[0] : times.slice(0, -1).join(', ') + ' and ' + times[times.length - 1];\n  reply = `${r.changed ? 'Done. ' : ''}I check the sources every day at ${when} (Finnish time).`\n        + '\\n\\nChange it with /schedule 8:00 14:00, stop it with /schedule off, or check now with /check.';\n}\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset, reply } };"
+        "jsCode": "const m = $('Read messages').item.json;\nconst r = $json;\nconst times = (r.times || '').split(' ').filter(Boolean);\nlet reply;\nif (r.invalid) {\n  // the examples use the command they typed, /schedule or /reschedule\n  const cmd = `/${m.command}`;\n  reply = `I did not understand that. Examples:\\n${cmd} 8:00\\n${cmd} 8:00 14:00\\n${cmd} off`;\n} else if (r.times === 'off' || !times.length) {\n  reply = 'Automatic checking is off. I check only when you send /check.\\n\\nTo turn it on: /schedule 8:00';\n} else {\n  const when = times.length === 1 ? times[0] : times.slice(0, -1).join(', ') + ' and ' + times[times.length - 1];\n  reply = `${r.changed ? 'Done. ' : ''}I check the sources every day at ${when} (Finnish time).`\n        + '\\n\\nChange it with /reschedule 8:00 14:00, stop it with /schedule off, or check now with /check.';\n}\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset, reply } };"
       }
     },
     {
@@ -441,7 +441,7 @@
           "conditions": [
             {
               "id": "nisaccount",
-              "leftValue": "={{ ($json.command === 'start' && !!$json.args) || ($json.allowed === true && ['login', 'invite', 'people', 'remove'].includes($json.command)) }}",
+              "leftValue": "={{ $json.allowed === true && ['login', 'adduser', 'password', 'people', 'remove', 'alerts'].includes($json.command) }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -471,7 +471,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ telegram_user_id: $json.from_id, name: $json.from_name, command: $json.command, args: $json.args, chat_type: $json.chat_type }) }}",
+        "jsonBody": "={{ JSON.stringify({ telegram_user_id: $json.from_id, name: $json.from_name, command: $json.command, args: $json.args, chat_type: $json.chat_type, chat_id: String($json.chat_id) }) }}",
         "options": {
           "timeout": 10000
         }
@@ -494,22 +494,11 @@
         -160
       ],
       "parameters": {
-        "jsCode": "// The dashboard owns accounts and says what to answer. When it cannot be\n// reached the editor still hears something, rather than nothing.\nconst m = $('Read messages').item.json;\nconst reply = typeof $json.reply === 'string' && $json.reply\n  ? $json.reply\n  : 'The dashboard is not answering, so I cannot do that right now. Try again in a minute.';\nreturn { json: { chat_id: m.chat_id, next_offset: m.next_offset, reply } };"
+        "jsCode": "// The dashboard owns accounts and says what to answer: a message, with a\n// button that opens a link when Telegram can take one. When it cannot be\n// reached the editor still hears something, rather than nothing.\nconst m = $('Read messages').item.json;\nconst fallback = 'The dashboard is not answering, so I cannot do that right now. Try again in a minute.';\nconst messages = Array.isArray($json.messages) && $json.messages.length\n  ? $json.messages\n  : [{ text: typeof $json.reply === 'string' && $json.reply ? $json.reply : fallback }];\nreturn { json: {\n  chat_id: m.chat_id,\n  next_offset: m.next_offset,\n  reply: messages.map((x) => x.text).join('\\n\\n'),\n  messages,\n} };"
       }
     }
   ],
   "connections": {
-    "Every minute": {
-      "main": [
-        [
-          {
-            "node": "Load state",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Load state": {
       "main": [
         [
@@ -757,9 +746,21 @@
           }
         ]
       ]
+    },
+    "Every 20 seconds": {
+      "main": [
+        [
+          {
+            "node": "Load state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26"
   }
 }

@@ -137,6 +137,32 @@
 .set-help { margin-top: 18px; font-size: 14px; }
 .set-help summary { cursor: pointer; color: var(--link); font-weight: 600; }
 .set-help ol { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.set-status.warn { background: var(--amber-soft); color: var(--amber); }
+
+.cost-card { margin-top: 18px; }
+.cost-now { margin: 12px 0 6px; }
+.cost-big { margin: 0 0 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; color: var(--soft); }
+.cost-big strong { font-size: 26px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* A <progress>: the page's security policy allows no inline widths. */
+.cost-bar { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 8px; border: 0; border-radius: 4px; background: var(--rule); overflow: hidden; color: var(--green); }
+.cost-bar::-webkit-progress-bar { background: var(--rule); border-radius: 4px; }
+.cost-bar::-webkit-progress-value { background: currentColor; border-radius: 4px; }
+.cost-bar::-moz-progress-bar { background: currentColor; border-radius: 4px; }
+.cost-bar.warn { color: var(--amber); }
+.cost-bar.over { color: var(--danger); }
+.cost-row { display: flex; gap: 8px; align-items: center; }
+.cost-row input { max-width: 140px; }
+.cost-h { margin: 22px 0 8px; font-size: 15px; }
+.cost-scroll { overflow-x: auto; }
+.cost-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.cost-table th { text-align: left; font-size: 12.5px; font-weight: 600; color: var(--soft); padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+.cost-table td { padding: 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.cost-table td.num, .cost-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.cost-table small { display: block; color: var(--soft); font-size: 12.5px; }
+
+.keep-card { margin-top: 18px; }
+.keep-lead { margin: 10px 0 4px; color: var(--soft); font-size: 14.5px; }
+.keep-facts { margin: 14px 0 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 
 @media (max-width: 900px) {
   .nl-layout { grid-template-columns: minmax(0, 1fr); }

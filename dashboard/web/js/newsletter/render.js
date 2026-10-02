@@ -214,7 +214,9 @@ function frame(block, inner, ctx, extra = {}) {
   const attrs = [];
   if (ctx.mode === 'canvas') {
     attrs.push(`data-block-id="${escapeAttr(block.id)}"`, `data-type="${escapeAttr(block.type)}"`);
-    if (block.type === 'article') attrs.push(`data-checked="${block.checked ? 'true' : 'false'}"`);
+    // An article's AI summary, and a text block the AI drafted, wait for a
+    // person to tick them.
+    if (block.type === 'article' || block.ai) attrs.push(`data-checked="${block.checked ? 'true' : 'false'}"`);
     if (block.placeholder) attrs.push('data-placeholder="true"');
   }
   const align = extra.align ? ` align="${escapeAttr(extra.align)}"` : '';
@@ -616,7 +618,7 @@ const BASE_CSS = 'body{margin:0;padding:0;width:100% !important;-webkit-text-siz
   + 'img{border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;}'
   + 'p,h1,h2,h3,h4{display:block;}a img{border:0;}';
 
-// What only the editor's canvas shows: outlines for unchecked articles, hints
+// What only the editor's canvas shows: outlines for unchecked AI text, hints
 // in empty places, and no clicking through links.
 const CANVAS_CSS = `
 html,body{min-height:100%;}
@@ -625,7 +627,7 @@ a{cursor:text;}
 [data-edit]{outline:none;cursor:text;min-height:1em;}
 [data-edit][contenteditable="true"]{caret-color:#2a5214;}
 .nl-edit-line{display:inline-block;min-width:2em;}
-table[data-type="article"][data-checked="false"]{outline:2px dashed #d0962a;outline-offset:-4px;}
+table[data-checked="false"]{outline:2px dashed #d0962a;outline-offset:-4px;}
 table[data-placeholder="true"] [data-edit]{background-color:rgba(252,192,197,.45);}
 table[data-unsent="true"]{opacity:.55;}
 .nl-ph{display:flex;align-items:center;justify-content:center;box-sizing:border-box;border:2px dashed #c3cccc;background:#f6f8f8;color:#5b6869;font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;padding:16px;border-radius:4px;}

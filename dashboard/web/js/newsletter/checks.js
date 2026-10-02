@@ -4,9 +4,10 @@
 // Errors are what Mailchimp itself would refuse (no unsubscribe link, no
 // postal address, placeholder text, no subject line) and what Kaisa asked for: a person reads
 // every AI-written text before it goes out. That reading is the "checked"
-// tick on each article; it is also what lets AI-written text go out without
-// an AI label under the EU's transparency rules, because a person has
-// reviewed it and the association takes responsibility for it.
+// tick on each article, and on each text the AI drafted for the greeting or
+// a trend (newsletter/writing.js); it is also what lets AI-written text go
+// out without an AI label under the EU's transparency rules, because a
+// person has reviewed it and the association takes responsibility for it.
 //
 // Warnings are worth a look but can be right as they are.
 
@@ -79,6 +80,7 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
   };
 
   add(errors, 'unchecked', sent.filter(({ block }) => block.type === 'article' && !block.checked).map(({ block, sec }) => item(block, sec)));
+  add(errors, 'uncheckedDraft', sent.filter(({ block }) => block.type === 'text' && block.ai && !block.checked).map(({ block, sec }) => item(block, sec)));
   add(errors, 'placeholders', sent.filter(({ block }) => hasPlaceholder(block)).map(({ block, sec }) => item(block, sec)));
 
   const links = collectLinks(design);

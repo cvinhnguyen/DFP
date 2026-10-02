@@ -16,7 +16,7 @@ import {
   columnsBlock, articleBlock, socialBlock, logoBlock, articleIds, withoutArticles, withNewIds,
   ARTICLE_SECTIONS, FOOTER_HTML, BLOCK_PADDING, COLUMN_SIDE_PADDING, readDesign,
 } from './model.js';
-import { escapeText, fromText } from './richtext.js';
+import { escapeAttr, escapeText, fromText } from './richtext.js';
 
 export const SECTION_NAMES = {
   own_news: 'Ajankohtaista yhdistykseltä ja hankkeista',
@@ -42,6 +42,7 @@ export const PLACEHOLDERS = {
   card: 'Kirjoita tähän tervehdys jäsenille.',
   join: 'Kerro tähän, miksi yhdistykseen kannattaa liittyä ja keitä jäseniksi toivotaan.',
   learningFactory: 'Kerro tähän ajankohtaisesta koulutuksesta: mitä siinä opitaan, kenelle se sopii ja milloin se alkaa.',
+  trend: 'Kirjoita tähän, miksi aihe on nyt pinnalla ja mitä se tarkoittaa jäsenille.',
 };
 
 // Sample content in more than one paragraph, also replaced by the editors.
@@ -967,6 +968,83 @@ export function startDesign(source, issue, articles) {
   if (!design) design = buildTemplate(source && source.key, issue);
   placeArticles(design, articles || []);
   return design;
+}
+
+// ---------- trends ----------
+
+// A topic the signal detection found coming up again and again
+// (n8n/workflows/signal-detection.json), as a box for Nostoja kentältä: the
+// topic, how often the sources wrote about it, and a few of those articles.
+// Why it matters is for the editors to write, so the box starts as sample
+// text the checks count until someone does: the AI's reason for a signal
+// describes one article, not the trend.
+// Jira: DM42-40
+const TREND_ARTICLES = 3;
+const TREND_CARD = { background: '#ffffff', radius: 10, paddingTop: 22, paddingRight: 24, paddingBottom: 22, paddingLeft: 24, marginRight: 24, marginBottom: 14, marginLeft: 24 };
+
+export function trendTopic(signal) {
+  const topic = String(signal.topic || '').trim();
+  return topic.charAt(0).toUpperCase() + topic.slice(1);
+}
+
+function trendHref(url) {
+  const v = String(url || '').trim();
+  return /^https?:\/\//i.test(v) ? escapeAttr(v) : '';
+}
+
+// The text of a trend's box: the topic, why it matters (the sample text, or
+// an AI draft once an editor asks for one), how often the sources wrote
+// about it, and a few of those articles. label puts NOUSEVA AIHE over the
+// topic, as the newsletter's card has it.
+export function trendCardHtml(signal, whyHtml, label = false) {
+  const topic = trendTopic(signal);
+  const n = Number(signal.articles) || 0;
+  const days = Math.round((Date.parse(signal.period_end) - Date.parse(signal.period_start)) / 86400000);
+  const items = (signal.items || []).filter((a) => trendHref(a.url)).slice(0, TREND_ARTICLES)
+    .map((a) => `<li>${a.publisher ? `${escapeText(a.publisher)}: ` : ''}<a href="${trendHref(a.url)}">${escapeText(a.title || a.url)}</a></li>`)
+    .join('');
+  const count = `Seuraamissamme lähteissä aiheesta on ilmestynyt ${n} ${n === 1 ? 'juttu' : 'juttua'}`
+    + (days > 0 ? ` viimeisen ${days} päivän aikana` : '') + (items ? '. Muutama niistä:' : '.');
+  return `${label ? '<h4>NOUSEVA AIHE</h4>' : ''}<h3>${escapeText(topic)}</h3>${whyHtml}<p>${count}</p>${items ? `<ul>${items}</ul>` : ''}`;
+}
+
+// The box as a section of its own. It keeps the signal's id, so the editor
+// can ask the AI to write why the topic matters (newsletter/writing.js).
+export function trendSection(signal, design) {
+  const sampleWhy = `<p><em>${escapeText(PLACEHOLDERS.trend)}</em></p>`;
+  const name = `Nouseva aihe: ${trendTopic(signal)}`;
+  const meta = (design && design.meta) || {};
+  const family = meta.headings || meta.template;
+  let sec;
+  if (family === 'jasenkirje') {
+    // The member letter: a black bar, as its highlights from the field have.
+    sec = section(name, 'trend', [
+      sectionBar('Nouseva aihe', BLACK),
+      sample(trendCardHtml(signal, sampleWhy), { style: { paddingTop: 16, paddingBottom: 16 } }),
+    ], { spaceAbove: 12, paddingBottom: 8 });
+  } else if (['simple', 'visual', 'blank'].includes(family)) {
+    sec = section(name, 'trend', [h2('Nouseva aihe'), sample(trendCardHtml(signal, sampleWhy))]);
+  } else {
+    // The newsletter: a white card in a pink box, like the articles in
+    // Nostoja kentältä, with a small label over the topic as the tips have.
+    // No heading of its own, so two trends in a row do not repeat one.
+    sec = section(name, 'trend', [
+      sample(trendCardHtml(signal, sampleWhy, true), { style: { ...TREND_CARD, marginTop: 24 } }),
+    ], { contentBackground: PINK, ...BOXED, paddingBottom: 10 });
+  }
+  sec.signal = Number(signal.id) || null;
+  return sec;
+}
+
+// Where a trend goes when it is clicked rather than dragged: after
+// Nostoja kentältä and any trends already there. -1 when the design has no
+// such section, and then it goes where any section would.
+export function trendPlace(design) {
+  let i = design.sections.findIndex((s) => s.role === 'highlights');
+  if (i < 0) return -1;
+  i += 1;
+  while (design.sections[i] && design.sections[i].role === 'trend') i += 1;
+  return i;
 }
 
 // ---------- ready-made sections ----------

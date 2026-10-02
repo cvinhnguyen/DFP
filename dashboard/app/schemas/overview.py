@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from .costs import Budget
+
 
 class FailedSource(BaseModel):
     source: str
@@ -23,3 +25,4 @@ class Overview(BaseModel):
     waiting_for_ai: int = Field(description="Of those, the ones the AI did not answer for last time")
     needs_attention: int = Field(description="Articles whose summary failed or whose source forbids AI summaries")
     ai_answering: bool | None = Field(description="Whether the model server answered just now. Null if it cannot be checked.")
+    budget: Budget = Field(description="This month's AI spending against the budget")

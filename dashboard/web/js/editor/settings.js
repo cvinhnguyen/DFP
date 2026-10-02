@@ -11,6 +11,7 @@ import { FONTS } from '../newsletter/fonts.js';
 import { links as textLinks } from '../newsletter/richtext.js';
 import { SECTION_NAMES, ensureArticleSection } from '../newsletter/templates.js';
 import { ADDRESS_TAGS } from '../newsletter/checks.js';
+import { draftTask, usageLine } from '../newsletter/writing.js';
 import { t } from '../texts.js';
 import { h, clear } from '../ui/dom.js';
 import { icon, columnsIcon } from '../ui/icons.js';
@@ -477,6 +478,28 @@ export function createSettings({ store, root, actions, context }) {
 
   // ---------- drawing the panel ----------
 
+  // The AI's draft of the greeting, or of why a trend matters: a button to
+  // write one, and once there is one, the tick that says a person has read
+  // it, as an article has.
+  function draftCard(block) {
+    const found = findBlock(store.design, block.id);
+    const task = draftTask(block, found && found.section);
+    if (!task) return null;
+    if (task === 'trend-old') return h('p', { class: 'st-note' }, t('ai.trendOld'));
+    const busy = actions.isDrafting(block.id);
+    const usage = block.ai ? usageLine(block.ai) : '';
+    return h('div', { class: 'st-ai' },
+      h('h3', { class: 'st-ai-title' }, t('ai.title')),
+      h('p', { class: 'cf-hint' }, t(block.ai ? 'ai.draftedHint' : `ai.${task}Hint`)),
+      block.ai ? h('div', { class: `st-checked${block.checked ? ' on' : ''}` },
+        toggle(block.checked, (v) => setBlock(block.id, null, (b) => { b.checked = v; }), t('settings.checked')),
+        h('p', { class: 'cf-hint' }, t('settings.checkedHint'))) : null,
+      h('div', { class: 'st-ai-actions' },
+        h('button', { type: 'button', class: `btn small${block.ai ? ' ghost' : ''}`, disabled: busy, 'aria-busy': busy ? 'true' : null,
+          onclick: () => actions.draft(block.id) }, t(busy ? 'ai.writing' : block.ai ? 'ai.again' : 'ai.draft')),
+        usage ? h('span', { class: 'st-ai-usage' }, usage) : null));
+  }
+
   function header(title, extra) {
     return h('div', { class: 'st-head' },
       h('button', { type: 'button', class: 'st-back', 'aria-label': t('settings.back'), title: t('settings.back'), html: icon('arrowLeft', 20), onclick: () => store.select(null) }),
@@ -509,7 +532,7 @@ export function createSettings({ store, root, actions, context }) {
         } }, t('settings.clearStyles')),
         h('button', { type: 'button', class: 'btn ghost small', html: `${icon('styles', 16)} `, onclick: () => applyToAll(block) }, t('settings.applyAll')))
       : null;
-    return [header(t(`block.${block.type}`)), tabBar, body, footer];
+    return [header(t(`block.${block.type}`)), block.type === 'text' ? draftCard(block) : null, tabBar, body, footer];
   }
 
   function applyToAll(block) {

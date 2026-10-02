@@ -3,9 +3,12 @@ lockout after wrong passwords; and sessions.
 Jira: DM42-33
 
 The members never log in, so there is no sign-up and no password reset by
-email. Editors join through an invite from the bot and log in with /login
-(services/telegram.py). An admin can also make accounts with passwords with
-python -m app.cli.users.
+email. An admin makes an account for an email address with /adduser in the
+Telegram bot (services/telegram.py), and the person chooses their password
+through a one-time link. /password in the bot gives anyone a link to choose
+their own, and an admin one for someone else; someone on the bot's list logs
+in with /login. The command line, python -m app.cli.users, does the same
+without the bot.
 
 A login is a random token kept in a cookie (routes/auth.py sets it). Only a
 hash of the token is stored, so a copy of the sessions table is no way in.
@@ -13,6 +16,7 @@ Passwords are stored as Argon2 hashes and in no other form.
 """
 
 import hashlib
+import re
 import secrets
 import threading
 import time
@@ -20,6 +24,7 @@ import time
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 
+from .. import database
 from ..queries import settings, users
 from ..queries import telegram as links
 
@@ -42,10 +47,32 @@ class BadLink(Exception):
     pass
 
 
+class WeakPassword(Exception):
+    pass
+
+
+class BadEmail(Exception):
+    pass
+
+
+class EmailTaken(Exception):
+    pass
+
+
+# The command line asks for the same.
+MIN_PASSWORD = 10
+
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 # Five wrong passwords for one email and that email waits a quarter of an
 # hour. Kept in memory: the service runs as a single process, and a restart
-# that forgets the count does no harm.
+# that forgets the count does no harm. The shared demo login gets twenty: a
+# room of people typing the same password on their phones makes typos, and
+# its password, three words and a number, holds out against that many
+# guesses for the few days it works.
 _MAX_FAILURES = 5
+_DEMO_FAILURES = 20
 _WINDOW_SECONDS = 15 * 60
 _failures = {}
 _lock = threading.Lock()
@@ -55,9 +82,9 @@ def _recent(email, now):
     return [t for t in _failures.get(email, []) if now - t < _WINDOW_SECONDS]
 
 
-def _locked_out(email):
+def _locked_out(email, limit):
     with _lock:
-        return len(_recent(email, time.monotonic())) >= _MAX_FAILURES
+        return len(_recent(email, time.monotonic())) >= limit
 
 
 def _count_failure(email):
@@ -80,7 +107,8 @@ def log_in(email, password):
     """Checks the password and starts a session. Returns the user's row, the
     token for the cookie, and how many hours the login lasts."""
     email = email.strip().lower()
-    if _locked_out(email):
+    demo = email == (settings.get("demo_email") or "").strip().lower()
+    if _locked_out(email, _DEMO_FAILURES if demo else _MAX_FAILURES):
         raise LockedOut()
 
     found = users.by_email(email)
@@ -104,6 +132,43 @@ def log_in_with_link(link_token):
     """Uses up a login link from the bot and starts a session. Returns the
     same as log_in."""
     found = links.use_login_link(token_hash(link_token))
+    if not found:
+        raise BadLink()
+    return (found, *_start_session(found["id"]))
+
+
+def password_link_owner(link_token):
+    """Who a link to choose a password is for, without using it up. Raises
+    BadLink."""
+    found = links.password_link_owner(token_hash(link_token))
+    if not found:
+        raise BadLink()
+    return found
+
+
+def set_password_with_link(link_token, password, email=None):
+    """Sets the password the person chose, and the email they typed if the
+    account has none yet, uses up the link, ends their other logins and
+    starts a session. Returns the same as log_in. Raises BadLink,
+    WeakPassword, BadEmail or EmailTaken."""
+    owner = links.password_link_owner(token_hash(link_token))
+    if not owner:
+        raise BadLink()
+    if len(password) < MIN_PASSWORD:
+        raise WeakPassword()
+    new_email = None
+    if not owner["email"]:
+        new_email = (email or "").strip().lower()
+        if len(new_email) > 200 or not EMAIL.match(new_email):
+            raise BadEmail()
+        other = users.by_email(new_email, include_removed=True)
+        if other and other["id"] != owner["id"]:
+            raise EmailTaken()
+    try:
+        found = links.use_password_link(token_hash(link_token), hasher.hash(password), new_email)
+    except database.UniqueViolation:
+        # Taken in the moment between the check and the change.
+        raise EmailTaken()
     if not found:
         raise BadLink()
     return (found, *_start_session(found["id"]))

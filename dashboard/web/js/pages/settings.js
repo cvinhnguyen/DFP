@@ -1,19 +1,25 @@
 // Asetukset, for admins: the Mailchimp connection and how drafts are set up
-// there. The Mailchimp key itself is never here: it lives in n8n's
-// credential store, and this page only says whether n8n can reach Mailchimp
-// with it.
-// Jira: DM42-37, DM42-74
+// there, what the AI costs against its monthly budget, and how long the text
+// of collected articles is kept. The Mailchimp key itself is never here: it
+// lives in n8n's credential store, and this page only says whether n8n can
+// reach Mailchimp with it.
+// Jira: DM42-37, DM42-74, DM42-39, DM42-45
 
 import { api } from '../api.js';
 import { t, tn } from '../texts.js';
 import { esc, number } from '../format.js';
 import { icon } from '../ui/icons.js';
 import { toast } from '../ui/dialogs.js';
+import { costsCard } from '../components/costs.js';
+import { retentionCard } from '../components/retention.js';
 
 export function showSettings(root, { user }) {
   let state = null;
+  let costs = null;
+  let keep = null;
   let gone = false;
   let busy = false;
+  const problems = { mailchimp: '', costs: '', keep: '' };
 
   function status() {
     if (!state) return '';
@@ -31,9 +37,16 @@ export function showSettings(root, { user }) {
       root.innerHTML = `<p class="problem">${esc(t('error.admin_only'))}</p>`;
       return;
     }
-    const audiences = state.audiences || [];
     root.innerHTML = `
       <div class="pagehead"><h2>${esc(t('admin.title'))}</h2><p>${esc(t('admin.lead'))}</p></div>
+      ${problems.mailchimp ? `<p class="problem">${esc(problems.mailchimp)}</p>` : (state ? mailchimpCard() : '')}
+      ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
+      ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}`;
+  }
+
+  function mailchimpCard() {
+    const audiences = state.audiences || [];
+    return `
       <section class="card set-card">
         <div class="set-head">
           <h3>${esc(t('admin.mailchimp'))}</h3>
@@ -77,10 +90,34 @@ export function showSettings(root, { user }) {
   async function load(refresh = false) {
     try {
       state = await api.get('/api/mailchimp', refresh ? { refresh: 'true' } : undefined);
-      if (!gone) render();
+      problems.mailchimp = '';
     } catch (e) {
-      if (e.status !== 401 && !gone) root.innerHTML = `<p class="problem">${esc(e.message)}</p>`;
+      if (e.status === 401) return;
+      problems.mailchimp = e.message;
     }
+    if (!gone) render();
+  }
+
+  async function loadRetention() {
+    try {
+      keep = await api.get('/api/retention');
+      problems.keep = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.keep = e.message;
+    }
+    if (!gone) render();
+  }
+
+  async function loadCosts() {
+    try {
+      costs = await api.get('/api/costs');
+      problems.costs = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.costs = e.message;
+    }
+    if (!gone) render();
   }
 
   root.addEventListener('click', async (event) => {
@@ -91,10 +128,34 @@ export function showSettings(root, { user }) {
     await load(true);
     busy = false;
     render();
-    toast(state.connected ? t('admin.testOk') : t('admin.testBad'), state.connected ? 'good' : 'warn');
+    toast(state && state.connected ? t('admin.testOk') : t('admin.testBad'), state && state.connected ? 'good' : 'warn');
   });
 
   root.addEventListener('submit', async (event) => {
+    const days = event.target.closest('[data-form="retention"]');
+    if (days) {
+      event.preventDefault();
+      try {
+        keep = await api.put('/api/retention', { days: Number(days.days.value) });
+        render();
+        toast(t('keep.saved'));
+      } catch (e) {
+        toast(e.message, 'warn');
+      }
+      return;
+    }
+    const budget = event.target.closest('[data-form="budget"]');
+    if (budget) {
+      event.preventDefault();
+      try {
+        costs = await api.put('/api/costs/budget', { eur: Number(budget.eur.value) });
+        render();
+        toast(t('cost.saved'));
+      } catch (e) {
+        toast(e.message, 'warn');
+      }
+      return;
+    }
     const form = event.target.closest('[data-form="mailchimp"]');
     if (!form) return;
     event.preventDefault();
@@ -114,5 +175,7 @@ export function showSettings(root, { user }) {
   });
 
   load();
+  loadCosts();
+  loadRetention();
   return { leave() { gone = true; } };
 }

@@ -183,7 +183,9 @@ function eventBox(item) {
 
 function signalNotes(item) {
   return item.signals.map((s) => `
-    <p class="rd-signal"><strong>${esc(t('reader.signal', { topic: s.topic }))}.</strong> ${esc(s.reason || '')}</p>`).join('');
+    <p class="rd-signal"><button type="button" class="linkish" data-place="signal:${s.id}"
+      title="${esc(t('reader.signalOpen', { topic: s.topic }))}"><strong>${esc(t('reader.signal', { topic: s.topic }))}.</strong></button>
+      ${esc(s.reason || '')}</p>`).join('');
 }
 
 function licenceNote(item) {
@@ -268,7 +270,8 @@ function facts(item) {
     [t('details.collected'), when(item.collected_at)],
     item.published_at && [t('details.published'), date(item.published_at)],
     item.summary && [t('details.summarised'), when(item.summary.made_at)],
-    [t('details.text'), item.text_length ? t('details.chars', { count: number(item.text_length) }) : t('details.noText')],
+    [t('details.text'), item.text_length ? t('details.chars', { count: number(item.text_length) })
+      : item.text_removed_at ? t('details.textRemoved', { date: date(item.text_removed_at) }) : t('details.noText')],
     [t('details.language'), languageName(item.language)],
     [t('details.number'), String(item.id)],
   ].filter(Boolean);

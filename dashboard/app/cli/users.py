@@ -1,6 +1,7 @@
-"""Dashboard accounts from the command line. Editors normally join through an
-invite from the Telegram bot (/invite) and log in with /login. This is for
-the first admin, for the team, and for anyone who wants a password.
+"""Dashboard accounts from the command line. Admins normally add people with
+/adduser in the Telegram bot, and each person chooses their own password.
+This is for the first admin, and for putting someone's Telegram on their
+account so the bot answers them.
 Jira: DM42-33
 
   docker compose exec dashboard python -m app.cli.users list
@@ -20,9 +21,9 @@ password. Give them one with "password" rather than adding them again.
 Removing someone ends their access, and the articles they sent keep their
 name.
 
-"telegram" puts an account on the bot's list, which is how the first admin
-gets there: message the bot once, and it answers with your Telegram ID.
-After that, admins bring in everyone else with /invite.
+"telegram" puts an account on the bot's list: message the bot once, and it
+answers with your Telegram ID. That is how anyone gets on the list, the
+first admin included; after that /login in the bot opens the dashboard.
 """
 
 import argparse
@@ -31,9 +32,9 @@ import sys
 
 from .. import database
 from ..queries import users
-from ..services.auth import hash_password
+from ..services.auth import MIN_PASSWORD, hash_password
 
-MIN_LENGTH = 10
+MIN_LENGTH = MIN_PASSWORD
 ROLES = ("editor", "admin")
 COMMAND = "python -m app.cli.users"
 

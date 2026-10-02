@@ -6,6 +6,7 @@ import { applyTexts, otherLanguage, setLanguage } from './texts.js';
 import { esc } from './format.js';
 import { showLogin } from './pages/login.js';
 import { showLinkLogin } from './pages/link.js';
+import { showPassword } from './pages/password.js';
 import { showArticles } from './pages/articles.js';
 import { showNewsletters } from './pages/newsletters.js';
 import { showNewsletter } from './pages/newsletter.js';
@@ -23,12 +24,16 @@ const PAGES = {
 
 // A login link from the bot: http://…/#/link/<token>
 const LINK = /^#\/link\/([A-Za-z0-9_-]{20,100})$/;
+// A link to choose a password, from /adduser or /password in the bot:
+// http://…/#/password/<token>
+const PASSWORD = /^#\/password\/([A-Za-z0-9_-]{20,100})$/;
 
 const view = document.getElementById('view');
 const who = document.getElementById('who');
 const nav = document.getElementById('mainnav');
 let user = null;
 let linkToken = null;
+let passwordToken = null;
 let current = null;   // { name, page } on screen, so the page can stop its timers when it goes
 
 function pageFromAddress() {
@@ -44,8 +49,31 @@ function setUser(next) {
   nav.querySelectorAll('[data-admin]').forEach((a) => { a.hidden = !(user && user.role === 'admin'); });
 }
 
-function loggedIn(next) {
+// A link from the bot opened in the address bar. The token leaves the
+// address straight away, so it is not kept in the browser's history or read
+// over someone's shoulder. The password page stays at #/password, so the top
+// bar can still lead away from it.
+function takeLink() {
+  const link = location.hash.match(LINK);
+  const password = location.hash.match(PASSWORD);
+  if (link) {
+    linkToken = link[1];
+    history.replaceState(null, '', '#/');
+  } else if (password) {
+    passwordToken = password[1];
+    history.replaceState(null, '', '#/password');
+  }
+  return Boolean(link || password);
+}
+
+function forgetLinks() {
   linkToken = null;
+  passwordToken = null;
+  if (location.hash === '#/password') history.replaceState(null, '', '#/');
+}
+
+function loggedIn(next) {
+  forgetLinks();
   setUser(next);
   render();
 }
@@ -53,6 +81,19 @@ function loggedIn(next) {
 function render() {
   current?.page?.leave();
   current = null;
+  // Whether or not someone is logged in: the page checks whose link it is.
+  if (passwordToken) {
+    nav.querySelectorAll('[data-page]').forEach((a) => a.removeAttribute('aria-current'));
+    showPassword(view, passwordToken, {
+      user,
+      onLoggedIn: loggedIn,
+      onDone: () => {
+        forgetLinks();
+        render();
+      },
+    });
+    return;
+  }
   if (!user && linkToken) {
     showLinkLogin(view, linkToken, loggedIn, () => {
       linkToken = null;
@@ -78,13 +119,7 @@ function render() {
 async function start() {
   applyTexts(document);
 
-  const link = location.hash.match(LINK);
-  if (link) {
-    linkToken = link[1];
-    // The token leaves the address straight away, so it is not kept in the
-    // browser's history or read over someone's shoulder.
-    history.replaceState(null, '', '#/');
-  }
+  takeLink();
 
   document.getElementById('logout').addEventListener('click', async () => {
     try {
@@ -106,6 +141,15 @@ async function start() {
   // page is handled here.
   // One newsletter's page shows another when the address names another.
   window.addEventListener('hashchange', () => {
+    if (takeLink()) {
+      render();
+      return;
+    }
+    if (passwordToken && location.hash !== '#/password') {
+      forgetLinks();
+      render();
+      return;
+    }
     if (!user || !current) return;
     if (pageFromAddress() !== current.name || (current.name === 'newsletter' && location.hash !== current.hash)) render();
   });

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from .. import config
 from ..dependencies import COOKIE, current_user
 from ..errors import ApiError
-from ..schemas.auth import Credentials, LinkToken, User
+from ..schemas.auth import Credentials, LinkOwner, LinkToken, NewPassword, PasswordLink, User
 from ..services import auth
 
 router = APIRouter(tags=["login"])
@@ -45,6 +45,46 @@ def login_with_link(body: LinkToken, response: Response):
         found, token, hours = auth.log_in_with_link(body.token)
     except auth.BadLink:
         raise ApiError(401, "bad_link", "This link has expired or was already used. Send /login to the bot for a new one.")
+    _set_cookie(response, token, hours)
+    return User.from_row(found)
+
+
+BAD_PASSWORD_LINK = (401, "bad_password_link",
+                     "This link has expired or was already used. Send /password to the bot for a new one, "
+                     "or ask an admin.")
+
+
+@router.post("/password/link", response_model=LinkOwner, summary="Who a link to choose a password is for",
+             responses={401: {"description": "The link is unknown, used or expired"}})
+def password_link(body: PasswordLink):
+    """Does not use the link up, so the page can greet the person and show the
+    email they will log in with, or ask for one if they have none yet."""
+    try:
+        found = auth.password_link_owner(body.token)
+    except auth.BadLink:
+        raise ApiError(*BAD_PASSWORD_LINK)
+    return LinkOwner(id=found["id"], name=found["display_name"] or found["email"] or "", email=found["email"],
+                     has_password=found["has_password"], min_length=auth.MIN_PASSWORD)
+
+
+@router.post("/password", response_model=User, summary="Choose a password with a link from the bot",
+             responses={401: {"description": "The link is unknown, used or expired"},
+                        409: {"description": "Another account has that email"},
+                        422: {"description": "The password is too short, or the email is missing or not one"}})
+def set_password(body: NewPassword, response: Response):
+    """The link works once. The person is logged in straight away, and any
+    other login of theirs ends. An account without an email gets the one
+    sent with the password."""
+    try:
+        found, token, hours = auth.set_password_with_link(body.token, body.password, body.email)
+    except auth.WeakPassword:
+        raise ApiError(422, "weak_password", f"Use at least {auth.MIN_PASSWORD} characters.", n=auth.MIN_PASSWORD)
+    except auth.BadEmail:
+        raise ApiError(422, "bad_login_email", "Type the email address you will log in with.")
+    except auth.EmailTaken:
+        raise ApiError(409, "email_taken", "Another account has that email already. Type another one, or ask an admin.")
+    except auth.BadLink:
+        raise ApiError(*BAD_PASSWORD_LINK)
     _set_cookie(response, token, hours)
     return User.from_row(found)
 

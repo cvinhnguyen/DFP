@@ -12,7 +12,7 @@ ACTIVE = "removed_at IS NULL"
 
 def by_email(email, include_removed=False):
     return database.row(
-        f"""SELECT id, email, display_name, role, password_hash, removed_at
+        f"""SELECT id, email, display_name, role, password_hash, telegram_user_id, removed_at
               FROM users
              WHERE lower(email) = lower(%s) {'' if include_removed else 'AND ' + ACTIVE}""",
         (email.strip(),))
@@ -20,7 +20,7 @@ def by_email(email, include_removed=False):
 
 def by_telegram_id(telegram_user_id, include_removed=False):
     return database.row(
-        f"""SELECT id, email, display_name, role, removed_at
+        f"""SELECT id, email, display_name, role, removed_at, password_hash IS NOT NULL AS has_password
               FROM users
              WHERE telegram_user_id = %s {'' if include_removed else 'AND ' + ACTIVE}""",
         (str(telegram_user_id),))
@@ -72,18 +72,42 @@ def everyone():
 
 def active_people():
     return database.rows(
-        f"""SELECT id, coalesce(display_name, email) AS name, role, telegram_user_id,
-                  telegram_user_id IS NOT NULL AS on_telegram
+        f"""SELECT id, coalesce(display_name, email) AS name, email, role, telegram_user_id,
+                  telegram_user_id IS NOT NULL AS on_telegram,
+                  password_hash IS NOT NULL    AS has_password
              FROM users
             WHERE {ACTIVE}
             ORDER BY role, lower(coalesce(display_name, email))""")
 
 
+def create_account(email, name, role):
+    """An account that logs in with its email and a password the person
+    chooses later. One that was removed comes back; one that never got its
+    password takes the new name and role. Returns the row."""
+    email = email.strip().lower()
+    with database.pool.connection() as conn, conn.transaction():
+        found = conn.execute(
+            "SELECT id FROM users WHERE lower(email) = %s FOR UPDATE", (email,)).fetchone()
+        if found:
+            return conn.execute(
+                """UPDATE users
+                      SET removed_at = NULL, display_name = %s, role = %s
+                    WHERE id = %s
+                RETURNING id, email, display_name, role""",
+                (name, role, found["id"])).fetchone()
+        return conn.execute(
+            """INSERT INTO users (email, display_name, role)
+               VALUES (%s, %s, %s)
+            RETURNING id, email, display_name, role""",
+            (email, name, role)).fetchone()
+
+
 def find_active(name_or_telegram_id):
-    """People whose full name, first name or Telegram id is the given text."""
+    """People whose full name, first name, Telegram id or email is the given
+    text."""
     text = name_or_telegram_id.strip()
     return database.rows(
-        f"""SELECT id, coalesce(display_name, email) AS name, role, telegram_user_id
+        f"""SELECT id, coalesce(display_name, email) AS name, email, role, telegram_user_id
              FROM users
             WHERE {ACTIVE}
               AND (lower(display_name) = lower(%(t)s)
@@ -108,9 +132,11 @@ def add(email, name, role, password_hash):
 
 
 def remove(user_id):
-    """Ends someone's access: no password, no open logins, no login links, off
-    the bot's list. The row stays for the articles they sent."""
+    """Ends someone's access: no password, no open logins, no login links or
+    links to choose a password, off the bot's list. The row stays for the
+    articles they sent."""
     with database.pool.connection() as conn, conn.transaction():
         conn.execute("UPDATE users SET removed_at = now(), password_hash = NULL WHERE id = %s", (user_id,))
         conn.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
         conn.execute("DELETE FROM login_links WHERE user_id = %s", (user_id,))
+        conn.execute("DELETE FROM password_links WHERE user_id = %s", (user_id,))

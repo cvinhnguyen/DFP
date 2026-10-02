@@ -229,12 +229,16 @@ export function createDnd({ store, canvas, stage, frame, after }) {
     active = { cleanup };
   }
 
-  // A click on a tile: in at the usual place, no dragging.
+  // A click on a tile: in at the usual place, no dragging. A section can say
+  // where it belongs with spec.place(design), as a trend goes after Nostoja
+  // kentältä; a section the editor has selected still comes first.
   function click(spec) {
     if (spec.kind === 'new-section') {
       const d = store.design;
       const sel = store.selection;
       let index = d.sections.findIndex((s) => s.role === 'footer');
+      const placed = spec.place ? spec.place(d) : -1;
+      if (placed >= 0) index = placed;
       if (sel && sel.kind === 'section') index = findSection(d, sel.id).index + 1;
       if (index < 0) index = d.sections.length;
       drop(spec, { index });

@@ -1,0 +1,87 @@
+{
+  "id": "r3tent1onW0rk26a",
+  "name": "Retention",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "68ca2984-9799-567f-a4fc-0b5340453d95",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 3,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "c16e372e-1328-5d5d-bf16-3c77a10031a5",
+      "name": "Every night",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Takes away the text of articles collected longer ago than\n-- raw_text_retention_days, except what a newsletter or an editor still has,\n-- and old answers from the AI's cache. Writes a line in retention_runs and\n-- returns it, so this run's output says what went. See\n-- db/init/25-retention.sql.\nSELECT * FROM clean_up_raw_text();",
+        "options": {}
+      },
+      "id": "357942e8-b176-5dae-a838-5ddb1a4a48e9",
+      "name": "Clean up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        240,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Clean up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every night": {
+      "main": [
+        [
+          {
+            "node": "Clean up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26"
+  }
+}

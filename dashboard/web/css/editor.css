@@ -385,3 +385,12 @@
   .ed-saved { display: none; }
   .editor-page { --panel-w: 260px; --rail-w: 64px; }
 }
+
+/* The AI's draft of the greeting or of a trend's why it matters, above the
+   block's styles. */
+.st-ai { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 12px 10px; margin: 0 0 16px; background: var(--surface); }
+.st-ai-title { font-size: 14px; font-weight: 650; margin: 0 0 2px; }
+.st-ai > .cf-hint { margin: 0 0 10px; }
+.st-ai .st-checked { margin: 0 0 10px; }
+.st-ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.st-ai-usage { font-size: 12px; color: var(--soft); }

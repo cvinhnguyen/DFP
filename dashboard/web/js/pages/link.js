@@ -11,11 +11,11 @@ import { esc } from '../format.js';
 export function showLinkLogin(root, token, onLoggedIn, onPasswordInstead) {
   root.innerHTML = `
     <section class="login">
-      <h2>${esc(t('link.title'))}</h2>
-      <p class="lead">${esc(t('link.intro'))}</p>
+      <h2>${esc(t('linkLogin.title'))}</h2>
+      <p class="lead">${esc(t('linkLogin.intro'))}</p>
       <p class="form-error" id="link-error" role="alert" hidden></p>
-      <button class="btn" type="button" id="link-go">${esc(t('link.submit'))}</button>
-      <p class="hint"><button type="button" class="linkish" id="link-password">${esc(t('link.password'))}</button></p>
+      <button class="btn" type="button" id="link-go">${esc(t('linkLogin.submit'))}</button>
+      <p class="hint"><button type="button" class="linkish" id="link-password">${esc(t('linkLogin.password'))}</button></p>
     </section>`;
 
   const go = root.querySelector('#link-go');
@@ -24,7 +24,7 @@ export function showLinkLogin(root, token, onLoggedIn, onPasswordInstead) {
   go.addEventListener('click', async () => {
     error.hidden = true;
     go.disabled = true;
-    go.textContent = t('link.busy');
+    go.textContent = t('linkLogin.busy');
     try {
       onLoggedIn(await api.post('/api/login/link', { token }));
     } catch (e) {

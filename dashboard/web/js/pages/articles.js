@@ -2,11 +2,11 @@
 // being read. The editor reads down the list and decides with one click or a
 // key, and the next article opens by itself. How the parts look is in
 // components/article.js and components/side.js.
-// Jira: DM42-80, DM42-31
+// Jira: DM42-80, DM42-31, DM42-40
 
 import { api } from '../api.js';
 import { t, tn } from '../texts.js';
-import { esc, number, finnishDay } from '../format.js';
+import { date, esc, number, finnishDay } from '../format.js';
 import { articleRow, articleReader, dayHeading, termOptions, SECTIONS } from '../components/article.js';
 import { sideHtml } from '../components/side.js';
 import { topicRows, topicEditor } from '../components/topics.js';
@@ -14,7 +14,8 @@ import { statusLines } from '../components/status.js';
 import { confirmDialog } from '../ui/dialogs.js';
 
 // The lists of the editors' own decisions and of what the AI did. A topic, a
-// tag, a source or "no topic" is a place too: topic:3, tag:12, source:5, none.
+// tag, a source, a signal or "no topic" is a place too: topic:3, tag:12,
+// source:5, signal:7, none.
 // topics is where the topics themselves are edited.
 const VIEWS = ['inbox', 'picked', 'later', 'dismissed', 'used', 'waiting', 'skipped', 'attention', 'all'];
 const SORTS = ['collected', 'published', 'relevance'];
@@ -29,7 +30,7 @@ function parsePlace(text) {
   if (extra === undefined && raw === undefined && VIEWS.includes(kind)) return { kind: 'view', view: kind };
   if ((kind === 'none' || kind === 'topics') && raw === undefined) return { kind };
   const id = Number(raw);
-  if (extra === undefined && ['topic', 'tag', 'source'].includes(kind) && Number.isInteger(id) && id > 0) return { kind, id };
+  if (extra === undefined && ['topic', 'tag', 'source', 'signal'].includes(kind) && Number.isInteger(id) && id > 0) return { kind, id };
   return { kind: 'view', view: 'inbox' };
 }
 
@@ -44,12 +45,13 @@ function placeParams(place) {
   if (place.kind === 'none') return { view: 'open', untopiced: 'true' };
   if (place.kind === 'topic') return { view: 'open', topic: place.id };
   if (place.kind === 'tag') return { view: 'open', tag: place.id };
+  if (place.kind === 'signal') return { view: 'all', signal: place.id };
   return { view: 'all', source: place.id };
 }
 
 // Whether an article still belongs in the list after a decision about it.
 function belongs(item, place) {
-  const view = place.kind === 'view' ? place.view : (place.kind === 'source' ? 'all' : 'open');
+  const view = place.kind === 'view' ? place.view : (['source', 'signal'].includes(place.kind) ? 'all' : 'open');
   if (view === 'inbox') return !item.decision;
   if (view === 'picked') return item.decision === 'picked' && item.pick_issue_status !== 'sent';
   if (view === 'later') return item.decision === 'later';
@@ -132,7 +134,8 @@ export function showArticles(root) {
   let page = 1;
   let tagLabel = null;      // the tag's name, when the place is a tag
   let latest = 0;           // the newest list request; older answers are ignored
-  const side = { counts: null, topics: [], untopiced: null, windowDays: 30, sources: [], drafts: [], target: null };
+  const side = { counts: null, topics: [], untopiced: null, windowDays: 30, sources: [], drafts: [], target: null,
+    signals: [], signalsLatest: null };
   let topicsById = new Map();
   let overview = null;
   let checking = null;      // a check started from this page
@@ -166,15 +169,17 @@ export function showArticles(root) {
     sideEl.innerHTML = sideHtml({
       current: placeKey(place), counts: side.counts, topics: side.topics, untopiced: side.untopiced,
       sources: side.sources, drafts: side.drafts, target: side.target,
+      signals: side.signals, signalsLatest: side.signalsLatest,
     });
   }
 
   async function loadSide({ sources = false } = {}) {
-    const [topics, counts, issues, filters] = await Promise.allSettled([
+    const [topics, counts, issues, filters, signals] = await Promise.allSettled([
       api.get('/api/topics'),
       api.get('/api/items', { page: 1, per_page: 1 }),
       api.get('/api/issues'),
       sources || !side.sources.length ? api.get('/api/filters') : Promise.resolve(null),
+      api.get('/api/signals'),
     ]);
     if (topics.status === 'fulfilled') {
       side.topics = topics.value.topics;
@@ -190,6 +195,10 @@ export function showArticles(root) {
       side.target = side.drafts.some((d) => d.id === saved) ? saved : (newest ? newest.id : null);
     }
     if (filters.status === 'fulfilled' && filters.value) side.sources = filters.value.sources;
+    if (signals.status === 'fulfilled') {
+      side.signals = signals.value.signals;
+      side.signalsLatest = signals.value.latest;
+    }
     renderSide();
     renderHead();
     // Never while a new topic's name is being typed.
@@ -211,6 +220,7 @@ export function showArticles(root) {
     if (place.kind === 'topics') return t('place.topics');
     if (place.kind === 'topic') return topicsById.get(place.id)?.name ?? '…';
     if (place.kind === 'tag') return t('place.tag', { tag: tagLabel ?? '…' });
+    if (place.kind === 'signal') return t('place.signal', { topic: side.signals.find((s) => s.id === place.id)?.topic ?? '…' });
     return side.sources.find((s) => s.id === place.id)?.name ?? '…';
   }
 
@@ -223,6 +233,10 @@ export function showArticles(root) {
       return topic ? t('place.note.topic', { terms: topic.tags.map((x) => x.label).join(', ') }) : '';
     }
     if (place.kind === 'tag') return t('place.note.tag', { tag: tagLabel ?? '…' });
+    if (place.kind === 'signal') {
+      const signal = side.signals.find((s) => s.id === place.id);
+      return signal ? t('place.note.signal', { reason: signal.reason, from: date(signal.period_start), to: date(signal.period_end) }) : '';
+    }
     return t('place.note.source');
   }
 
@@ -564,6 +578,36 @@ export function showArticles(root) {
     }
   }
 
+  // Asks n8n to look for signals now. A run takes a few minutes, so the column
+  // looks again every half minute for a while and shows what changed.
+  let signalPoll = null;
+  async function findSignals(button) {
+    button.disabled = true;
+    try {
+      await api.post('/api/signals/run');
+      toast(t('side.findingSignals'));
+    } catch (e) {
+      toast(e.message);
+      button.disabled = false;
+      return;
+    }
+    const before = JSON.stringify(side.signals.map((x) => [x.id, x.articles]));
+    let tries = 0;
+    clearInterval(signalPoll);
+    signalPoll = setInterval(async () => {
+      tries += 1;
+      try {
+        const found = await api.get('/api/signals');
+        if (JSON.stringify(found.signals.map((x) => [x.id, x.articles])) !== before || tries >= 40) {
+          clearInterval(signalPoll);
+          loadSide().catch(() => {});
+        }
+      } catch {
+        clearInterval(signalPoll);
+      }
+    }, 30000);
+  }
+
   function toast(text, action = null) {
     undo = action;
     toastEl.innerHTML = `<span>${esc(text)}</span>${action ? `<button type="button" data-act="undo">${esc(t('toast.undo'))}</button>` : ''}`;
@@ -900,6 +944,7 @@ export function showArticles(root) {
       toastEl.hidden = true;
       action();
     } else if (act === 'check') startCheck(target);
+    else if (act === 'find-signals') findSignals(target);
     else if (act === 'view') goPlace(target.dataset.view);
   });
 
@@ -1057,6 +1102,7 @@ export function showArticles(root) {
       clearTimeout(terms.timer);
       clearTimeout(seenTimer);
       clearInterval(refresh);
+      clearInterval(signalPoll);
       window.removeEventListener('hashchange', onHash);
       window.removeEventListener('resize', fit);
       NARROW.removeEventListener('change', fit);

@@ -59,9 +59,14 @@ docker compose up -d
 | `llm_cache` | answers kept so the same text is never paid for twice | `03-llm.sql` |
 | `llm_pricing` | token prices per model | `03-llm.sql`, `06` |
 | `app_settings` | every setting that is not a secret: the model, the filter, the check times, the Mailchimp data centre and audience | `03-llm.sql` and later |
-| `users` | the editors. Members never log in, so no member data lives here. | `02-schema.sql`, `15`, `16` |
+| `users` | the editors. Members never log in, so no member data lives here. | `02-schema.sql`, `15`, `16`, `22` |
 | `sessions` | dashboard logins, as hashes of the cookie's token | `15-dashboard.sql` |
-| `login_links`, `invites` | the bot's one-time /login links and /invite codes, as hashes | `16-telegram-accounts.sql` |
+| `login_links` | the bot's one-time /login links, as hashes. `invites`, made by the same file, held codes for an /invite command the bot no longer has | `16-telegram-accounts.sql` |
+| `password_links` | the one-time links from /adduser and /password, where someone chooses their password, and their email if they have only used Telegram, as hashes | `22-password-links.sql` |
+| `alerts` | what the team was told on Telegram: sources that stopped working, workflows that failed, the AI budget, and when each was over | `23-alerts.sql` |
+| `ai_budget` (view) | this month's AI spending against `monthly_budget_eur`: warn at 80 %, over when used up | `24-ai-budget.sql` |
+| `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, and the old ones kept because they are in use | `25-retention.sql` |
+| `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, imported from their public archive to check the system against (`docs/evaluation.md`) | `26-archive.sql` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
 | `item_picks` | what the editors decided about each article: picked (for which issue and which of the four sections), later, or not used | `17-newsletter.sql`, `19` |
 | `images` | pictures uploaded in the newsletter editor | `17-newsletter.sql` |

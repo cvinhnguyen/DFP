@@ -7,7 +7,7 @@ import re
 
 from fastapi import APIRouter, Depends
 
-from ..dependencies import admin_only, current_user
+from ..dependencies import admin_only, current_user, not_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.issues import Issue
@@ -39,7 +39,7 @@ def save_settings(body: MailchimpSettings):
 
 
 @router.post("/issues/{issue_id}/mailchimp", response_model=Issue, summary="Create or update the issue's draft in Mailchimp")
-def export_draft(issue_id: int, user: User = Depends(current_user)):
+def export_draft(issue_id: int, user: User = Depends(not_demo)):
     try:
         return mailchimp.export_draft(issue_id, user.id)
     except issues.NotFound:
@@ -67,7 +67,7 @@ def refresh_all(user: User = Depends(current_user)):
 
 
 @router.post("/issues/{issue_id}/mailchimp/test", response_model=Issue, summary="Send a test of the issue through Mailchimp")
-def send_test(issue_id: int, body: TestIn, user: User = Depends(current_user)):
+def send_test(issue_id: int, body: TestIn, user: User = Depends(not_demo)):
     emails = [e.strip() for e in body.emails if e.strip()]
     bad = [e for e in emails if not EMAIL.match(e)]
     if bad or not emails:
@@ -83,7 +83,8 @@ def send_test(issue_id: int, body: TestIn, user: User = Depends(current_user)):
 
 
 @router.post("/issues/{issue_id}/mailchimp/pictures", response_model=PicturesOut,
-             summary="Copy the issue's pictures into Mailchimp, for pasting the email into a Mailchimp template")
+             summary="Copy the issue's pictures into Mailchimp, for pasting the email into a Mailchimp template",
+             dependencies=[Depends(not_demo)])
 def pictures(issue_id: int):
     try:
         issue = issues.get(issue_id)

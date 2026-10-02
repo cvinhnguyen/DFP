@@ -1,0 +1,197 @@
+{
+  "id": "wr1t1ngHelp2026a",
+  "name": "Writing help",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "writing",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "5358db76-efd8-5fd9-bfa9-d622c5733b5c",
+      "name": "POST /writing",
+      "webhookId": "a372c61f-9f13-5cea-a4e2-e629ab995cfa",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// What the dashboard asks for (dashboard/app/services/writing.py), made into\n// a prompt for the shared LLM call. Three kinds: subject lines and preview\n// texts to choose from, the greeting, and why a trend matters. Everything is\n// a suggestion an editor reads before it goes anywhere.\n// Jira: DM42-25, DM42-37, DM42-40\nconst body = $json.body || {};\nconst kind = String(body.task || '');\nconst attempt = Math.max(1, Math.min(50, Math.floor(Number(body.attempt) || 1)));\nconst articles = Array.isArray(body.articles) ? body.articles.slice(0, 20) : [];\nconst clean = (s, n) => String(s || '').replace(/\\s+/g, ' ').trim().slice(0, n);\n\nconst WHO = 'Olet Suomen eOppimiskeskus ry:n uutiskirjeen toimittaja. Yhdistys edistää digitaalista oppimista, '\n  + 'ja uutiskirjeen lukijat ovat sen jäseniä: opettajia, kouluttajia ja oppilaitosten väkeä.';\nconst PLAIN = '- Vastaa pelkällä tekstillä ilman otsikkoa, lainausmerkkejä tai muotoiluja.';\n// A new attempt asks for other words. It also changes what the cache is\n// keyed on, so the editor gets something new rather than the same answer.\nconst AGAIN = attempt > 1\n  ? `\\n\\nTämä on uusi ehdotus (${attempt}.): käytä eri sanoja ja eri näkökulmaa kuin aiemmin.` : '';\n\n// The newsletter's articles by section, as the editors picked them.\nfunction contents() {\n  const lines = [];\n  let section = null;\n  for (const a of articles) {\n    if (a.section !== section) {\n      section = a.section;\n      lines.push('', clean(section, 80));\n    }\n    const head = [clean(a.title, 200), a.publisher ? `(${clean(a.publisher, 80)})` : '',\n      a.event ? `[${clean(a.event, 80)}]` : ''].filter(Boolean).join(' ');\n    lines.push(`- ${head}${a.summary ? `: ${clean(a.summary, 400)}` : ''}`);\n  }\n  return `Uutiskirje: ${clean(body.newsletter, 120)}\\n\\nSisältö:${lines.join('\\n')}`;\n}\n\nconst PROMPTS = {\n  subject: () => ({\n    system: `${WHO}\\n\\nEhdota uutiskirjeelle aiherivejä ja esikatselutekstejä alla olevan sisällön perusteella.\\n\\n`\n      + '- Kirjoita suomeksi.\\n'\n      + '- Ehdota kolme erilaista aiheriviä. Aiherivi on enintään 60 merkkiä ja kertoo konkreettisesti, mitä kirjeessä on. '\n      + 'Ei huutomerkkejä, ei emojeja, ei klikkiotsikoita.\\n'\n      + '- Ehdota kaksi esikatselutekstiä. Esikatseluteksti on enintään 110 merkkiä ja täydentää aiheriviä toistamatta sitä.\\n'\n      + '- Käytä vain alla mainittuja asioita. Älä keksi tapahtumia, päivämääriä, lukuja tai nimiä.\\n\\n'\n      + 'Vastaa pelkkänä JSON-oliona: {\"aiherivit\": [\"…\", \"…\", \"…\"], \"esikatselutekstit\": [\"…\", \"…\"]}',\n    text: contents(),\n    json: true,\n  }),\n  greeting: () => ({\n    system: `${WHO}\\n\\nKirjoita uutiskirjeen alkuun muutama rivi lukijoille siitä, mitä tässä kirjeessä on.\\n\\n`\n      + '- Kirjoita suomeksi, lämpimästi mutta asiallisesti, yhdistyksen toimiston äänellä (me).\\n'\n      + '- Kahdesta neljään virkettä, yksi kappale.\\n'\n      + '- Nosta esiin kaksi tai kolme kiinnostavinta asiaa alla olevasta sisällöstä.\\n'\n      + '- Älä keksi mitään, mitä sisällössä ei ole: ei tapahtumia, päivämääriä, lukuja eikä toimiston kuulumisia.\\n'\n      + '- Älä aloita tervehdyksellä äläkä lopeta allekirjoitukseen: ne ovat kirjeessä jo.\\n'\n      + PLAIN,\n    text: contents(),\n    json: false,\n  }),\n  trend: () => ({\n    system: `${WHO}\\n\\nUutiskirjeessä on laatikko nousevasta aiheesta. Kirjoita siihen, mistä aiheessa on alla olevien `\n      + 'juttujen perusteella kyse ja miksi se on lukijoille nyt ajankohtainen.\\n\\n'\n      + '- Kirjoita suomeksi, selkeästi ja asiallisesti.\\n'\n      + '- Kaksi tai kolme virkettä, yksi kappale.\\n'\n      + '- Perusta kaikki alla oleviin juttuihin. Älä keksi tutkimuksia, lukuja tai nimiä.\\n'\n      + '- Älä luettele juttuja, älä toista niiden otsikoita äläkä kerro juttujen määrää: ne ovat laatikossa jo.\\n'\n      + PLAIN,\n    text: `Aihe: ${clean(body.topic, 80)}\\n\\nJutut:\\n\\n` + articles.map((a, i) =>\n      `${i + 1}. ${clean(a.title, 200)}${a.publisher ? ` (${clean(a.publisher, 80)})` : ''}\\n${clean(a.summary, 700)}`).join('\\n\\n'),\n    json: false,\n  }),\n};\n\nif (!PROMPTS[kind] || !articles.length) {\n  return [{ json: { invalid: true, kind, message: PROMPTS[kind] ? 'Nothing to write from: no articles.' : `Unknown task \"${kind}\".` } }];\n}\nconst p = PROMPTS[kind]();\n// task is what llm_usage records the call as: writing-subject, writing-greeting\n// or writing-trend.\nreturn [{ json: { kind, task: `writing-${kind}`, item_id: null, system_prompt: p.system + AGAIN, user_text: p.text, json: p.json } }];\n"
+      },
+      "id": "767951a7-95d0-5a4d-8f44-e517d2a8749b",
+      "name": "Build prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "nwritevalid",
+              "leftValue": "={{ $json.invalid !== true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "17ffdf6f-df1d-58c6-ab72-9aaf2b290198",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "LslQ5XfMnOE6tg22",
+          "mode": "id"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "539a944f-6b2d-59c9-8a28-db5cd3f395fc",
+      "name": "Write",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        660,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// What the dashboard gets back: always an answer, with ok saying whether the\n// AI wrote something. A model that is down comes back as ok: false and a\n// message, rather than as a failed run that would alert the team for every\n// press of the button.\nconst req = $('Build prompt').first().json;\nif (req.invalid) return [{ json: { ok: false, code: 'ai_bad_request', message: req.message } }];\nconst r = $json || {};\nif (r.error || typeof r.text !== 'string') {\n  return [{ json: { ok: false, code: 'ai_failed', message: 'The AI did not answer. Try again in a moment.' } }];\n}\nconst usage = {\n  tokens: (Number(r.tokens_in) || 0) + (Number(r.tokens_out) || 0) || null,\n  cost_eur: r.cost_eur ?? null,\n  truncated: r.truncated === true,\n};\n// Quotes, bold and headings the model adds although it was asked not to.\nconst tidy = (s) => String(s || '').replace(/\\*\\*|__/g, '').replace(/^#+\\s*/gm, '')\n  .replace(/^\\s*[\"“”„«»']+|[\"“”„«»']+\\s*$/g, '').replace(/\\n{3,}/g, '\\n\\n').trim();\n\nif (req.kind === 'subject') {\n  let parsed = null;\n  try {\n    parsed = JSON.parse(r.text);\n  } catch (e) {\n    const object = r.text.match(/\\{[\\s\\S]*\\}/);\n    try { parsed = object ? JSON.parse(object[0]) : null; } catch (e2) { parsed = null; }\n  }\n  const list = (v, n) => (Array.isArray(v) ? v : []).map((x) => tidy(x).replace(/\\s+/g, ' ').slice(0, 150))\n    .filter((x, i, all) => x && all.indexOf(x) === i).slice(0, n);\n  const subjects = parsed ? list(parsed.aiherivit || parsed.subjects, 3) : [];\n  const preheaders = parsed ? list(parsed.esikatselutekstit || parsed.preheaders, 2) : [];\n  if (!subjects.length) {\n    return [{ json: { ok: false, code: 'ai_failed',\n      message: usage.truncated ? 'The AI ran out of room before it finished.' : 'The AI gave no subject lines.' } }];\n  }\n  return [{ json: { ok: true, subjects, preheaders, ...usage } }];\n}\nconst text = tidy(r.text);\nif (!text) return [{ json: { ok: false, code: 'ai_failed', message: 'The AI gave back no text.' } }];\nreturn [{ json: { ok: true, text, ...usage } }];\n"
+      },
+      "id": "c1def679-1a83-5cde-a597-abe1df0b078b",
+      "name": "Answer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "5efdc208-e5c6-5e40-aa96-66dbfd428427",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "POST /writing": {
+      "main": [
+        [
+          {
+            "node": "Build prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build prompt": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Write",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write": {
+      "main": [
+        [
+          {
+            "node": "Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Answer": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26"
+  }
+}

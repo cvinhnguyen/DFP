@@ -1,0 +1,190 @@
+{
+  "id": "a1ertsW0rkflow26",
+  "name": "Alerts",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "60cd5859-4f1b-5d64-9a8d-b2c09ffe71e0",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "c5ad879d-de49-52a7-acbe-bc3c207dd76d",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        220
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4e4d82d1-fcb9-5e91-b4eb-d1dbbdb9cbc4",
+      "name": "When a workflow fails",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The workflow that failed and its error, from what n8n hands an error\n// workflow: execution.error for a run that failed, trigger.error for one\n// that could not start at all.\nconst f = $input.first().json;\nconst error = (f.execution && f.execution.error) || (f.trigger && f.trigger.error) || {};\nconst where = f.execution && f.execution.lastNodeExecuted;\nreturn [{ json: {\n  id: (f.workflow && f.workflow.id) || 'unknown',\n  name: (f.workflow && f.workflow.name) || 'unknown',\n  error: [error.message || 'unknown error', error.description].filter(Boolean).join(': ')\n    + (where ? ` (in \"${where}\")` : ''),\n} }];"
+      },
+      "id": "cf8db7ab-bf37-56a5-b9e5-71e7f4449d69",
+      "name": "What failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- A workflow that stopped with an error. One that runs every few minutes is\n-- reported on its second failure within an hour, so a network blip that\n-- sorts itself out stays quiet; the others on the first. After that the team\n-- hears again only about a different problem, or the same one after a day.\nWITH failure AS (\n    SELECT 'workflow:' || $1 AS key, $2::text AS subject, left($3::text, 2000) AS detail,\n           -- the error without its numbers: a timeout after 180000 ms and one\n           -- after 30000 ms are the same problem\n           regexp_replace(lower(left($3::text, 300)), '[0-9]+', '#', 'g') AS problem,\n           CASE WHEN $2::text IN ('Telegram capture', 'Collection schedule', 'Summarisation', 'Tagging')\n                THEN 2 ELSE 1 END AS needed\n),\nearlier AS (\n    SELECT a.id, a.told_at, (a.told_at IS NULL AND a.last_seen < now() - interval '1 hour') AS stale\n      FROM alerts a\n      JOIN failure f ON f.key = a.key\n     WHERE a.ended_at IS NULL\n       FOR UPDATE OF a\n),\nupdated AS (\n    UPDATE alerts a\n       SET last_seen = now(),\n           times = CASE WHEN e.stale THEN 1 ELSE a.times + 1 END,\n           started_at = CASE WHEN e.stale THEN now() ELSE a.started_at END,\n           problem = f.problem,\n           detail = f.detail,\n           told_at = CASE\n               WHEN a.told_at IS NULL\n                    AND (CASE WHEN e.stale THEN 1 ELSE a.times + 1 END) >= f.needed THEN now()\n               WHEN a.told_at IS NOT NULL\n                    AND (a.problem IS DISTINCT FROM f.problem OR a.told_at < now() - interval '1 day') THEN now()\n               ELSE a.told_at\n           END\n      FROM earlier e, failure f\n     WHERE a.id = e.id\n    RETURNING a.told_at IS DISTINCT FROM e.told_at AS tell, e.told_at IS NOT NULL AS again, a.times, a.started_at\n),\ninserted AS (\n    INSERT INTO alerts (key, subject, problem, detail, told_at)\n    SELECT f.key, f.subject, f.problem, f.detail, CASE WHEN f.needed <= 1 THEN now() END\n      FROM failure f\n     WHERE NOT EXISTS (SELECT 1 FROM earlier)\n    ON CONFLICT (key) WHERE ended_at IS NULL DO NOTHING\n    RETURNING told_at IS NOT NULL AS tell, false AS again, times, started_at\n),\nresult AS (\n    SELECT * FROM updated\n    UNION ALL\n    SELECT * FROM inserted\n)\nSELECT coalesce((SELECT tell FROM result), false) AS tell,\n       coalesce((SELECT again FROM result), false) AS again,\n       (SELECT times FROM result) AS times,\n       (SELECT started_at FROM result) AS since,\n       $2::text AS workflow,\n       $3::text AS error,\n       (SELECT value FROM app_settings WHERE key = 'alert_chat_id') AS chat,\n       coalesce((SELECT jsonb_agg(telegram_user_id ORDER BY id) FROM users\n                  WHERE role = 'admin' AND removed_at IS NULL AND telegram_user_id IS NOT NULL), '[]') AS admins;",
+        "options": {
+          "queryReplacement": "={{ [ $json.id, $json.name, $json.error ] }}"
+        }
+      },
+      "id": "084ef13f-7147-5303-a57d-10b98961bbb5",
+      "name": "Remember the failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Sources whose last two checks both failed, or both found nothing, and\n-- sources that work again. Each is reported once when it breaks and once when\n-- it works again, never on every check. Also closes the alerts of sources\n-- switched off since, and of workflows that have been quiet for six hours.\n--\n-- And the month's AI budget (db/init/24-ai-budget.sql): 80 % is reported once\n-- a month, and a budget used up when it happens and when summarising starts\n-- again, next month or because an admin raised it.\nWITH runs AS (\n    SELECT r.source_id, r.started_at, r.error, r.items_found,\n           (r.error IS NOT NULL OR r.items_found = 0) AS bad,\n           row_number() OVER (PARTITION BY r.source_id ORDER BY r.started_at DESC) AS n\n      FROM collection_runs r\n      JOIN sources s ON s.id = r.source_id\n     WHERE s.active\n       AND r.finished_at IS NOT NULL\n       AND r.started_at > now() - interval '30 days'\n),\ngood AS (\n    SELECT source_id, max(started_at) AS at FROM runs WHERE NOT bad GROUP BY source_id\n),\nstate AS (\n    SELECT s.id, s.name, 'source:' || s.id AS key,\n           count(*) FILTER (WHERE r.n <= 2 AND r.bad) = 2 AS broken,\n           bool_or(r.n = 1 AND NOT r.bad) AS works,\n           coalesce(max(r.error) FILTER (WHERE r.n = 1), 'found nothing') AS detail,\n           count(*) FILTER (WHERE r.bad AND r.started_at > coalesce(g.at, '-infinity')) AS in_a_row\n      FROM sources s\n      JOIN runs r ON r.source_id = s.id\n      LEFT JOIN good g ON g.source_id = s.id\n     GROUP BY s.id, s.name, g.at\n),\nstill AS (\n    UPDATE alerts a\n       SET last_seen = now(), times = st.in_a_row, detail = st.detail\n      FROM state st\n     WHERE a.key = st.key AND a.ended_at IS NULL AND st.broken\n    RETURNING a.id\n),\nopened AS (\n    INSERT INTO alerts (key, subject, detail, times, told_at)\n    SELECT st.key, st.name, st.detail, st.in_a_row, now()\n      FROM state st\n     WHERE st.broken\n       AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.key = st.key AND a.ended_at IS NULL)\n    RETURNING subject, detail, times\n),\nfixed AS (\n    UPDATE alerts a\n       SET ended_at = now()\n      FROM state st\n     WHERE a.key = st.key AND a.ended_at IS NULL AND st.works\n    RETURNING a.subject\n),\nbudget AS (\n    SELECT b.*, to_char(b.month_starts AT TIME ZONE 'Europe/Helsinki', 'YYYY-MM') AS month\n      FROM ai_budget b\n),\nbudget_warned AS (\n    INSERT INTO alerts (key, subject, detail, told_at, ended_at)\n    SELECT 'budget:warn:' || b.month, 'AI budget', round(b.spent_eur, 2) || ' of ' || b.budget_eur, now(), now()\n      FROM budget b\n     WHERE b.warn AND NOT b.over\n       AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.key = 'budget:warn:' || b.month)\n    RETURNING id\n),\nbudget_over AS (\n    INSERT INTO alerts (key, subject, detail, told_at)\n    SELECT 'budget:over', 'AI budget', round(b.spent_eur, 2) || ' of ' || b.budget_eur, now()\n      FROM budget b\n     WHERE b.over\n       AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.key = 'budget:over' AND a.ended_at IS NULL)\n    RETURNING id\n),\nbudget_back AS (\n    UPDATE alerts a\n       SET ended_at = now()\n     WHERE a.key = 'budget:over' AND a.ended_at IS NULL\n       AND NOT (SELECT over FROM budget)\n    RETURNING a.id\n),\nquiet AS (\n    UPDATE alerts a\n       SET ended_at = now()\n     WHERE a.ended_at IS NULL\n       AND ((a.key LIKE 'source:%' AND a.key NOT IN (SELECT 'source:' || id FROM sources WHERE active))\n            OR (a.key LIKE 'workflow:%' AND a.last_seen < now() - interval '6 hours'))\n    RETURNING a.id\n)\nSELECT coalesce((SELECT jsonb_agg(jsonb_build_object('source', subject, 'error', detail, 'checks', times)\n                                  ORDER BY subject) FROM opened), '[]') AS broken,\n       coalesce((SELECT jsonb_agg(subject ORDER BY subject) FROM fixed), '[]') AS fixed,\n       (SELECT count(*) FROM state) AS sources,\n       (SELECT count(*) FROM state WHERE broken) AS broken_now,\n       (SELECT count(*) FROM quiet) AS closed,\n       (SELECT jsonb_build_object('warn', EXISTS (SELECT 1 FROM budget_warned),\n                                  'over', EXISTS (SELECT 1 FROM budget_over),\n                                  'back', EXISTS (SELECT 1 FROM budget_back),\n                                  'spent', b.spent_eur, 'budget', b.budget_eur, 'share', b.share,\n                                  'next', (b.month_starts AT TIME ZONE 'Europe/Helsinki' + interval '1 month')::date)\n          FROM budget b) AS budget,\n       (SELECT value FROM app_settings WHERE key = 'alert_chat_id') AS chat,\n       coalesce((SELECT jsonb_agg(telegram_user_id ORDER BY id) FROM users\n                  WHERE role = 'admin' AND removed_at IS NULL AND telegram_user_id IS NOT NULL), '[]') AS admins;",
+        "options": {}
+      },
+      "id": "74cccdba-973b-565c-8676-1312f3396d9a",
+      "name": "Check the sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        440,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Puts the report in plain words and sends it: to the team's group when\n// /alerts set one, otherwise to each admin privately. If the group cannot be\n// posted in any more, the admins get the report instead. With the reports\n// off nothing is sent, and the alerts table still keeps track.\n// Jira: DM42-44, DM42-39\nconst r = $input.first().json;\n\n// What went wrong, as someone who does not read error messages would say\n// it. The error itself stays in the alerts table for whoever fixes it.\n// place: what was being reached, a source's site or a workflow's service.\nfunction plain(error, place) {\n  const e = String(error || '');\n  const code = (e.match(/\\b([45]\\d\\d)\\b/) || [])[1];\n  if (e === 'found nothing') return 'it found no articles at all, twice. The page or feed has probably changed.';\n  if (/not active/i.test(e)) return 'a workflow it needs is switched off in n8n.';\n  if (/password authentication failed|database|relation .* does not exist|:5432\\b/i.test(e)) return 'the database did not answer.';\n  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|incorrect host|cannot be established/i.test(e)) return `the ${place} could not be reached. It may be down, or its address may have changed.`;\n  if (/ECONNREFUSED/i.test(e)) return `the ${place} refused the connection. It is probably not running.`;\n  if (/ECONNRESET|socket hang up|socket disconnected|aborted/i.test(e)) return 'the connection broke off halfway.';\n  if (/timeout|timed out|ETIMEDOUT/i.test(e)) return 'it took too long to answer.';\n  if (code === '404' || /\\bnot found\\b/i.test(e)) return 'the page or feed is not there any more (404). Its address has probably changed.';\n  if (code === '401' || code === '403' || /forbidden|unauthori[sz]ed|authori[sz]ation failed/i.test(e)) return `access was refused. A key or password may be wrong, or the ${place} may block automated reading.`;\n  if (code && code.startsWith('5')) return `the ${place} had a fault of its own (error ${code}). That usually passes.`;\n  if (/certificate|CERT_|self.signed/i.test(e)) return `the ${place}'s security certificate did not check out.`;\n  if (/JSON|Unexpected token|XML|parse/i.test(e)) return 'what came back could not be read. Its format may have changed.';\n  const first = e.split('\\n')[0].trim();\n  return first ? `something unexpected went wrong: \"${first.slice(0, 140)}\"` : 'something unexpected went wrong.';\n}\n\n// The workflows people would notice, in their words, and what a failure\n// means for them.\nconst ABOUT = {\n  'Collection schedule': ['Checking the sources', 'No new articles come in until it works again.'],\n  'Summarisation': ['Summarising', 'New articles wait without a summary until it works again. Nothing is lost.'],\n  'Tagging': ['Tagging', 'New articles wait without subject tags until it works again. Nothing is lost.'],\n  'Telegram capture': ['The Telegram bot', 'I may not answer messages until it works again.'],\n  'Bot commands': [\"Updating the bot's command menu\", 'The bot works as before. Only its list of suggested commands may be out of date.'],\n  'Signal detection': ['Looking for signals', \"This week's signals are missing until it works again.\"],\n  'Alerts': ['Reporting problems', 'A problem may have gone unreported. The dashboard still shows the sources that fail.'],\n  'Retention': ['Removing the text of old articles', 'Nothing is lost. It tries again the next night.'],\n};\n\nconst when = (at) => DateTime.fromJSDate(new Date(at)).setZone('Europe/Helsinki').toFormat(\"d.L. 'at' H.mm\");\nconst list = (names) => names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];\n\nlet text = '';\nif (r.workflow !== undefined) {\n  if (r.tell) {\n    const [what, meaning] = ABOUT[r.workflow] || [`The workflow \"${r.workflow}\"`, 'It tries again at its next turn.'];\n    text = r.again\n      ? `⚠️ ${what} still fails: ${plain(r.error, 'service')} It has failed ${r.times} times since ${when(r.since)}.\\n\\n${meaning}`\n      : `⚠️ ${what} stopped with an error at ${$now.setZone('Europe/Helsinki').toFormat('H.mm')}: ${plain(r.error, 'service')}\\n\\n${meaning}`;\n  }\n} else {\n  const broken = r.broken || [];\n  const fixed = r.fixed || [];\n  const parts = [];\n  if (broken.length && Number(r.broken_now) === Number(r.sources) && Number(r.sources) > 1) {\n    parts.push('⚠️ No source could be read in the last two checks, so the problem is probably on our side: '\n      + `the server's internet connection, or n8n itself. The first error: ${plain(broken[0].error, 'site')}`);\n  } else if (broken.length === 1) {\n    const b = broken[0];\n    parts.push(`⚠️ ${b.source} has not worked for ${b.checks} checks in a row: ${plain(b.error, 'site')}\\n\\n`\n      + 'Its articles are missing until it works again. I will tell you when it does.');\n  } else if (broken.length) {\n    parts.push('⚠️ These sources have not worked for the last two checks:\\n\\n'\n      + broken.map((b) => `• ${b.source}: ${plain(b.error, 'site')}`).join('\\n')\n      + '\\n\\nTheir articles are missing until they work again. I will tell you when they do.');\n  }\n  if (fixed.length) parts.push(`✅ ${list(fixed)} ${fixed.length === 1 ? 'works' : 'work'} again.`);\n  const money = (n) => `€${Number(n).toFixed(2)}`;\n  const b = r.budget || {};\n  if (b.over) {\n    parts.push(`⛔ This month's AI budget is used up: ${money(b.spent)} of ${money(b.budget)}. `\n      + 'I have stopped summarising new articles from the sources. They wait, and nothing is lost. '\n      + 'Links you send me, and summaries an editor asks for, are still made.\\n\\n'\n      + `Summarising starts again on ${DateTime.fromISO(String(b.next)).toFormat('d.L.')}, `\n      + \"or as soon as an admin raises the budget in the dashboard's settings.\");\n  } else if (b.warn) {\n    parts.push(`⚠️ ${Math.floor(Number(b.share) * 100)} % of this month's AI budget is used: ${money(b.spent)} of ${money(b.budget)}. `\n      + 'When it is used up, I stop summarising new articles from the sources until next month. '\n      + \"An admin can raise the budget in the dashboard's settings.\");\n  }\n  if (b.back) parts.push('✅ Summarising new articles from the sources is on again.');\n  text = parts.join('\\n\\n');\n}\nif (!text) return [{ json: { told: 0 } }];\n\nconst chat = String(r.chat || '');\nconst admins = r.admins || [];\nif (chat === 'off') return [{ json: { told: 0, off: true, text } }];\n\nconst send = async (chatId, message) => {\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/sendMessage`,\n    body: { chat_id: chatId, text: message, disable_web_page_preview: true },\n    json: true,\n  });\n};\nlet told = 0;\nlet toAdmins = !chat;\nif (chat) {\n  try {\n    await send(chat, text);\n    told++;\n  } catch (e) {\n    // Taken out of the group, or the group is gone.\n    toAdmins = true;\n    text += \"\\n\\n(I could not post this in the team's group, so it comes to you. /alerts in the group, or /alerts private, sorts that out.)\";\n  }\n}\nif (toAdmins) {\n  for (const id of admins) {\n    try {\n      await send(id, text);\n      told++;\n    } catch (e) {\n      // Someone who has blocked the bot. The others still hear.\n    }\n  }\n}\nif (!told && admins.length) throw new Error('Could not send the report to anyone on Telegram.');\nreturn [{ json: { told, text } }];"
+      },
+      "id": "6f127a5f-d18d-54ba-adec-2a1b117c64df",
+      "name": "Tell the team",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        150
+      ]
+    }
+  ],
+  "connections": {
+    "When a workflow fails": {
+      "main": [
+        [
+          {
+            "node": "What failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Check the sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Check the sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remember the failure": {
+      "main": [
+        [
+          {
+            "node": "Tell the team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check the sources": {
+      "main": [
+        [
+          {
+            "node": "Tell the team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What failed": {
+      "main": [
+        [
+          {
+            "node": "Remember the failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

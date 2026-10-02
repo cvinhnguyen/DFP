@@ -1,9 +1,10 @@
 // The status line above the list: when the sources were last checked, what
-// is new today, problems with sources or the AI, and the "check now" button.
+// is new today, problems with sources or the AI, the AI budget when it runs
+// low, and the "check now" button.
 // It only turns the overview into HTML; the page handles the button.
 
 import { t, tn } from '../texts.js';
-import { esc, when } from '../format.js';
+import { date, esc, euros, when } from '../format.js';
 
 // overview: GET /api/overview. checking: a check started from this page is
 // still running. done: a line to show once it has finished. view: the view
@@ -33,6 +34,13 @@ export function statusLines(overview, { checking = false, done = '', view = '' }
           <ul>${o.failed_sources.map((f) => `<li><strong>${esc(f.source)}</strong>, ${esc(when(f.at))}: ${esc(f.error)}</li>`).join('')}</ul>
         </details>
       </div>`);
+  }
+  const b = o.budget;
+  if (b && b.state === 'over') {
+    lines.push(`<p class="line warn">${esc(t('status.budgetOver', { budget: euros(b.budget_eur), date: date(b.next_month) }))}${b.waiting
+      ? ` ${esc(tn('status.budgetWaiting', b.waiting))}` : ''}</p>`);
+  } else if (b && b.state === 'warn') {
+    lines.push(`<p class="line warn">${esc(t('status.budgetWarn', { pct: Math.floor(b.share * 100), spent: euros(b.spent_eur), budget: euros(b.budget_eur) }))}</p>`);
   }
   if (o.ai_answering === false) lines.push(`<p class="line warn">${esc(t('status.aiDown'))}</p>`);
   else if (o.waiting_for_ai) lines.push(`<p class="line warn">${esc(tn('status.aiRetry', o.waiting_for_ai))}</p>`);

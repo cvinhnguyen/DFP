@@ -1,5 +1,6 @@
 // The login form. Accounts are made by an admin, so there is no sign-up and
-// no "forgot password" link: an admin sets a new one with app/users.py.
+// no "forgot password" link: /password in the Telegram bot gives a link to
+// choose a new one, and an admin can send one too (pages/password.js).
 
 import { api } from '../api.js';
 import { t } from '../texts.js';

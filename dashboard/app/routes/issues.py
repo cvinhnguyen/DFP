@@ -6,7 +6,7 @@ Jira: DM42-37
 from fastapi import APIRouter, Depends, Response as Empty
 from fastapi.responses import Response
 
-from ..dependencies import current_user
+from ..dependencies import current_user, not_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.issues import DesignIn, DesignOut, DesignSaved, Issue, IssueCreate, IssueSummary, IssueUpdate
@@ -45,7 +45,8 @@ def get_issue(issue_id: int):
 
 
 @router.delete("/{issue_id}", status_code=204, summary="Delete a draft",
-               responses={409: {"description": "It has been sent"}})
+               responses={403: {"description": "The shared demo login"}, 409: {"description": "It has been sent"}},
+               dependencies=[Depends(not_demo)])
 def delete_issue(issue_id: int):
     """Its picked articles become undecided again; its images stay in the
     library."""
@@ -93,7 +94,7 @@ def save_design(issue_id: int, body: DesignIn, user: User = Depends(current_user
 
 
 @router.post("/{issue_id}/sent", response_model=Issue, summary="Record that the newsletter went out from Mailchimp")
-def mark_sent(issue_id: int, user: User = Depends(current_user)):
+def mark_sent(issue_id: int, user: User = Depends(not_demo)):
     try:
         return issues.mark_sent(issue_id, user.id)
     except issues.NotFound:

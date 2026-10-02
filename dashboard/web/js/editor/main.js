@@ -17,6 +17,7 @@ import {
 import { renderEmail, byteSize } from '../newsletter/render.js';
 import { checkDesign } from '../newsletter/checks.js';
 import { startDesign } from '../newsletter/templates.js';
+import { draftTask, draftReplacesEdits, greetingOpening, draftedHtml, suggestionsBox } from '../newsletter/writing.js';
 import { createStore } from './store.js';
 import { createCanvas, setField } from './canvas.js';
 import { createDnd } from './dnd.js';
@@ -50,6 +51,7 @@ let textTools = null;
 let comments = null;
 let checkPanel = null;
 let sectionsPanel = null;
+let settingsPanel = null;
 let lastChecks = null;
 let basedOn = null;
 let saving = null;
@@ -255,6 +257,8 @@ const actions = {
   prompt: (title, value) => promptDialog(title, value),
   help: showHelp,
   editSubject,
+  draft: (blockId) => draft(blockId),
+  isDrafting: (blockId) => drafting.has(blockId),
 };
 
 function setImage(blockId, img) {
@@ -282,17 +286,82 @@ function afterInsert({ block }) {
   actions.reveal(block.id);
 }
 
+// ---------- writing help from the AI ----------
+
+// The blocks the AI is writing for now, so the panel can say it is busy.
+const drafting = new Set();
+
+// A draft of the greeting, or of why a trend matters, into its block. It
+// goes in unchecked, and a new one replaces the last only after asking, if
+// someone has changed the text since.
+async function draft(blockId) {
+  const found = findBlock(store.design, blockId);
+  const task = found && draftTask(found.block, found.section);
+  if (task !== 'greeting' && task !== 'trend') return;
+  if (draftReplacesEdits(found.block) && !(await confirmDialog(t('ai.replaceConfirm')))) return;
+  const attempt = found.block.ai ? (Number(found.block.ai.attempt) || 1) + 1 : 1;
+  const signal = found.section.signal;
+  drafting.add(blockId);
+  settingsPanel.refresh();
+  try {
+    const result = task === 'greeting'
+      ? await api.post(`/api/issues/${issueId}/ai/greeting`, { attempt })
+      : await api.post(`/api/signals/${signal}/ai/trend`, { attempt });
+    store.change((d) => {
+      const f = findBlock(d, blockId);
+      if (!f) return;
+      const opening = task === 'greeting' ? greetingOpening(f.block) : '';
+      const html = draftedHtml(task, f.block, result, opening);
+      f.block.html = html;
+      f.block.placeholder = false;
+      f.block.checked = false;
+      f.block.ai = { task, attempt, opening, html, tokens: result.tokens, cost_eur: result.cost_eur };
+    });
+    if (result.truncated) toast(t('ai.truncated'), 'warn');
+  } catch (e) {
+    toast(e.message, 'warn');
+  } finally {
+    drafting.delete(blockId);
+    settingsPanel.refresh();
+  }
+}
+
 // ---------- the subject line, from the editor ----------
 
 function editSubject() {
   const issue = context.issue;
   let subject = issue.subject;
   let preheader = issue.preheader;
+  const subjectInput = textInput(subject, (v) => { subject = v; }, { maxlength: 150 });
+  const preheaderInput = textInput(preheader, (v) => { preheader = v; }, { maxlength: 150 });
+  // Suggestions from the AI, pressed into the fields; saving is still the
+  // editor's own.
+  const suggestions = h('div', { class: 'ai-suggest-box' });
+  let attempt = 0;
+  const ask = h('button', { type: 'button', class: 'btn ghost small', onclick: async () => {
+    ask.disabled = true;
+    ask.textContent = t('ai.suggesting');
+    try {
+      attempt += 1;
+      const result = await api.post(`/api/issues/${issueId}/ai/subject`, { attempt });
+      suggestions.replaceChildren(suggestionsBox(result, {
+        onSubject: (text) => { subjectInput.value = text; subject = text; subjectInput.focus(); },
+        onPreheader: (text) => { preheaderInput.value = text; preheader = text; preheaderInput.focus(); },
+      }));
+    } catch (e) {
+      toast(e.message, 'warn');
+    } finally {
+      ask.disabled = false;
+      ask.textContent = t(attempt ? 'ai.suggestMore' : 'ai.suggest');
+    }
+  } }, t('ai.suggest'));
   modal({
     title: t('editor.subjectTitle'),
     body: h('div', {},
-      field(t('issue.subject'), textInput(subject, (v) => { subject = v; }, { maxlength: 150 }), t('issue.subjectHint')),
-      field(t('issue.preheader'), textInput(preheader, (v) => { preheader = v; }, { maxlength: 150 }), t('issue.preheaderHint'))),
+      field(t('issue.subject'), subjectInput, t('issue.subjectHint')),
+      field(t('issue.preheader'), preheaderInput, t('issue.preheaderHint')),
+      h('div', { class: 'ai-suggest-row' }, ask, h('span', { class: 'cf-hint' }, t('ai.suggestHint'))),
+      suggestions),
     actions: [
       { label: t('dialog.cancel'), value: null },
       { label: t('dialog.save'), primary: true, onClick: async (close) => {
@@ -609,10 +678,10 @@ async function start() {
   dnd = createDnd({ store, canvas, stage: $('ed-stage'), frame: $('ed-frame'), after: afterInsert });
   textTools = createTextTools({ store, canvas, bar: $('ed-texttools') });
   library = createLibrary({ api, issueId });
-  const settings = createSettings({ store, root: $('panel-settings'), actions, context });
+  settingsPanel = createSettings({ store, root: $('panel-settings'), actions, context });
   blocksPanel = createBlocksPanel({ store, dnd, root: $('panel-blocks'), context, actions });
   sectionsPanel = createSectionsPanel({ store, dnd, root: $('panel-sections'), context, actions, api });
-  createStylesPanel({ store, root: $('panel-styles'), buttonStyles: settings.buttonStyles }).render();
+  createStylesPanel({ store, root: $('panel-styles'), buttonStyles: settingsPanel.buttonStyles }).render();
   checkPanel = createCheckPanel({ store, root: $('panel-check'), context, actions });
   comments = createComments({ api, store, issueId, me: context.me, panel: $('ed-comments'), badge: $('ed-comments-badge'), actions });
   blocksPanel.render();

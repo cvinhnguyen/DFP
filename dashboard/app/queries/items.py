@@ -72,6 +72,8 @@ SELECT i.id,
        i.section,
        nullif(btrim(i.excerpt), '')            AS excerpt,
        length(coalesce(i.raw_text, ''))        AS text_length,
+       -- after raw_text_retention_days, see 25-retention.sql
+       i.text_removed_at,
        CASE WHEN sm.id IS NOT NULL THEN
             jsonb_build_object('text', sm.text, 'model', sm.model, 'made_at', sm.generated_at)
        END                                     AS summary,

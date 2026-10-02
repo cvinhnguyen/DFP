@@ -138,3 +138,18 @@
 .st-tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--sel); font-weight: 600; }
 .st-note { font-size: 13.5px; color: var(--soft); margin: 0 0 12px; }
 .st-warn { color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 8px 10px; font-size: 13.5px; margin: 0 0 12px; }
+
+/* Suggestions from the AI: subject lines and preview texts to press, on the
+   newsletter page and in the editor's subject dialog. */
+.ai-suggest-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 6px 0 4px; }
+.ai-suggest-row .cf-hint { margin: 0; flex: 1 1 200px; min-width: 0; }
+.ai-suggest { display: grid; gap: 6px; margin: 8px 0 12px; }
+.ai-suggest-label { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.ai-chips { display: grid; gap: 6px; }
+.ai-chip {
+  text-align: left; font: inherit; font-size: 14px; line-height: 1.35; padding: 8px 11px;
+  border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); color: var(--ink);
+  cursor: pointer; overflow-wrap: anywhere;
+}
+.ai-chip:hover { border-color: var(--brand); background: var(--brand-soft); }
+.ai-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

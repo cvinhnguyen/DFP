@@ -108,6 +108,8 @@
 .side-follow:hover { border-color: var(--link); }
 .side-more summary { cursor: pointer; padding: 2px 0; list-style-position: inside; }
 .side-more summary::marker { color: var(--soft); }
+.side-sub summary { cursor: pointer; list-style-position: inside; }
+.side-sub summary::marker { color: var(--soft); }
 .side-card {
   margin-top: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 9px;
   padding: 10px 11px; display: grid; gap: 3px;

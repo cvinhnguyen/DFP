@@ -13,7 +13,7 @@ router = APIRouter(prefix="/telegram", tags=["telegram"], dependencies=[Depends(
 
 @router.post("/account", response_model=AccountReply, summary="Answer an account command sent to the bot")
 def account(body: AccountCommand):
-    """/login, /invite, /people, /remove and /start. The Telegram id comes from
-    Telegram through n8n, which is why only n8n may call this."""
-    return AccountReply(reply=telegram.handle(body.telegram_user_id, body.name, body.command,
-                                              body.args, body.chat_type))
+    """/login, /password, /adduser, /people, /remove and /alerts. The
+    Telegram id comes from Telegram through n8n, which is why only n8n may
+    call this. The answer can have a button that opens a link."""
+    return telegram.handle(body.telegram_user_id, body.name, body.command, body.args, body.chat_type, body.chat_id)

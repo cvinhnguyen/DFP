@@ -7,6 +7,7 @@ from fastapi import Depends, Request
 
 from . import config
 from .errors import ApiError
+from .queries import settings
 from .schemas.auth import User
 from .services import auth
 
@@ -26,6 +27,18 @@ def current_user(request: Request) -> User:
 def admin_only(user: User = Depends(current_user)) -> User:
     if user.role != "admin":
         raise ApiError(403, "admin_only", "Only an admin can do this.")
+    return user
+
+
+def not_demo(user: User = Depends(current_user)) -> User:
+    """What the shared demo login may not do: send anything to Mailchimp, which
+    leaves the dashboard, or delete things and mark a newsletter sent, which
+    cannot be undone. It is the account whose email is demo_email in
+    app_settings, made with /adduser like any other, and its password is
+    shown to a whole room."""
+    demo = (settings.get("demo_email") or "").strip().lower()
+    if demo and (user.email or "").lower() == demo:
+        raise ApiError(403, "demo_login", "The shared demo login cannot do this. Everything else works as usual.")
     return user
 
 

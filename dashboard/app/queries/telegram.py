@@ -1,6 +1,6 @@
-"""SQL for the one-time links the bot hands out: login links and invites.
-Only hashes are stored, and a link is used up in the same statement that
-checks it, so two clicks at once cannot both get in.
+"""SQL for the one-time links the bot hands out: login links, and links to
+choose a password. Only hashes are stored, and a link is used up in
+the same statement that checks it, so two clicks at once cannot both get in.
 """
 
 from .. import database
@@ -36,39 +36,54 @@ def use_login_link(token_hash):
         (token_hash,))
 
 
-def create_invite(code_hash, role, created_by, hours):
-    database.run(
-        """INSERT INTO invites (code_hash, role, created_by, expires_at)
-           VALUES (%s, %s, %s, now() + make_interval(hours => %s))""",
-        (code_hash, role, created_by, hours))
-
-
-def use_invite(code_hash, telegram_user_id, name):
-    """Adds the person the invite was for. Someone removed earlier gets their
-    old row back. Returns the new member's row, or None if the invite is
-    unknown, used or expired."""
+def create_password_link(token_hash, user_id, created_by, hours):
+    """A new link cancels the person's earlier unused ones, so only the latest
+    works."""
     with database.pool.connection() as conn, conn.transaction():
-        invite = conn.execute(
-            """UPDATE invites
-                  SET used_at = now()
-                WHERE code_hash = %s
-                  AND used_at IS NULL
-                  AND expires_at > now()
-            RETURNING role""",
-            (code_hash,)).fetchone()
-        if not invite:
-            return None
-        member = conn.execute(
-            """UPDATE users
-                  SET removed_at = NULL, role = %s, display_name = coalesce(display_name, %s)
-                WHERE telegram_user_id = %s
-            RETURNING id, email, display_name, role""",
-            (invite["role"], name, str(telegram_user_id))).fetchone()
-        if not member:
-            member = conn.execute(
-                """INSERT INTO users (display_name, role, telegram_user_id)
-                   VALUES (%s, %s, %s)
-                RETURNING id, email, display_name, role""",
-                (name, invite["role"], str(telegram_user_id))).fetchone()
-        conn.execute("UPDATE invites SET used_by = %s WHERE code_hash = %s", (member["id"], code_hash))
-    return member
+        conn.execute("DELETE FROM password_links WHERE user_id = %s AND used_at IS NULL", (user_id,))
+        conn.execute(
+            """INSERT INTO password_links (token_hash, user_id, created_by, expires_at)
+               VALUES (%s, %s, %s, now() + make_interval(hours => %s))""",
+            (token_hash, user_id, created_by, hours))
+
+
+def password_link_owner(token_hash):
+    """Whose link it is, without using it up, or None if it is unknown, used
+    or expired, or they have been removed since."""
+    return database.row(
+        """SELECT u.id, u.email, u.display_name, u.password_hash IS NOT NULL AS has_password
+             FROM password_links l
+             JOIN users u ON u.id = l.user_id
+            WHERE l.token_hash = %s
+              AND l.used_at IS NULL
+              AND l.expires_at > now()
+              AND u.removed_at IS NULL""",
+        (token_hash,))
+
+
+def use_password_link(token_hash, password_hash, email=None):
+    """Uses up the link and sets the password, in one go, and ends the
+    person's other logins. email is for someone who joined through Telegram
+    and has none yet; an email they have stays. Returns the person, or None.
+    An email someone else has raises database.UniqueViolation, and the link
+    stays unused."""
+    with database.pool.connection() as conn, conn.transaction():
+        person = conn.execute(
+            """WITH used AS (
+                   UPDATE password_links
+                      SET used_at = now()
+                    WHERE token_hash = %s
+                      AND used_at IS NULL
+                      AND expires_at > now()
+                RETURNING user_id
+               )
+               UPDATE users u
+                  SET password_hash = %s, email = coalesce(u.email, %s)
+                 FROM used
+                WHERE u.id = used.user_id
+                  AND u.removed_at IS NULL
+            RETURNING u.id, u.email, u.display_name, u.role""",
+            (token_hash, password_hash, email)).fetchone()
+        if person:
+            conn.execute("DELETE FROM sessions WHERE user_id = %s", (person["id"],))
+        return person

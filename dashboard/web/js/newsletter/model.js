@@ -393,8 +393,9 @@ export function duplicateBlock(design, id) {
   const found = findBlock(design, id);
   if (!found) return null;
   const copy = withNewIds(found.block);
-  // A duplicated article is the same article twice; it starts unchecked.
-  if (copy.type === 'article') copy.checked = false;
+  // A duplicated article is the same article twice, and a copy of an AI
+  // draft is read again too: both start unchecked.
+  if (copy.type === 'article' || copy.ai) copy.checked = false;
   found.list.splice(found.index + 1, 0, copy);
   return copy;
 }
@@ -421,7 +422,7 @@ export function duplicateSection(design, id) {
   if (!found) return null;
   const copy = withNewIds(found.section);
   copy.name = `${found.section.name} (2)`;
-  eachBlock({ sections: [copy] }, (b) => { if (b.type === 'article') b.checked = false; });
+  eachBlock({ sections: [copy] }, (b) => { if (b.type === 'article' || b.ai) b.checked = false; });
   design.sections.splice(found.index + 1, 0, copy);
   return copy;
 }

@@ -4,7 +4,7 @@ Jira: DM42-37
 
 from fastapi import APIRouter, Depends, Response
 
-from ..dependencies import current_user
+from ..dependencies import current_user, not_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.templates import Template, TemplateIn, TemplateKind, TemplateUpdate
@@ -47,7 +47,8 @@ def update_template(template_id: int, body: TemplateUpdate, user: User = Depends
         raise ApiError(*TOO_BIG)
 
 
-@router.delete("/{template_id}", status_code=204, summary="Delete a saved template or section")
+@router.delete("/{template_id}", status_code=204, summary="Delete a saved template or section",
+               dependencies=[Depends(not_demo)])
 def delete_template(template_id: int):
     try:
         templates.remove(template_id)

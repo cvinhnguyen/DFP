@@ -13,6 +13,8 @@ export class ApiError extends Error {
   }
 }
 
+const NOT_ABOUT_THE_LOGIN = ['/api/login', '/api/password', '/api/password/link'];
+
 async function call(method, path, body) {
   const options = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
   if (body !== undefined) {
@@ -38,7 +40,9 @@ async function call(method, path, body) {
     const message = code && has(code)
       ? t(code, data.params || {})
       : (typeof data?.detail === 'string' ? data.detail : t('error.server', { status: response.status }));
-    if (response.status === 401 && path !== '/api/login') {
+    // A wrong password or a used link says nothing about the login on this
+    // browser, which may well be fine.
+    if (response.status === 401 && !NOT_ABOUT_THE_LOGIN.includes(path)) {
       window.dispatchEvent(new CustomEvent('auth-lost'));
     }
     throw new ApiError(response.status, message, data?.code || null, data?.params || {});

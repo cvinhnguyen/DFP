@@ -1,0 +1,111 @@
+{
+  "id": "b0tC0mmandsW0rk1",
+  "name": "Bot commands",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 5
+            }
+          ]
+        }
+      },
+      "id": "dd316526-f0a5-5c5d-9e05-5125a5271fdd",
+      "name": "Every morning",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "92e53793-92f4-5ab2-9dfe-c0770aceeab7",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Everyone who has used the bot, and whether they are an admin now. A\n-- removed admin counts as not one, so their chat goes back to the list\n-- everyone sees.\nSELECT telegram_user_id, (role = 'admin' AND removed_at IS NULL) AS admin\n  FROM users\n WHERE telegram_user_id IS NOT NULL\n ORDER BY id;",
+        "options": {}
+      },
+      "id": "f88ceb8f-63ad-5a2f-a937-05c0ad807549",
+      "name": "Bot users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// The list Telegram suggests when someone types / in a chat with the bot.\n// It is what BotFather's /setcommands sets, kept here so it changes along\n// with the commands. Everyone gets the first list, a group the commands that\n// work there, and each admin the longer list in their own chat. Runs every\n// morning, so a new admin gets theirs the next day at the latest; Run now\n// does it straight away.\n// Jira: DM42-33, DM42-36\nconst EVERYONE = [\n  { command: 'login', description: 'Open the dashboard: a link that works once' },\n  { command: 'password', description: 'Choose a password, to log in without Telegram' },\n  { command: 'check', description: 'Check all sources now' },\n  { command: 'schedule', description: 'See or set when I check the sources' },\n  { command: 'reschedule', description: 'Change when I check the sources' },\n  { command: 'help', description: 'What I can do' },\n];\nconst ADMINS = [\n  ...EVERYONE,\n  { command: 'adduser', description: 'An account for the dashboard: /adduser email Name' },\n  { command: 'people', description: 'Who can use me and the dashboard' },\n  { command: 'remove', description: 'Take someone off the list: /remove Name' },\n  { command: 'alerts', description: 'Where I report problems' },\n];\n// /alerts in a group makes it the place for problem reports.\nconst GROUPS = [\n  { command: 'check', description: 'Check all sources now' },\n  { command: 'schedule', description: 'See or set when I check the sources' },\n  { command: 'reschedule', description: 'Change when I check the sources' },\n  { command: 'alerts', description: 'Report problems in this group (admins)' },\n  { command: 'help', description: 'What I can do' },\n];\n\nconst telegram = (method, body) => this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/${method}`,\n  body,\n  json: true,\n});\n\nawait telegram('setMyCommands', { commands: EVERYONE });\nawait telegram('setMyCommands', { commands: GROUPS, scope: { type: 'all_group_chats' } });\nlet admins = 0;\nlet others = 0;\nlet skipped = 0;\nfor (const { json: person } of $input.all()) {\n  if (!person.telegram_user_id) continue;\n  const scope = { type: 'chat', chat_id: Number(person.telegram_user_id) };\n  try {\n    if (person.admin) {\n      await telegram('setMyCommands', { commands: ADMINS, scope });\n      admins++;\n    } else {\n      await telegram('deleteMyCommands', { scope });\n      others++;\n    }\n  } catch (e) {\n    // Someone who has blocked the bot since. Their chat has no menu to set.\n    skipped++;\n  }\n}\nreturn [{ json: { everyone: EVERYONE.length, admin_chats: admins, other_chats: others, skipped } }];"
+      },
+      "id": "18680129-0f83-5d92-91cf-160385111cfa",
+      "name": "Set the menus",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Every morning": {
+      "main": [
+        [
+          {
+            "node": "Bot users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Bot users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bot users": {
+      "main": [
+        [
+          {
+            "node": "Set the menus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26"
+  }
+}

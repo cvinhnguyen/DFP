@@ -17,7 +17,7 @@ secret lives, who can see it and how the client takes it back.
 | Telegram bot token | `.env` as `TELEGRAM_BOT_TOKEN` | Telegram capture and the collection schedule, see below |
 | Dashboard passwords | `users.password_hash`, as Argon2 hashes only | logging in to the dashboard |
 | Dashboard logins | `sessions`, as hashes of the cookie's token only | staying logged in, 12 hours by default |
-| Login links and invites | `login_links` and `invites`, as hashes only | the bot's /login and /invite; each works once and expires |
+| Login links and password links | `login_links` and `password_links`, as hashes only | the bot's /login, /adduser and /password; each works once and expires |
 | Mailchimp API key | the n8n credential "DFP Mailchimp", and `.env` as `MAILCHIMP_API_KEY` if you want `n8n/rebuild.sh` to create it | the Mailchimp workflow only, see below |
 | Google Drive access | not requested yet | |
 
@@ -94,10 +94,17 @@ The bot token is held only on the backend developer's instance. The bot
 accepts messages only from Telegram ids listed in `users.telegram_user_id` and
 refuses everyone else.
 
-The dashboard has no sign-up page. People join through an invite link that
-an admin asks the bot for with /invite, and log in with one-time links from
-/login, so no password passes through Telegram. The first admin is made with
-`python -m app.cli.users`, as `dashboard/README.md` shows.
+The dashboard has no sign-up page. An admin adds people with /adduser in
+the bot, and each person chooses their own password on a page in the
+dashboard that the bot links to, so no password passes through Telegram.
+Someone on the bot's list can also log in with a one-time link from /login.
+The first admin is made with `python -m app.cli.users`, as
+`dashboard/README.md` shows.
+
+The shared demo login, the account whose email is `demo_email` in
+`app_settings`, has its password shown to a room of people. It cannot send
+anything to Mailchimp or delete anything, and it is removed with /remove
+after the presentation.
 
 When a server for the client is set up, its editors are agreed with the client
 and listed here, and the list stays as short as the work allows.

@@ -82,6 +82,7 @@ class Item(BaseModel):
     section: str | None = Field(description="events, member_news or highlights, once an editor picks one")
     excerpt: str | None = Field(description="The publisher's own short description")
     text_length: int = Field(description="Characters of article text we have")
+    text_removed_at: datetime | None = Field(default=None, description="When the text went, after the retention period")
     summary: Summary | None
     details: dict | None = Field(description="What the source knows beyond the shared fields. For a thesis: "
                                              "kind, level, programme and licence")

@@ -55,6 +55,21 @@ export function number(n) {
   return Number(n).toLocaleString(currentLanguage() === 'fi' ? 'fi-FI' : 'en-GB');
 }
 
+// 0,05 € in Finnish, €0.05 in English. Less than a cent keeps four decimals,
+// so a small cost does not show as nothing.
+export function euros(n) {
+  const v = Number(n) || 0;
+  const digits = v !== 0 && Math.abs(v) < 0.01 ? 4 : 2;
+  return v.toLocaleString(currentLanguage() === 'fi' ? 'fi-FI' : 'en-GB',
+    { style: 'currency', currency: 'EUR', minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+// "lokakuu 2026" or "October 2026", from 2026-10.
+export function monthName(yearMonth) {
+  return new Date(`${yearMonth}-15T12:00:00Z`).toLocaleDateString(currentLanguage() === 'fi' ? 'fi-FI' : 'en-GB',
+    { month: 'long', year: 'numeric', timeZone: ZONE });
+}
+
 export function languageName(code) {
   const key = `lang.${code || 'unknown'}`;
   return has(key) ? t(key) : String(code).toUpperCase();

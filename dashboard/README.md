@@ -16,10 +16,12 @@ The editors' web app, in Finnish with an English switch for the team.
   so the editors find their way in both. Blocks, sections, styles, a check
   of everything that needs a look, a phone view, a preview, comments, and
   undo. It starts from a template with the picked articles in place.
-- **Asetukset**, for admins: the Mailchimp connection.
+- **Asetukset**, for admins: the Mailchimp connection, and what the AI costs
+  against its monthly budget.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
-DM42-33 for logging in and DM42-37 for the newsletter.
+DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
+costs.
 
 It is one service: a small Python API (FastAPI) that also serves the pages.
 The pages are plain HTML, CSS and JavaScript with no build step.
@@ -32,18 +34,46 @@ http://localhost:8000/api/docs.
 
 ## Logging in
 
-Editors log in through the Telegram bot, with no password:
+An admin adds people from the Telegram bot, and each person chooses their
+own password. Nobody signs up.
 
 | Command | Who | What it does |
 |---|---|---|
+| `/adduser email Name` | admins | an account that logs in with that email, and a link for the person to choose their password, once, for 72 hours |
+| `/adduser admin email Name` | admins | the same, for a new admin |
+| `/password` | everyone on the list | a link to choose your own password, once, for 72 hours. Someone who has only used Telegram chooses their email there too. Saving it ends your other logins |
+| `/password email` | admins | a new link to choose a password, for someone else's forgotten one |
 | `/login` | everyone on the list | a link to the dashboard that works once, for 15 minutes |
-| `/invite` | admins | a join link for a new colleague, once, for 24 hours |
-| `/invite admin` | admins | the same, for a new admin |
-| `/people` | admins | who can use the bot and the dashboard |
-| `/remove Name` | admins | ends someone's access; the articles they sent keep their name |
+| `/people` | admins | who can use the bot and the dashboard, and how each of them logs in |
+| `/remove Name` | admins | ends someone's access; the articles they sent keep their name. An email or a Telegram ID works too |
+| `/alerts` | admins | where the bot reports problems: sent in the team's group, there. `/alerts private` sends them to each admin, `/alerts off` to nobody |
 
-The first admin, and anyone who wants a password, is made from the command
-line:
+The links open a page in the dashboard where the person types the password,
+at least 10 characters. No password goes through Telegram or n8n.
+
+The bot only answers people whose Telegram is on their account. Someone it
+does not know is told their Telegram ID, and the command line below puts it
+on their account.
+
+While the dashboard runs on one computer, at http://localhost:8000, the
+links from the bot only open on that computer. Once `dashboard_url` in
+`app_settings` is an https address, Telegram shows them as buttons, and they
+open on any phone.
+
+### The demo login
+
+For showing the dashboard to people outside the team, everyone shares one
+account: the one whose email is `demo_email` in `app_settings`,
+demo@demo.com. It is made with `/adduser` like any other. It works as an
+editor, except that it cannot send anything to Mailchimp, delete anything or
+mark a newsletter sent, because its password is shown to the whole room.
+What it changes otherwise is real, so try things in a draft made for the
+demo. A room of people typing the same password makes typos, so it is only
+locked out after 20 wrong passwords in a quarter of an hour, not 5. Take it
+away with `/remove demo@demo.com` when the presentation is over.
+
+The first admin is made from the command line, which can also set a password
+directly:
 
 ```bash
 docker compose exec dashboard python -m app.cli.users add you@example.fi --name You --role admin
@@ -54,11 +84,12 @@ docker compose exec dashboard python -m app.cli.users remove someone@example.fi 
 ```
 
 `telegram` puts an account on the bot's list. Message the bot once and it
-answers with your Telegram ID. That is how the first admin gets on the list;
-after that, admins bring everyone else in with `/invite`.
+answers with your Telegram ID. That is how anyone gets on the list, the
+first admin included.
 
 Someone already on the Telegram list has an account without a password.
-Give them one with `password` rather than adding them again.
+Give them one with `password` rather than adding them again, or let them
+choose one with `/password` in the bot.
 
 ## From articles to Mailchimp
 
@@ -87,7 +118,12 @@ Give them one with `password` rather than adding them again.
    every picture uploaded, and a video link becomes its preview picture with
    a play button. Styles sets the colours and fonts of the whole email. A
    section's settings say how its articles look: plain, with a large title,
-   on cards, or with the title in a coloured bar.
+   on cards, or with the title in a coloured bar. Osiot → Trendit lists the
+   topics of the latest signal detection; one dragged in, or pressed, becomes
+   a box after Nostoja kentältä with the topic, how many articles the sources
+   ran on it, and three of them. Why it matters is left for the editors to
+   write, and Tarkistus counts it until they do: the AI's reason for a signal
+   is about one article, not the trend.
 5. Check. Each article starts as its Finnish summary, outlined in amber until
    someone ticks it as checked. Tarkistus lists what stops the email (unchecked
    articles, placeholder text, no unsubscribe link, no postal address, no
@@ -183,6 +219,16 @@ Clicking a tag lists everything with it. A wrong tag comes off with its ×
 and stays off; "Lisää asiasana" searches YSO for one to add, so jatkuva
 oppiminen finds elinikäinen oppiminen.
 
+**Signaalit**, under the topics, lists the weak signals of the latest run:
+topics that keep coming up in the news, such as tekoäly, each with how many
+articles it came from. Clicking one lists those articles, and an article's
+own signal note leads there too. n8n looks every Monday morning over the
+last 30 days (`signal_window_days`); "Hae signaalit nyt" asks it to look
+straight away, and the column shows the result when it is done, a few
+minutes later. `GET /api/signals` gives the signals with their score, time
+window and articles. In the newsletter editor, Osiot → Trendit turns one into
+a box for Nostoja kentältä. Jira: DM42-40.
+
 Theses come from Theseus. They wait without an AI summary until an editor
 picks one, and then the AI writes it within 15 minutes; until then the
 article shows the author's abstract and what its licence allows. A thesis
@@ -212,6 +258,81 @@ Each editor sees what is new to them: an article not opened yet has a dot,
 and Uudet says how many are unread. Opening one for a moment marks it read
 for that editor only.
 
+## What the AI costs
+
+Every call to the AI is in `llm_usage` with its tokens and estimated price.
+Asetukset shows this month's spending against the budget, each month with
+what the pre-filter saved, and each newsletter: the AI work for its
+articles, and all the AI work since the newsletter before it, which is what
+reading the sources for it took. The model in use is free at our volume, so
+the page also says what the same use would cost at that model's paid rate.
+
+An admin sets the monthly budget there (`monthly_budget_eur`, 0 for no cap).
+At 80 % the status line warns and the bot tells the team once. When it is
+used up, the articles the sources bring in wait in the queue until the next
+month, or until the budget is raised; a link sent to the bot and a summary
+an editor asks for are still made. The status line says so, with how many
+wait, and the bot tells the team when it stops and when it starts again.
+`ai_budget` in `db/init/24-ai-budget.sql` is where that state is worked out.
+
+## Writing help from the AI
+
+The AI helps with the newsletter's own text where the editors write it.
+Nothing it writes goes out unread:
+
+- Subject line. "Ehdota tekoälyllä", on the newsletter page and in the
+  editor's subject dialog, gives three subject lines and two preview texts
+  from the picked articles. Pressing one puts it in its field; it is saved
+  with the form like anything typed.
+- Greeting. Selecting the greeting in the editor shows "Kirjoita luonnos".
+  The draft says what this newsletter has in it, after the template's first
+  line, "Tervehdys täältä…".
+- A trend's box (Osiot → Trendit). The same button writes why the topic
+  matters now, from the topic's articles.
+
+A draft goes into the email unchecked, outlined in orange like an article's
+AI summary, and Tarkistus counts it until an editor has read it and ticked
+"Tarkistettu". "Kirjoita uusi luonnos" writes it again in other words, and
+asks first if someone has changed the text since. Asking again for the same
+thing, on the same articles, comes from the AI's cache at no cost. Each
+answer says how many tokens it took and what it cost; it is in `llm_usage`
+as `writing-subject`, `writing-greeting` or `writing-trend`, and in the
+costs on Asetukset. Like a summary an editor asks for, it is written even
+when the month's budget is used up.
+
+The dashboard gathers the material and asks n8n through `POST
+/webhook/writing` (`n8n/workflows/writing-help.json`), where the prompts
+are: `POST /api/issues/{id}/ai/subject`, `/api/issues/{id}/ai/greeting` and
+`/api/signals/{id}/ai/trend`. There is no free chat with the model: one
+would only know what is typed into it, and the system keeps member data
+out.
+
+## Keeping articles
+
+The text of a collected article goes after `raw_text_retention_days`, 90 by
+default, which an admin changes on Asetukset (30 to 365 days; agree it with
+the client). What goes is the full text, the excerpt from the feed and the
+author's name; the link, title, publisher, tags and the AI's summary stay,
+and the article says when its text went. An article picked into a
+newsletter, sent or not, or kept for later stays whole. Two reasons, from
+the kickoff: copyright, and the names and opinions of real people that
+article text carries. The cleanup runs in n8n every night
+(`n8n/workflows/retention.json`) and logs each run in `retention_runs`;
+Asetukset shows the last one and what the next night will take. Jira: DM42-45.
+
+## The newsletter archive
+
+The association's past newsletters can be imported from their public archive
+in Mailchimp, to check what the system finds against what the editors chose:
+
+```bash
+docker compose exec dashboard python -m app.cli.archive import "<archive address>"
+docker compose exec dashboard python -m app.cli.archive list
+```
+
+`GET /api/archive` and `GET /api/archive/{id}` give the comparison. How it
+works and the first results are in `docs/evaluation.md`. Jira: DM42-47.
+
 ## How the code is laid out
 
 Each folder holds one kind of work, so a change usually touches one place.
@@ -229,6 +350,7 @@ app/
   queries/         every SQL statement, and nothing else
   schemas/         the shapes the API takes and returns
   cli/users.py     accounts, from the command line
+  cli/archive.py   imports the association's past newsletters, for docs/evaluation.md
 
 web/
   index.html       the dashboard's pages
@@ -289,17 +411,19 @@ for it.
 
 ## Security
 
-- Editors log in with one-time links from the bot. Passwords, for those who
-  have one, are stored as Argon2 hashes; five wrong ones lock an email for 15
-  minutes.
+- Editors log in with one-time links from the bot, or with a password they
+  chose themselves, stored as Argon2 hashes. Five wrong ones lock an email
+  for 15 minutes; the shared demo login takes twenty.
 - The login is a cookie the page's scripts cannot read and the browser sends
   only to this site. The database keeps a hash of it, and of every login
-  link and invite. It lasts `session_hours` from `app_settings`, 12 by
-  default.
+  link and link to choose a password. It lasts `session_hours` from
+  `app_settings`, 12 by default.
 - A login link carries its token after `#`, which never reaches a server,
   and is only used when the person presses the button, so Telegram's link
-  preview cannot use it up. The bot sends links only in private chats.
-- Everything under `/api` needs a login, except logging in. The bot's account
+  preview cannot use it up. A link to choose a password works the same way,
+  and is used when the form is sent. The bot sends links only in private chats.
+- Everything under `/api` needs a login, except logging in and choosing a
+  password with a link. The bot's account
   endpoint needs n8n's token instead.
 - A request that changes something is refused when it comes from another
   website.

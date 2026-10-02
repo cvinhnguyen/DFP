@@ -14,6 +14,7 @@ import { openHandoff } from '../newsletter/handoff.js';
 import { icon } from '../ui/icons.js';
 import { toast, confirmDialog, promptDialog } from '../ui/dialogs.js';
 import { mailchimpLine } from './newsletters.js';
+import { suggestionsBox } from '../newsletter/writing.js';
 
 const SECTION_ORDER = ['own_news', 'events', 'member_news', 'highlights'];
 
@@ -29,6 +30,7 @@ export function showNewsletter(root) {
   let mailchimpReady = null;
   let gone = false;
   const open = { articles: false, subject: false };
+  let suggestAttempt = 0;   // how many times the AI has suggested subject lines here
 
   // ---------- each line of the list ----------
 
@@ -82,6 +84,11 @@ export function showNewsletter(root) {
           <label for="nl-preheader">${esc(t('issue.preheader'))}</label>
           <input id="nl-preheader" class="cf-input" name="preheader" maxlength="150" value="${esc(issue.preheader)}">
           <p class="cf-hint"><span data-count="preheader">${issue.preheader.length}</span>/150 · ${esc(t('issue.preheaderHint'))}</p>
+          <div class="ai-suggest-row">
+            <button type="button" class="btn ghost small" data-act="suggest">${esc(t(suggestAttempt ? 'ai.suggestMore' : 'ai.suggest'))}</button>
+            <span class="cf-hint">${esc(t('ai.suggestHint'))}</span>
+          </div>
+          <div class="ai-suggest-box" id="nl-suggest"></div>
           <div class="nl-form-actions">
             <button type="button" class="btn ghost small" data-act="toggle" data-what="subject">${esc(t('dialog.cancel'))}</button>
             <button type="submit" class="btn small">${esc(t('dialog.save'))}</button>
@@ -219,6 +226,27 @@ export function showNewsletter(root) {
         open[target.dataset.what] = !open[target.dataset.what];
         render();
         if (target.dataset.what === 'subject' && open.subject) root.querySelector('#nl-subject')?.focus();
+      } else if (act === 'suggest') {
+        // The AI's subject lines and preview texts, pressed into the fields.
+        // Nothing is saved until the editor saves the form.
+        target.disabled = true;
+        target.textContent = t('ai.suggesting');
+        const fill = (selector) => (text) => {
+          const input = root.querySelector(selector);
+          if (!input) return;
+          input.value = text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.focus();
+        };
+        try {
+          suggestAttempt += 1;
+          const result = await api.post(`/api/issues/${issue.id}/ai/subject`, { attempt: suggestAttempt });
+          root.querySelector('#nl-suggest')?.replaceChildren(
+            suggestionsBox(result, { onSubject: fill('#nl-subject'), onPreheader: fill('#nl-preheader') }));
+        } finally {
+          target.disabled = false;
+          target.textContent = t('ai.suggestMore');
+        }
       } else if (act === 'unpick') {
         if (!(await confirmDialog(t('issue.unpickConfirm')))) return;
         await api.put(`/api/items/${target.dataset.id}/decision`, { decision: null });

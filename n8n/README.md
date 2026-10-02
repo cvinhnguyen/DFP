@@ -18,17 +18,21 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 
 | Workflow | What it does |
 |---|---|
-| `collection-schedule.json` | checks the sources at the times the editors set with /schedule, or straight away with /check or the dashboard's "check now" |
+| `collection-schedule.json` | checks the sources at the times the editors set with /schedule or /reschedule, or straight away with /check or the dashboard's "check now" |
 | `eoppimiskeskus-crawler.json` | reads the association's own website |
 | `feed-collector.json` | reads RSS feeds and Crossref for the other sources |
 | `archive-collector.json` | reads an archive through its DSpace API: Theseus, the theses of the universities of applied sciences |
 | `ingest-api.json` | the only way new articles enter the database |
-| `summarisation.json` | runs the filter every 15 minutes, then summarises what passed |
+| `summarisation.json` | runs the filter every 15 minutes, then summarises what passed. When the month's AI budget is used up, only what editors asked for |
 | `llm-call.json` | the only workflow that talks to an AI model |
 | `mailchimp.json` | the only workflow that talks to Mailchimp: creates and updates the dashboard's draft campaigns, and never sends |
-| `signal-detection.json` | finds topics that keep coming up. Run by hand for now. |
+| `signal-detection.json` | finds topics that keep coming up in the news, every Monday at 6.00, or now from the dashboard's "Hae signaalit nyt" (`POST /webhook/signals`). Paused when the month's AI budget is used up |
+| `writing-help.json` | writes for the editors when they ask, through the LLM call: subject lines and preview texts, the greeting, and why a trend matters (`POST /webhook/writing`) |
 | `tagging.json` | gives every article subject tags from YSO, every 15 minutes: Finto AI reads each summary, and the theses' own terms and the signal words are matched to YSO |
-| `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule and /help, and passes /login, /invite, /people and /remove to the dashboard |
+| `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule, /reschedule and /help, and passes /login, /password, /adduser, /people, /remove and /alerts to the dashboard |
+| `bot-commands.json` | the list Telegram suggests when someone types / to the bot, as BotFather's /setcommands would set it: the everyday commands for everyone, and the admin commands too in each admin's own chat. Every morning, or Run now after a change |
+| `alerts.json` | tells the team on Telegram when something breaks: a source whose last two checks failed or found nothing, or a workflow that stopped with an error. Once when it breaks, and once when a source works again; also 80 % of the AI budget, and a budget used up. /alerts in the bot says where. The workflows that run on their own name it as their error workflow |
+| `retention.json` | every night at 3.30, takes away the text of articles collected longer ago than `raw_text_retention_days` (90), except what a newsletter or an editor still has, and old answers from the AI's cache |
 
 `ingest-api.json` is the write path for collected items: `POST
 /webhook/ingest` with a batch, and it answers accepted or rejected for each
@@ -56,17 +60,21 @@ model server keeps to JSON, which is how the summarisation gets its fields.
 
 `telegram-capture.json` lets an editor send a link to @DFP_Mazhar4_bot and
 have it join the same pipeline as crawled content. It asks Telegram for new
-messages once a minute rather than Telegram calling us, so no tunnel and no
-public address are needed. Only Telegram ids listed in
-`users.telegram_user_id` are accepted; anyone else is refused and told their
-own id, which is how a new editor gets added. Where the page cannot be read,
+messages every 20 seconds rather than Telegram calling us, so no tunnel and no
+public address are needed; a poll with nothing in it leaves about a kilobyte
+in n8n's history. Only Telegram ids listed in `users.telegram_user_id` are
+accepted; anyone else is refused and told their own id, which is how they
+get on the list (`python -m app.cli.users telegram`). Where the page cannot be read,
 and LinkedIn almost never can, the bot uses the words the editor typed as the
 title. Set `TELEGRAM_BOT_TOKEN` in `.env`.
 
 Accounts live in the dashboard, so the bot only passes the account commands
-on: /login, /invite, /people, /remove, and the /start that opening an invite
-link sends. The dashboard decides who may do what and says what to answer,
-and the bot sends that back. See `dashboard/README.md`.
+on: /login, /password, /adduser, /people, /remove and /alerts. The dashboard
+decides who may do what and says what to answer: a message, with a button
+that opens a link. Telegram only takes a button to an https address, so
+while the dashboard runs at http://localhost the address goes in the text
+instead, and "Reply on Telegram" does the same if Telegram turns a button
+down. See `dashboard/README.md`.
 
 `mailchimp.json` is how the dashboard reaches Mailchimp, through `POST
 /webhook/mailchimp` with the ingest token. It knows five requests:
@@ -110,7 +118,45 @@ per article, whether the article points at something new or growing, and
 keeps only the ones it says yes to. Articles that name the same topic become
 one signal carrying all of them, which is what makes "this came up in six
 articles" visible. How far back it reads is `signal_window_days` in
-`app_settings`.
+`app_settings`, 30 days. Jira: DM42-40.
+
+What goes in and what comes out, so the detection step can change without
+the rest noticing:
+
+- In, one per article: the articles of the window that have a summary in
+  Finnish (`item_id`, `title`, `published_at`, and the summary as `body`).
+  The model reads the summary rather than the article, so every article is
+  read the same way whatever its language, and the AI's cache answers for an
+  article it has read before. Theses nobody asked for have no summary and
+  stay out. Fewer than five articles and nothing is asked.
+- The model answers with JSON only:
+  `{"is_signal": true, "topic": "tekoäly", "reason": "<one sentence in Finnish>", "score": 0.8}`.
+  The call goes through `llm-call.json`, so its cost is in `llm_usage` with
+  everything else, as `signal_detection`.
+- Out: one row in `signals` per topic (topic, reason from the article that
+  scored highest, score, the window as `period_start` and `period_end`), and
+  a row in `signal_items` for each article it came from. The dashboard reads
+  them through `GET /api/signals`.
+
+`writing-help.json` writes for the editors when they press a button in the
+dashboard: subject lines and preview texts, a draft of the greeting, and a
+draft of why a trend matters. The dashboard sends the material, `POST
+/webhook/writing` with the ingest token, and waits for the answer; the
+prompts are in "Build prompt", in Finnish, and say to use nothing the
+material does not have. Jira: DM42-25, DM42-37, DM42-40.
+
+- In: `{"task": "subject" | "greeting" | "trend", "attempt": 1, ...}`. For
+  the first two, `newsletter` (its name) and `articles`, the picked ones in
+  section order with `section`, `title`, `publisher`, `event` and a shortened
+  `summary`. For a trend, `topic`, `count`, `days` and up to six `articles`.
+  An `attempt` above 1 asks for other words, which also gets past the cache.
+- Out, always answered: `{"ok": true, "subjects": [...], "preheaders":
+  [...]}` or `{"ok": true, "text": "..."}`, with `tokens`, `cost_eur` and
+  `truncated`; or `{"ok": false, "code": "ai_failed", "message": "..."}`
+  when the model does not answer, so a model that is down does not alert the
+  team on every press of the button.
+- The call goes through `llm-call.json` as `writing-subject`,
+  `writing-greeting` or `writing-trend`.
 
 ## Saving your workflow changes
 
@@ -147,4 +193,14 @@ The n8n image is pinned to 2.38.1, the version this setup was tested against.
 
 n8n stores the full payload of every run, including article text, and prunes
 it after 30 days (`N8N_EXECUTION_RETENTION_HOURS` in `.env`). That makes it a
-retention setting rather than only housekeeping.
+retention setting rather than only housekeeping: keep it no longer than
+`raw_text_retention_days`, or n8n would hold the text the nightly cleanup
+takes out of the database.
+
+A workflow that runs on its own, from a schedule, names Alerts as its error
+workflow (Settings, Error workflow), so its failures reach the team on
+Telegram. The collectors and the LLM call do not need to: their failures
+reach the workflow that called them, and a source that fails is reported by
+the source check in Alerts. A workflow that contains an Error Trigger, as
+Alerts does, is its own error workflow, which n8n runs once and not again for
+a failure of that run.

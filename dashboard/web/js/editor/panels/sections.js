@@ -1,13 +1,14 @@
 // Osiot: the email's sections, as Mailchimp's Sections panel has them.
 // Manage puts them in order, renames, copies, saves and deletes them.
-// Ready-made adds a section from the list below; Saved adds one an editor
-// saved earlier.
+// Ready-made adds a section from the list below; Trends adds a topic the
+// latest signal detection found, as a box for Nostoja kentältä; Saved adds
+// one an editor saved earlier.
 
 import { moveSection, removeSection, duplicateSection, withNewIds, isSent, readDesign, emptyDesign } from '../../newsletter/model.js';
-import { PREBUILT, PREBUILT_GROUPS } from '../../newsletter/templates.js';
+import { PREBUILT, PREBUILT_GROUPS, trendSection, trendTopic, trendPlace } from '../../newsletter/templates.js';
 import { renderEmail } from '../../newsletter/render.js';
-import { t } from '../../texts.js';
-import { when } from '../../format.js';
+import { t, tn } from '../../texts.js';
+import { when, date } from '../../format.js';
 import { h, fill } from '../../ui/dom.js';
 import { icon } from '../../ui/icons.js';
 import { popover, closePopover } from '../../ui/controls.js';
@@ -35,6 +36,7 @@ export function thumbnail(design, { height = 120 } = {}) {
 
 export function createSectionsPanel({ store, dnd, root, context, actions, api }) {
   let saved = null;     // the saved sections, once fetched
+  let trends = null;    // the latest signals, once fetched
   let query = '';
 
   function menu(anchor, sectionId) {
@@ -132,12 +134,12 @@ export function createSectionsPanel({ store, dnd, root, context, actions, api })
       extra.menu || null);
     card.addEventListener('pointerdown', (event) => {
       if (event.target.closest('.st-icon-btn')) return;
-      dnd.begin(event, { kind: 'new-section', label: name, iconName: 'sections', create: () => withNewIds(create()) });
+      dnd.begin(event, { kind: 'new-section', label: name, iconName: 'sections', create: () => withNewIds(create()), place: extra.place });
     });
     card.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        dnd.click({ kind: 'new-section', create: () => withNewIds(create()) });
+        dnd.click({ kind: 'new-section', create: () => withNewIds(create()), place: extra.place });
       }
     });
     return card;
@@ -147,6 +149,32 @@ export function createSectionsPanel({ store, dnd, root, context, actions, api })
     return PREBUILT_GROUPS.map((group) => h('div', { class: 'sp-group' },
       h('h3', { class: 'panel-subtitle' }, t(`sections.group.${group}`)),
       h('div', { class: 'sp-cards' }, PREBUILT.filter((p) => p.group === group).map((p) => sectionCard(p.name, () => p.create(context.issue, store.design))))));
+  }
+
+  async function loadTrends() {
+    try {
+      trends = await api.get('/api/signals');
+    } catch (e) {
+      trends = { error: e.message };
+    }
+    if (tab === 'trends') render();
+  }
+
+  // The topics of the latest signal detection that more than one article
+  // came up with, most articles first, as the articles page lists them.
+  function trendList() {
+    if (!trends) {
+      loadTrends();
+      return [h('p', { class: 'panel-lead' }, t('sections.loading'))];
+    }
+    if (trends.error) return [h('p', { class: 'st-warn' }, trends.error)];
+    const shown = trends.signals.filter((s) => s.detected_on === trends.latest && s.articles > 1);
+    if (!shown.length) return [h('p', { class: 'panel-lead' }, t('sections.trendsNone'))];
+    return [
+      h('p', { class: 'panel-lead' }, t('sections.trendsLead', { date: date(trends.latest) })),
+      h('div', { class: 'sp-cards' }, shown.map((s) => sectionCard(trendTopic(s), () => trendSection(s, store.design),
+        { meta: tn('sections.trendsCount', s.articles), place: trendPlace }))),
+    ];
   }
 
   async function loadSaved() {
@@ -204,7 +232,7 @@ export function createSectionsPanel({ store, dnd, root, context, actions, api })
   }
 
   function render() {
-    const tabs = ['manage', 'prebuilt', 'saved'];
+    const tabs = ['manage', 'prebuilt', 'trends', 'saved'];
     fill(root, 
       h('h2', { class: 'panel-title' }, t('sections.title')),
       h('p', { class: 'panel-lead' }, t('sections.lead')),
@@ -215,7 +243,7 @@ export function createSectionsPanel({ store, dnd, root, context, actions, api })
           render();
         },
       }, t(`sections.tab.${name}`)))),
-      ...(tab === 'manage' ? manage() : tab === 'prebuilt' ? prebuilt() : savedList()),
+      ...(tab === 'manage' ? manage() : tab === 'prebuilt' ? prebuilt() : tab === 'trends' ? trendList() : savedList()),
     );
   }
 

@@ -1,4 +1,5 @@
-/* Logging in, with a password or with a link from the bot. */
+/* Logging in, with a password or with a link from the bot, and choosing a
+   password with a link from an admin. */
 
 .login {
   max-width: 400px; margin: 40px auto; padding: 28px 28px 22px;
@@ -12,6 +13,8 @@
   background: var(--surface); color: var(--ink); border-radius: 6px;
 }
 .login input:focus { border-color: var(--link); }
+.login input[readonly] { background: var(--bg); color: var(--soft); }
+.login .rule { color: var(--soft); font-size: 13px; margin: 5px 0 0; }
 .login .btn { margin-top: 18px; width: 100%; padding: 10px; }
 .form-error { color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 6px; padding: 8px 10px; margin: 14px 0 0; font-size: 14px; }
 .hint { color: var(--soft); font-size: 13.5px; margin: 18px 0 0; }

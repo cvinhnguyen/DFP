@@ -17,7 +17,7 @@ Each folder is one part of the system, with a README of its own.
 | `dashboard/` | the editors' web app: a Python API and the pages it serves |
 | `n8n/` | the workflows that collect, summarise, run the Telegram bot and make Mailchimp drafts, and the scripts that save and rebuild them |
 | `db/` | the database: every table, as numbered changes, and the client's source list |
-| `docs/` | documents for people: credentials, the ingest API, the AI cost comparison, the architecture diagram, the dashboard prototype |
+| `docs/` | documents for people: credentials, the ingest API, the AI cost comparison, the check against the association's own newsletters, the architecture diagram, the dashboard prototype |
 
 The parts meet in the database. n8n collects articles and theses and writes
 them in through the ingest API, then summarises them and gives them subject
@@ -44,7 +44,7 @@ local to your machine, and log in to the dashboard at http://localhost:8000.
 
 To use the Telegram bot, message it once: it answers with your Telegram ID.
 Put that on your account, and from then on `/login` in the bot gets you into
-the dashboard and `/invite` brings in colleagues:
+the dashboard and `/adduser` adds colleagues:
 
 ```bash
 docker compose exec dashboard python -m app.cli.users telegram you@example.fi 123456789
