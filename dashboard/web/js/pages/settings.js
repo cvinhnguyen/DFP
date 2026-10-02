@@ -12,14 +12,17 @@ import { icon } from '../ui/icons.js';
 import { toast } from '../ui/dialogs.js';
 import { costsCard } from '../components/costs.js';
 import { retentionCard } from '../components/retention.js';
+import { brandCard } from '../components/brand.js';
 
 export function showSettings(root, { user }) {
   let state = null;
   let costs = null;
   let keep = null;
+  let brand = null;
+  let brandBusy = null;   // the banner or logo being uploaded
   let gone = false;
   let busy = false;
-  const problems = { mailchimp: '', costs: '', keep: '' };
+  const problems = { mailchimp: '', costs: '', keep: '', brand: '' };
 
   function status() {
     if (!state) return '';
@@ -40,6 +43,7 @@ export function showSettings(root, { user }) {
     root.innerHTML = `
       <div class="pagehead"><h2>${esc(t('admin.title'))}</h2><p>${esc(t('admin.lead'))}</p></div>
       ${problems.mailchimp ? `<p class="problem">${esc(problems.mailchimp)}</p>` : (state ? mailchimpCard() : '')}
+      ${problems.brand ? `<p class="problem">${esc(problems.brand)}</p>` : (brand ? brandCard(brand, brandBusy) : '')}
       ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
       ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}`;
   }
@@ -109,6 +113,56 @@ export function showSettings(root, { user }) {
     if (!gone) render();
   }
 
+  async function loadBrand() {
+    try {
+      brand = await api.get('/api/brand');
+      problems.brand = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.brand = e.message;
+    }
+    if (!gone) render();
+  }
+
+  // A picture into Kuvapankki, the way the editor uploads one: the address
+  // it gets there is what the banner or logo points at.
+  async function upload(file) {
+    const form = new FormData();
+    form.append('files', file);
+    const response = await fetch('/api/images', { method: 'POST', body: form, credentials: 'same-origin' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.code ? t(`error.${body.code}`, body.params || {}) : (body.detail || t('brand.uploadFailed')));
+    const added = (body.data || [])[0];
+    if (!added) throw new Error(t('brand.uploadFailed'));
+    return added;
+  }
+
+  function chooseBrand(which) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/gif,image/webp';
+    input.hidden = true;
+    root.append(input);
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      input.remove();
+      if (!file) return;
+      brandBusy = which;
+      render();
+      try {
+        const added = await upload(file);
+        brand = await api.put(`/api/brand/${which}`, { src: added.src });
+        toast(t('brand.saved'));
+      } catch (e) {
+        toast(e.message, 'warn');
+      } finally {
+        brandBusy = null;
+        if (!gone) render();
+      }
+    });
+    input.click();
+  }
+
   async function loadCosts() {
     try {
       costs = await api.get('/api/costs');
@@ -121,6 +175,22 @@ export function showSettings(root, { user }) {
   }
 
   root.addEventListener('click', async (event) => {
+    const brandAct = event.target.closest('[data-act="brand-upload"], [data-act="brand-reset"]');
+    if (brandAct) {
+      const which = brandAct.dataset.which;
+      if (brandAct.dataset.act === 'brand-upload') {
+        chooseBrand(which);
+        return;
+      }
+      try {
+        brand = await api.del(`/api/brand/${which}`);
+        render();
+        toast(t('brand.restored'));
+      } catch (e) {
+        toast(e.message, 'warn');
+      }
+      return;
+    }
     const target = event.target.closest('[data-act="test"]');
     if (!target) return;
     busy = true;
@@ -175,6 +245,7 @@ export function showSettings(root, { user }) {
   });
 
   load();
+  loadBrand();
   loadCosts();
   loadRetention();
   return { leave() { gone = true; } };

@@ -27,7 +27,7 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `llm-call.json` | the only workflow that talks to an AI model |
 | `mailchimp.json` | the only workflow that talks to Mailchimp: creates and updates the dashboard's draft campaigns, and never sends |
 | `signal-detection.json` | finds topics that keep coming up in the news, every Monday at 6.00, or now from the dashboard's "Hae signaalit nyt" (`POST /webhook/signals`). Paused when the month's AI budget is used up |
-| `writing-help.json` | writes for the editors when they ask, through the LLM call: subject lines and preview texts, the greeting, and why a trend matters (`POST /webhook/writing`) |
+| `writing-help.json` | writes for the editors when they ask, through the LLM call: subject lines and preview texts, the greeting, why a trend matters, and answers to questions about the articles (`POST /webhook/writing`) |
 | `tagging.json` | gives every article subject tags from YSO, every 15 minutes: Finto AI reads each summary, and the theses' own terms and the signal words are matched to YSO |
 | `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule, /reschedule and /help, and passes /login, /password, /adduser, /people, /remove and /alerts to the dashboard |
 | `bot-commands.json` | the list Telegram suggests when someone types / to the bot, as BotFather's /setcommands would set it: the everyday commands for everyone, and the admin commands too in each admin's own chat. Every morning, or Run now after a change |
@@ -139,16 +139,20 @@ the rest noticing:
   them through `GET /api/signals`.
 
 `writing-help.json` writes for the editors when they press a button in the
-dashboard: subject lines and preview texts, a draft of the greeting, and a
-draft of why a trend matters. The dashboard sends the material, `POST
+dashboard: subject lines and preview texts, a draft of the greeting, a
+draft of why a trend matters, and the answer to a question asked on
+Kysy artikkeleilta. The dashboard sends the material, `POST
 /webhook/writing` with the ingest token, and waits for the answer; the
 prompts are in "Build prompt", in Finnish, and say to use nothing the
 material does not have. Jira: DM42-25, DM42-37, DM42-40.
 
-- In: `{"task": "subject" | "greeting" | "trend", "attempt": 1, ...}`. For
-  the first two, `newsletter` (its name) and `articles`, the picked ones in
-  section order with `section`, `title`, `publisher`, `event` and a shortened
-  `summary`. For a trend, `topic`, `count`, `days` and up to six `articles`.
+- In: `{"task": "subject" | "greeting" | "trend" | "ask", "attempt": 1, ...}`.
+  For the first two, `newsletter` (its name) and `articles`, the picked ones
+  in section order with `section`, `title`, `publisher`, `event` and a
+  shortened `summary`. For a trend, `topic`, `count`, `days` and up to six
+  `articles`. For a question, `question` and up to eight `articles` with
+  `title`, `publisher`, `date` and `summary`; the answer cites them as [1],
+  [2] in that order.
   An `attempt` above 1 asks for other words, which also gets past the cache.
 - Out, always answered: `{"ok": true, "subjects": [...], "preheaders":
   [...]}` or `{"ok": true, "text": "..."}`, with `tokens`, `cost_eur` and
@@ -156,7 +160,7 @@ material does not have. Jira: DM42-25, DM42-37, DM42-40.
   when the model does not answer, so a model that is down does not alert the
   team on every press of the button.
 - The call goes through `llm-call.json` as `writing-subject`,
-  `writing-greeting` or `writing-trend`.
+  `writing-greeting`, `writing-trend` or `writing-ask`.
 
 ## Saving your workflow changes
 

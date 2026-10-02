@@ -17,6 +17,7 @@ import {
   ARTICLE_SECTIONS, FOOTER_HTML, BLOCK_PADDING, COLUMN_SIDE_PADDING, readDesign,
 } from './model.js';
 import { escapeAttr, escapeText, fromText } from './richtext.js';
+import { brand } from './brand.js';
 
 export const SECTION_NAMES = {
   own_news: 'Ajankohtaista yhdistykseltä ja hankkeista',
@@ -167,8 +168,21 @@ const h2 = (text, extra = {}) => headingBlock(text, 2, { style: { paddingTop: 20
 
 // The banner the association's emails start with: its logo and the name of
 // the email, as one picture the editors upload once.
-function bannerSection(alt) {
-  return section('Banneri', 'header', [picture({ alt, naturalWidth: 1128, naturalHeight: 222, style: { ...BLEED } })]);
+// The banner across the top. which, newsletter or members, starts it with
+// that banner (newsletter/brand.js: the association's own, or the one an
+// admin chose); without, it is a place for the editor to put a picture, the
+// size the association's banners are.
+function bannerSection(alt, which = null) {
+  const banner = which ? brand(which) : null;
+  return section('Banneri', 'header', [picture(banner
+    ? { src: banner.src, alt, naturalWidth: banner.width, naturalHeight: banner.height, style: { ...BLEED } }
+    : { alt, naturalWidth: 1128, naturalHeight: 222, style: { ...BLEED } })]);
+}
+
+// The association's logo, linked to its website.
+function brandLogo(style) {
+  const logo = brand('logo');
+  return logoBlock({ src: logo.src, alt: NAME, link: { url: 'https://www.eoppimiskeskus.fi/', blank: true }, style });
 }
 
 // "Lue viesti selaimessasi", over the banner, as in the newsletter.
@@ -211,7 +225,7 @@ function plainHeader(label, heading) {
 // The association's logo over the title.
 function logoHeader(heading) {
   return section('Ylätunniste', 'header', [
-    logoBlock({ style: { paddingTop: 24, paddingBottom: 8 } }),
+    brandLogo({ paddingTop: 24, paddingBottom: 8 }),
     textBlock(`<h1>${escapeText(heading)}</h1>`, { style: { paddingTop: 8 } }),
   ]);
 }
@@ -407,7 +421,7 @@ const BUILT_IN = [
       const d = start('eok', 'eok');
       d.sections.push(
         browserLinkSection(),
-        bannerSection(`${NAME} – Uutiskirje`),
+        bannerSection(`${NAME} – Uutiskirje`, 'newsletter'),
         section('Tervehdys', 'greeting', [
           textBlock(`<p>Tervehdys täältä ${NAME_OF} toimistolta!</p>${fromText(PLACEHOLDERS.greeting)}`, { placeholder: true, style: { paddingTop: 26 } }),
         ]),
@@ -432,7 +446,7 @@ const BUILT_IN = [
       const contents = ARTICLE_SECTIONS.map((k) => `<a href="#${ANCHORS[k]}">${escapeText(SECTION_NAMES[k])}</a>`)
         .concat('<a href="#learning-factory">Learning Factory</a>', '<a href="#arkisto">Arkisto</a>').join(' | ');
       d.sections.push(
-        bannerSection(`${NAME} – Jäsenkirje`),
+        bannerSection(`${NAME} – Jäsenkirje`, 'members'),
         section('Sisällys', 'contents', [textBlock(`<p><strong>${contents}</strong></p>`, { style: { paddingTop: 18, paddingBottom: 10 } })],
           { linkColor: MAGENTA }),
         section('Tervehdys', 'greeting', [
@@ -484,7 +498,7 @@ const BUILT_IN = [
         s.button.shape = 'pill';
       });
       d.sections.push(
-        section('Ylätunniste', 'header', [logoBlock({ style: { paddingTop: 20, paddingBottom: 20 } })], { contentBackground: '#ffffff' }),
+        section('Ylätunniste', 'header', [brandLogo({ paddingTop: 20, paddingBottom: 20 })], { contentBackground: '#ffffff' }),
         section('Pääkuva', 'hero', [
           picture({ style: { ...BLEED } }),
           textBlock(`<h1>${escapeText(title(issue))}</h1>`, { style: { paddingTop: 24 } }),
@@ -1055,7 +1069,9 @@ export function trendPlace(design) {
 export const PREBUILT_GROUPS = ['header', 'hero', 'articles', 'text', 'signup', 'event', 'columns', 'gallery', 'footer'];
 
 export const PREBUILT = [
-  { group: 'header', key: 'banner', name: 'Banneri', create: () => bannerSection(NAME) },
+  { group: 'header', key: 'banner-newsletter', name: 'Banneri: Uutiskirje', create: () => bannerSection(`${NAME} – Uutiskirje`, 'newsletter') },
+  { group: 'header', key: 'banner-members', name: 'Banneri: Jäsenkirje', create: () => bannerSection(`${NAME} – Jäsenkirje`, 'members') },
+  { group: 'header', key: 'banner', name: 'Banneri, oma kuva', create: () => bannerSection(NAME) },
   { group: 'header', key: 'browser-link', name: 'Lue viesti selaimessasi', create: () => browserLinkSection() },
   { group: 'header', key: 'title', name: 'Pieni otsake ja otsikko', create: (issue) => titleSection(NAME.toUpperCase(), title(issue)) },
   { group: 'header', key: 'header-band', name: 'Värillinen otsikkokaista', create: (issue) => bandHeader(`${NAME.toUpperCase()} · UUTISKIRJE`, title(issue)) },

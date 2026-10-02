@@ -19,8 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 from . import database, errors, middleware
 from .dependencies import current_user
-from .routes import (archive, auth, comments, costs, images, issues, items, mailchimp, overview, retention,
-                     signals, telegram, templates, topics, writing)
+from .routes import (archive, auth, brand, comments, costs, images, issues, items, mailchimp, overview,
+                     retention, signals, telegram, templates, topics, writing)
 
 log = logging.getLogger("uvicorn.error")
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -63,6 +63,7 @@ private.include_router(retention.router)
 private.include_router(signals.router)
 private.include_router(archive.router)
 private.include_router(writing.router)
+private.include_router(brand.router)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(private)

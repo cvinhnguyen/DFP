@@ -1,7 +1,8 @@
-// The column on the left of the articles page: the editors' own lists, the
-// topics with how many new articles each has, the latest weak signals, the
-// sources, the views by what the AI did, and which newsletter the picks go
-// into. It only turns data into HTML; the page decides what a click does.
+// The column on the left of the articles page: the editors' own lists,
+// asking the articles a question, the topics with how many new articles each
+// has, the latest weak signals, the sources, the views by what the AI did,
+// and which newsletter the picks go into. It only turns data into HTML; the
+// page decides what a click does.
 // Jira: DM42-80, DM42-31, DM42-40
 
 import { t, tn } from '../texts.js';
@@ -87,6 +88,10 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
       ${entry('picked', current, `<span class="side-name">${esc(t('view.picked'))}</span>`, c.picked, { muted: true })}
       ${entry('later', current, `<span class="side-name">${esc(t('view.later'))}</span>`, c.later, { muted: true })}
       ${entry('dismissed', current, `<span class="side-name">${esc(t('view.dismissed'))}</span>`, c.dismissed, { muted: true })}
+    </div>
+    <div class="side-group">
+      ${entry('ask', current, `<span class="side-name">${esc(t('side.ask'))}</span>`, null, { extra: ' ask' })}
+      <p class="side-hint">${esc(t('side.askHint'))}</p>
     </div>
     <div class="side-group">
       <h3 class="side-h">${esc(t('side.followed'))}</h3>

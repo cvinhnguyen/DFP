@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 
+from .items import Item
 from .signals import Signal
 
 
@@ -27,3 +28,14 @@ class Draft(Usage):
 
 class TrendDraft(Draft):
     signal: Signal = Field(description="The signal, as /api/signals gives it, so the box can be made again around the text")
+
+
+class AskIn(BaseModel):
+    question: str = Field(min_length=3, max_length=300, description="In Finnish, as the summaries are")
+    days: int = Field(default=90, ge=7, le=3650, description="How far back to look, by the article's date")
+
+
+class AskAnswer(Usage):
+    answer: str | None = Field(description="The AI's answer, citing the articles as [1], [2]…; "
+                               "null when no article fits the question, and nothing was asked")
+    sources: list[Item] = Field(description="The articles it read, in the order the numbers cite them")

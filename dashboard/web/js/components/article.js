@@ -105,7 +105,8 @@ function topicDots(item, topics) {
 }
 
 // topics: a Map of the topics by id, for their colours.
-export function articleRow(item, { selected = false, topics = new Map() } = {}) {
+// number: the article's number in an answer from the AI, which cites it so.
+export function articleRow(item, { selected = false, topics = new Map(), number = null } = {}) {
   const meta = [...byline(item).map(esc), kindLabel(item) ? `<span class="kind">${esc(kindLabel(item))}</span>` : '']
     .filter(Boolean).join(' · ');
   let tags = item.tags.slice(0, 3).map((g) => `<span class="tg${g.origin === 'signal' ? ' sig' : ''}">${esc(g.label)}</span>`).join('');
@@ -117,7 +118,7 @@ export function articleRow(item, { selected = false, topics = new Map() } = {}) 
     : `<span${langAttr(item.language)}>${esc(item.title)}</span>`;
   return `
     <button type="button" class="ar-row${item.decision ? ' decided' : ''}${item.seen ? '' : ' unseen'}" data-id="${item.id}" aria-current="${selected}">
-      <span class="ar-row-title">${langBadge(item)}${title}</span>
+      <span class="ar-row-title">${number ? `<span class="ar-row-n" title="${esc(t('row.number', { n: number }))}">${number}</span>` : ''}${langBadge(item)}${title}</span>
       <span class="ar-row-meta"><span class="ar-row-by">${meta}</span>${eventChip(item)}<span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
       ${tags ? `<span class="ar-row-tags">${tags}</span>` : ''}
     </button>`;

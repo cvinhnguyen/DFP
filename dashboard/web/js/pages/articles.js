@@ -1,12 +1,14 @@
 // The articles page: a column of topics and views, the list, and the article
 // being read. The editor reads down the list and decides with one click or a
 // key, and the next article opens by itself. How the parts look is in
-// components/article.js and components/side.js.
+// components/article.js and components/side.js. Kysy artikkeleilta is a
+// place too: a question, the AI's answer, and the articles it is from as the
+// list, each opening in the reader like any other.
 // Jira: DM42-80, DM42-31, DM42-40
 
 import { api } from '../api.js';
 import { t, tn } from '../texts.js';
-import { date, esc, number, finnishDay } from '../format.js';
+import { aiUsage, date, esc, number, finnishDay } from '../format.js';
 import { articleRow, articleReader, dayHeading, termOptions, SECTIONS } from '../components/article.js';
 import { sideHtml } from '../components/side.js';
 import { topicRows, topicEditor } from '../components/topics.js';
@@ -15,7 +17,7 @@ import { confirmDialog } from '../ui/dialogs.js';
 
 // The lists of the editors' own decisions and of what the AI did. A topic, a
 // tag, a source, a signal or "no topic" is a place too: topic:3, tag:12,
-// source:5, signal:7, none.
+// source:5, signal:7, none. ask is asking the articles a question.
 // topics is where the topics themselves are edited.
 const VIEWS = ['inbox', 'picked', 'later', 'dismissed', 'used', 'waiting', 'skipped', 'attention', 'all'];
 const SORTS = ['collected', 'published', 'relevance'];
@@ -28,7 +30,7 @@ const NARROW = window.matchMedia('(max-width: 760px)');
 function parsePlace(text) {
   const [kind, raw, extra] = String(text || '').split(':');
   if (extra === undefined && raw === undefined && VIEWS.includes(kind)) return { kind: 'view', view: kind };
-  if ((kind === 'none' || kind === 'topics') && raw === undefined) return { kind };
+  if ((kind === 'none' || kind === 'topics' || kind === 'ask') && raw === undefined) return { kind };
   const id = Number(raw);
   if (extra === undefined && ['topic', 'tag', 'source', 'signal'].includes(kind) && Number.isInteger(id) && id > 0) return { kind, id };
   return { kind: 'view', view: 'inbox' };
@@ -36,7 +38,7 @@ function parsePlace(text) {
 
 function placeKey(place) {
   if (place.kind === 'view') return place.view;
-  if (place.kind === 'none' || place.kind === 'topics') return place.kind;
+  if (place.kind === 'none' || place.kind === 'topics' || place.kind === 'ask') return place.kind;
   return `${place.kind}:${place.id}`;
 }
 
@@ -50,7 +52,9 @@ function placeParams(place) {
 }
 
 // Whether an article still belongs in the list after a decision about it.
+// An answer's articles stay, whatever is decided about them.
 function belongs(item, place) {
+  if (place.kind === 'ask') return true;
   const view = place.kind === 'view' ? place.view : (['source', 'signal'].includes(place.kind) ? 'all' : 'open');
   if (view === 'inbox') return !item.decision;
   if (view === 'picked') return item.decision === 'picked' && item.pick_issue_status !== 'sent';
@@ -118,6 +122,16 @@ function layout() {
                    placeholder="${esc(t('search.hint'))}" aria-label="${esc(t('search.label'))}">
             <select id="sort" aria-label="${esc(t('filter.sort'))}"></select>
           </form>
+          <form class="ar-ask" id="ask" hidden>
+            <label class="sr-only" for="ask-q">${esc(t('ask.label'))}</label>
+            <textarea id="ask-q" rows="2" maxlength="300" placeholder="${esc(t('ask.placeholder'))}"></textarea>
+            <div class="ar-ask-row">
+              <select id="ask-days" aria-label="${esc(t('ask.days'))}">
+                ${[30, 90, 365, 3650].map((d) => `<option value="${d}"${d === 90 ? ' selected' : ''}>${esc(t(`ask.days.${d}`))}</option>`).join('')}
+              </select>
+              <button type="submit" class="btn small" id="ask-go">${esc(t('ask.submit'))}</button>
+            </div>
+          </form>
         </div>
         <div class="ar-rows" id="rows" aria-busy="true"></div>
       </section>
@@ -149,6 +163,9 @@ export function showArticles(root) {
   const terms = { timer: null, latest: 0, list: [], active: -1, input: null };
   // The topics view: what the topic being edited would bring.
   const tv = { preview: null, showDropped: false, creating: false };
+  // Kysy artikkeleilta: the questions asked on this page, newest last, each
+  // with its answer and articles; shown is the one on screen.
+  const asked = { list: [], shown: -1, busy: false };
   let seenTimer = null;
 
   root.classList.add('wide');
@@ -218,6 +235,7 @@ export function showArticles(root) {
     if (place.kind === 'view') return place.view === 'inbox' ? t('place.inbox') : t(`view.${place.view}`);
     if (place.kind === 'none') return t('place.none');
     if (place.kind === 'topics') return t('place.topics');
+    if (place.kind === 'ask') return t('place.ask');
     if (place.kind === 'topic') return topicsById.get(place.id)?.name ?? '…';
     if (place.kind === 'tag') return t('place.tag', { tag: tagLabel ?? '…' });
     if (place.kind === 'signal') return t('place.signal', { topic: side.signals.find((s) => s.id === place.id)?.topic ?? '…' });
@@ -228,6 +246,7 @@ export function showArticles(root) {
     if (place.kind === 'view') return place.view === 'inbox' ? t('place.note.inbox', { days: side.windowDays }) : t(`note.${place.view}`);
     if (place.kind === 'none') return t('place.note.none');
     if (place.kind === 'topics') return t('place.note.topics');
+    if (place.kind === 'ask') return t('place.note.ask');
     if (place.kind === 'topic') {
       const topic = topicsById.get(place.id);
       return topic ? t('place.note.topic', { terms: topic.tags.map((x) => x.label).join(', ') }) : '';
@@ -242,9 +261,11 @@ export function showArticles(root) {
 
   function renderHead() {
     $('place-name').textContent = placeName();
-    $('place-count').textContent = place.kind === 'topics' ? '' : tn('count', total, { n: number(total) });
+    const counted = place.kind !== 'topics' && (place.kind !== 'ask' || asked.shown >= 0);
+    $('place-count').textContent = counted ? tn('count', total, { n: number(total) }) : '';
     $('place-note').textContent = placeNote();
-    $('tools').hidden = place.kind === 'topics';
+    $('tools').hidden = place.kind === 'topics' || place.kind === 'ask';
+    $('ask').hidden = place.kind !== 'ask';
   }
 
   function dayOf(item) {
@@ -265,6 +286,12 @@ export function showArticles(root) {
   function renderRows() {
     if (place.kind === 'topics') {
       rowsEl.innerHTML = topicRows(side.topics, Number(state.item) || null, { creating: tv.creating });
+      return;
+    }
+    if (place.kind === 'ask') {
+      rowsEl.innerHTML = askHtml() + rows.map((item, i) => articleRow(item, {
+        selected: String(item.id) === state.item, topics: topicsById, number: i + 1,
+      })).join('');
       return;
     }
     if (!rows.length) {
@@ -415,7 +442,83 @@ export function showArticles(root) {
   // The place's list: articles, or in the topics view the topics.
   function show(options = {}) {
     if (place.kind === 'topics') return loadTopics();
+    if (place.kind === 'ask') return showAsk();
     return loadList(options);
+  }
+
+  // ---------- asking the articles ----------
+
+  // The answer on screen, and its articles as the list.
+  function showAsk({ open = true } = {}) {
+    const shown = asked.list[asked.shown];
+    rows = shown ? shown.sources : [];
+    total = rows.length;
+    renderHead();
+    renderRows();
+    // The first article opens beside the answer, and the answer stays in
+    // view from its start.
+    if (!rows.some((r) => String(r.id) === state.item)) {
+      setItem(open && !NARROW.matches && rows.length ? rows[0].id : null, { scroll: false });
+    } else renderReader();
+    rowsEl.scrollTop = 0;
+    if (!shown && !NARROW.matches) $('ask-q').focus({ preventScroll: true });
+  }
+
+  async function askQuestion(question) {
+    const text = question.trim();
+    if (text.length < 3 || asked.busy) return;
+    asked.busy = true;
+    $('ask-go').disabled = true;
+    renderRows();
+    try {
+      const found = await api.post('/api/ask', { question: text, days: Number($('ask-days').value) || 90 });
+      asked.list.push({ question: text, ...found });
+      asked.shown = asked.list.length - 1;
+      state.item = '';
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      asked.busy = false;
+      $('ask-go').disabled = false;
+    }
+    if (place.kind === 'ask') showAsk();
+  }
+
+  // The answer's [1], [2]… as buttons that open those articles.
+  function answerHtml(a) {
+    const cite = (whole, n) => {
+      const source = a.sources[Number(n) - 1];
+      if (!source) return whole;
+      const label = t('ask.cite', { n, title: source.title_fi || source.title });
+      return `<button type="button" class="ar-cite" data-act="cite" data-id="${source.id}" title="${esc(label)}" aria-label="${esc(label)}">${n}</button>`;
+    };
+    return esc(a.answer).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
+      .map((p) => `<p>${p.replace(/\[(\d{1,2})\]/g, cite).replace(/\n/g, '<br>')}</p>`).join('');
+  }
+
+  function askHtml() {
+    const shown = asked.list[asked.shown];
+    let out = '';
+    if (asked.busy) out += `<p class="ask-busy" role="status">${esc(t('ask.busy'))}</p>`;
+    if (!shown && !asked.busy) {
+      out += `<div class="ask-intro"><p>${esc(t('ask.intro'))}</p><p class="ask-try">${esc(t('ask.try'))}</p>
+        <div class="ask-examples">${['ask.example1', 'ask.example2', 'ask.example3'].map((k) => `
+          <button type="button" class="ask-example" data-act="ask-example" data-q="${esc(t(k))}">${esc(t(k))}</button>`).join('')}</div></div>`;
+    }
+    if (shown && !asked.busy) {
+      const usage = aiUsage(shown);
+      out += `<section class="ask-answer" aria-label="${esc(t('ask.answer'))}">
+        <p class="ask-q">${esc(shown.question)}</p>
+        ${shown.answer === null ? `<p class="ask-none">${esc(t('ask.none'))}</p>` : `${answerHtml(shown)}
+        <p class="ask-meta">${esc(tn('ask.meta', shown.sources.length))}${usage ? ` · ${esc(usage)}` : ''}</p>
+        <p class="ask-meta">${esc(t('ask.check'))}</p>`}
+      </section>`;
+    }
+    const earlier = asked.list.map((a, i) => (i === asked.shown ? '' : `
+      <button type="button" class="ask-earlier-q" data-act="ask-show" data-n="${i}">${esc(a.question)}</button>`)).join('');
+    if (earlier.trim()) out += `<div class="ask-earlier"><p class="ask-earlier-h">${esc(t('ask.earlier'))}</p>${earlier}</div>`;
+    if (shown && shown.sources.length && !asked.busy) out += `<h4 class="ar-day">${esc(t('ask.sources'))}</h4>`;
+    return `<div class="ask">${out}</div>`;
   }
 
   // ---------- editing topics ----------
@@ -946,6 +1049,15 @@ export function showArticles(root) {
     } else if (act === 'check') startCheck(target);
     else if (act === 'find-signals') findSignals(target);
     else if (act === 'view') goPlace(target.dataset.view);
+    else if (act === 'cite') openItem(target.dataset.id);
+    else if (act === 'ask-show') {
+      asked.shown = Number(target.dataset.n);
+      state.item = '';
+      showAsk();
+    } else if (act === 'ask-example') {
+      $('ask-q').value = target.dataset.q;
+      askQuestion(target.dataset.q);
+    }
   });
 
   root.addEventListener('change', (event) => {
@@ -964,6 +1076,11 @@ export function showArticles(root) {
   });
 
   root.addEventListener('submit', (event) => {
+    if (event.target.id === 'ask') {
+      event.preventDefault();
+      askQuestion($('ask-q').value);
+      return;
+    }
     if (event.target.id === 'tp-new') {
       event.preventDefault();
       const name = event.target.querySelector('#tp-new-name').value.trim();
@@ -982,6 +1099,14 @@ export function showArticles(root) {
     if (event.target.id === 'tp-name') {
       const note = read.querySelector('#tp-saved');
       if (note) note.hidden = true;
+    }
+  });
+
+  // Enter asks; Shift+Enter starts a new line in the question.
+  $('ask-q').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      askQuestion($('ask-q').value);
     }
   });
 

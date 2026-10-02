@@ -10,6 +10,7 @@ from io import BytesIO
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from ..queries import images as queries
+from . import brand
 
 MAX_BYTES = 10 * 1024 * 1024
 # Twice the newsletter's 660 pixels, so pictures stay sharp on phone screens.
@@ -89,9 +90,10 @@ class InUse(Exception):
 
 
 def remove(key):
-    """Deletes an image no newsletter or saved template uses. One that is
-    used stays: deleting it would leave a hole in an email already sent."""
-    names = queries.used_in(key) + queries.used_in_templates(key)
+    """Deletes an image no newsletter or saved template uses, and that is
+    not the banner or logo new emails start with. One that is used stays:
+    deleting it would leave a hole in an email already sent."""
+    names = queries.used_in(key) + queries.used_in_templates(key) + brand.used_for(key)
     if names:
         raise InUse(names)
     return queries.remove(key)

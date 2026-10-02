@@ -159,9 +159,9 @@ def mark_sent(issue_id, user_id):
 # reader, so they are left out of what goes to Mailchimp.
 MARKERS = re.compile(r'\sdata-[a-z0-9-]+="[^"]*"')
 
-# Pictures the email points at on the dashboard: uploaded ones and the
-# social icons.
-LOCAL_IMAGE = re.compile(r'(src|href)="(/media/[0-9a-f-]{36}|/img/social/[a-z]+-[a-z]+\.png)"')
+# Pictures the email points at on the dashboard: uploaded ones, the social
+# icons, and the association's banners and logo.
+LOCAL_IMAGE = re.compile(r'(src|href)="(/media/[0-9a-f-]{36}|/img/(?:social|brand)/[a-z0-9-]+\.png)"')
 
 
 # Where a picture has not been added yet, the editor saves the block twice:

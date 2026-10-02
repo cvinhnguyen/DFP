@@ -303,9 +303,42 @@ when the month's budget is used up.
 The dashboard gathers the material and asks n8n through `POST
 /webhook/writing` (`n8n/workflows/writing-help.json`), where the prompts
 are: `POST /api/issues/{id}/ai/subject`, `/api/issues/{id}/ai/greeting` and
-`/api/signals/{id}/ai/trend`. There is no free chat with the model: one
-would only know what is typed into it, and the system keeps member data
-out.
+`/api/signals/{id}/ai/trend`.
+
+### Kysy artikkeleilta
+
+A place on Artikkelit for asking, in Finnish, what the sources have written
+about something: "Mitä tekoälystä on kirjoitettu opettajille?" The
+dashboard finds the articles that fit best, at most eight, from the time
+chosen (30 days to all time), and the AI answers from their summaries only,
+citing them as 1, 2, 3. A number opens that article in the reader, and the
+articles are listed under the answer like any others, to read and pick for
+the newsletter. When no article fits, the dashboard says so and the AI is
+not asked. Earlier questions on the page can be opened again without asking
+anew.
+
+Finding the articles is `queries/ask.py`: any word of the question, as the
+Finnish stemmer leaves it and as the start of a word, in the title, the
+summary or the subject tags, with words about the asking itself
+("kirjoitettu", "kerro") left out. `POST /api/ask` answers; in
+`llm_usage` it is `writing-ask`.
+
+There is no free chat with the model: one would only know what is typed
+into it, and the system keeps member data out. An answer is about the
+articles here, and says which.
+
+## Banners and logo
+
+The newsletter template starts with the association's green Uutiskirje
+banner and the member letter with its magenta Jäsenkirje banner; the
+templates with a logo start with its logo. They are in
+`web/img/brand/`, whose README says where each is from. An admin puts other
+pictures in their place on Asetukset (Banneri ja logo), and can go back to
+the association's own. A picture chosen there is uploaded to Kuvapankki and
+cannot be deleted while it is in use. New emails start with what is chosen;
+an email already started keeps its pictures, which the editor changes like
+any other. `GET /api/brand`, and `PUT` and `DELETE /api/brand/{which}` for
+admins; `db/init/27-brand.sql`.
 
 ## Keeping articles
 

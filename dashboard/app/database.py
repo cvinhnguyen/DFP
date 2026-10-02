@@ -37,6 +37,7 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("27-brand.sql", "SELECT EXISTS (SELECT 1 FROM app_settings WHERE key = 'brand_logo') AS ok"),
     ("26-archive.sql", "SELECT to_regclass('public.archive_entries') IS NOT NULL AS ok"),
     ("25-retention.sql", "SELECT to_regclass('public.retention_runs') IS NOT NULL AS ok"),
     ("24-ai-budget.sql", "SELECT to_regclass('public.ai_budget') IS NOT NULL AS ok"),

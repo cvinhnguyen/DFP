@@ -3,10 +3,12 @@ suggestion: the pages show it for an editor to choose, edit and check.
 Jira: DM42-25, DM42-37, DM42-40
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from ..dependencies import current_user
 from ..errors import ApiError
-from ..schemas.writing import Attempt, Draft, Subjects, TrendDraft
+from ..schemas.auth import User
+from ..schemas.writing import AskAnswer, AskIn, Attempt, Draft, Subjects, TrendDraft
 from ..services import writing
 
 router = APIRouter(tags=["writing help"])
@@ -47,3 +49,11 @@ def trend(signal_id: int, body: Attempt):
     """Two or three sentences for the trend's box in Nostoja kentältä, and
     the signal itself, so the box can be made again around them."""
     return _run(writing.trend, signal_id, body.attempt)
+
+
+@router.post("/ask", response_model=AskAnswer, responses=PROBLEMS, summary="Ask the articles a question")
+def ask(body: AskIn, user: User = Depends(current_user)):
+    """The answer comes from the summaries of the articles that fit the
+    question best, at most eight, and cites them by number. When none fits,
+    the answer is null and the AI is not asked."""
+    return _run(writing.ask, body.question, body.days, user.id)

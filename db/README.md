@@ -58,7 +58,7 @@ docker compose up -d
 | `llm_usage` | every AI call: tokens, cost, time | `02-schema.sql`, `03`, `05` |
 | `llm_cache` | answers kept so the same text is never paid for twice | `03-llm.sql` |
 | `llm_pricing` | token prices per model | `03-llm.sql`, `06` |
-| `app_settings` | every setting that is not a secret: the model, the filter, the check times, the Mailchimp data centre and audience | `03-llm.sql` and later |
+| `app_settings` | every setting that is not a secret: the model, the filter, the check times, the Mailchimp data centre and audience, the banners and logo new emails start with (`27-brand.sql`) | `03-llm.sql` and later |
 | `users` | the editors. Members never log in, so no member data lives here. | `02-schema.sql`, `15`, `16`, `22` |
 | `sessions` | dashboard logins, as hashes of the cookie's token | `15-dashboard.sql` |
 | `login_links` | the bot's one-time /login links, as hashes. `invites`, made by the same file, held codes for an /invite command the bot no longer has | `16-telegram-accounts.sql` |

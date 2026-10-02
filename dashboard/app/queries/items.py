@@ -255,6 +255,11 @@ def one(item_id, user_id=None):
     return database.row(COLUMNS + " WHERE i.id = %(id)s", {"id": item_id, "user": user_id})
 
 
+def by_ids(ids, user_id=None):
+    """Several articles by id, in no particular order."""
+    return database.rows(COLUMNS + " WHERE i.id = ANY(%(ids)s)", {"ids": list(ids), "user": user_id})
+
+
 def mark_seen(item_id, user_id):
     database.run(
         """INSERT INTO item_views (user_id, item_id) VALUES (%s, %s)

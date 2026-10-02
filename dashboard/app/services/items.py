@@ -82,6 +82,13 @@ def list_items(view, sort, page, per_page, user_id=None, **chosen):
                     tag_label=queries.tag_name(tag) if tag is not None else None)
 
 
+def items_by_ids(ids, user_id=None):
+    """The articles with these ids, in the order given."""
+    found = {f["id"]: f for f in queries.by_ids(ids, user_id)}
+    min_chars = _min_chars()
+    return [_as_item(found[i], min_chars) for i in ids if i in found]
+
+
 def get_item(item_id, user_id=None):
     found = queries.one(item_id, user_id)
     if not found:

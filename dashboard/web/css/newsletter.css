@@ -170,3 +170,15 @@
   .nl-cell-mc, .nl-cell-edited { display: none; }
   .nl-table th:nth-child(2), .nl-table th:nth-child(4) { display: none; }
 }
+
+/* Asetukset: the banners and logo new emails start with */
+.brand-list { display: grid; gap: 14px; margin: 12px 0 10px; }
+.brand-row { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 14px; align-items: center; }
+.brand-pic { border: 1px solid var(--rule); border-radius: var(--radius); padding: 8px; background: var(--surface); min-width: 0; }
+.brand-pic.logo { background: #ffffff; justify-self: start; }
+.brand-pic img { display: block; max-width: 100%; height: auto; }
+.brand-info { min-width: 0; }
+.brand-info h4 { margin: 0; font-size: 15px; }
+.brand-info .cf-hint { margin: 2px 0 8px; }
+.brand-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) { .brand-row { grid-template-columns: 1fr; } }

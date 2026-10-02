@@ -7,18 +7,12 @@
 // Jira: DM42-25, DM42-37, DM42-40
 
 import { t } from '../texts.js';
-import { euros, number } from '../format.js';
+import { aiUsage } from '../format.js';
 import { h } from '../ui/dom.js';
 import { fromText } from './richtext.js';
 import { PLACEHOLDERS, trendCardHtml } from './templates.js';
 
-// What the AI read and wrote, and what it cost, as the bot says it under a
-// summary: the client asked about costs, on their own text.
-export function usageLine(r) {
-  if (!r || r.tokens == null) return '';
-  const cost = r.cost_eur == null ? '' : Number(r.cost_eur) === 0 ? t('ai.free') : euros(r.cost_eur);
-  return [t('ai.tokens', { n: number(r.tokens) }), cost].filter(Boolean).join(' · ');
-}
+export const usageLine = aiUsage;
 
 // Subject lines and preview texts as buttons. Pressing one puts it in its
 // field, through onSubject or onPreheader; nothing is saved until the

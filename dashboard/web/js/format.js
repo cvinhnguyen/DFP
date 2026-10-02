@@ -74,3 +74,12 @@ export function languageName(code) {
   const key = `lang.${code || 'unknown'}`;
   return has(key) ? t(key) : String(code).toUpperCase();
 }
+
+// What the AI read and wrote and what it cost, as the bot says it under a
+// summary: "2 321 tokenia · maksuton malli". The client asked about costs,
+// on their own text.
+export function aiUsage(r) {
+  if (!r || r.tokens == null) return '';
+  const cost = r.cost_eur == null ? '' : Number(r.cost_eur) === 0 ? t('ai.free') : euros(r.cost_eur);
+  return [t('ai.tokens', { n: number(r.tokens) }), cost].filter(Boolean).join(' · ');
+}

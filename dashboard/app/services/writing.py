@@ -12,6 +12,10 @@ are in that workflow, next to the others.
 
 Like an article summary an editor asks for, it is written even when the
 month's AI budget is used up: an editor pressed the button.
+
+Asking the articles a question works the same way: the dashboard finds the
+articles that fit (queries/ask.py), and the AI answers from their summaries
+only, saying which article each thing is from.
 """
 
 import json
@@ -19,8 +23,9 @@ import urllib.error
 import urllib.request
 
 from .. import config
+from ..queries import ask as ask_queries
 from ..queries import signals as signal_queries
-from . import issues
+from . import issues, items
 
 SECTION_NAMES = {
     "own_news": "Ajankohtaista yhdistykseltä ja hankkeista",
@@ -34,6 +39,7 @@ SECTION_ORDER = list(SECTION_NAMES)
 # enough that a whole newsletter is a few thousand tokens.
 ISSUE_ARTICLES = 20
 TREND_ARTICLES = 6
+ASK_ARTICLES = 8
 
 
 class WritingProblem(Exception):
@@ -69,6 +75,29 @@ def trend(signal_id, attempt=1):
     answer = _ask({"task": "trend", "attempt": attempt, "topic": signal["topic"], "count": signal["articles"],
                    "days": days, "articles": articles})
     return {"text": answer.get("text") or "", "signal": signal, **_usage(answer)}
+
+
+def ask(question, days, user_id=None):
+    """The answer to an editor's question from the articles that fit it, and
+    those articles, as the list shows them, numbered as the answer cites
+    them. None as the answer when no article fits: then nothing is asked."""
+    question = " ".join(str(question or "").split())
+    found = ask_queries.relevant(question, days, ASK_ARTICLES)
+    sources = items.items_by_ids([f["id"] for f in found], user_id)
+    if not sources:
+        return {"answer": None, "sources": [], "tokens": None, "cost_eur": None, "truncated": False}
+    articles = [{
+        "title": s.title_fi or s.title,
+        "publisher": s.publisher,
+        "date": _day(s.published_at or s.collected_at),
+        "summary": _short(s.summary or s.excerpt, 700),
+    } for s in sources]
+    answer = _ask({"task": "ask", "attempt": 1, "question": question, "articles": articles})
+    return {"answer": answer.get("text") or "", "sources": sources, **_usage(answer)}
+
+
+def _day(value):
+    return f"{value.day}.{value.month}.{value.year}" if value else ""
 
 
 # ---------- what the AI reads ----------

@@ -17,6 +17,7 @@ import {
 import { renderEmail, byteSize } from '../newsletter/render.js';
 import { checkDesign } from '../newsletter/checks.js';
 import { startDesign } from '../newsletter/templates.js';
+import { setBrand } from '../newsletter/brand.js';
 import { draftTask, draftReplacesEdits, greetingOpening, draftedHtml, suggestionsBox } from '../newsletter/writing.js';
 import { createStore } from './store.js';
 import { createCanvas, setField } from './canvas.js';
@@ -655,6 +656,12 @@ async function start() {
     context.mailchimp = await api.get('/api/mailchimp');
   } catch {
     context.mailchimp = null;
+  }
+  // The banners and logo templates start with, before any template is built.
+  try {
+    setBrand(await api.get('/api/brand'));
+  } catch {
+    // The association's own, then.
   }
   context.articles = context.issue.articles;
   basedOn = stored.saved_at;
