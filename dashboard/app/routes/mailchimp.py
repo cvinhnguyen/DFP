@@ -24,6 +24,10 @@ def _problem(e):
                     e.code, str(e), **e.params)
 
 
+def _not_ready(e):
+    return ApiError(409, "not_ready", str(e), count=sum(e.problems.values()), problems=e.problems)
+
+
 @router.get("/mailchimp", response_model=MailchimpState, summary="Is Mailchimp connected, and how the drafts are set up")
 def state(refresh: bool = False):
     return mailchimp.account(refresh=refresh)
@@ -38,7 +42,7 @@ def save_settings(body: MailchimpSettings):
     })
 
 
-@router.post("/issues/{issue_id}/mailchimp", response_model=Issue, summary="Create or update the issue's draft in Mailchimp")
+@router.post("/issues/{issue_id}/mailchimp", response_model=Issue, summary="Create or update the issue's draft in Mailchimp, once Tarkistus lists no error")
 def export_draft(issue_id: int, user: User = Depends(not_demo)):
     try:
         return mailchimp.export_draft(issue_id, user.id)
@@ -46,6 +50,8 @@ def export_draft(issue_id: int, user: User = Depends(not_demo)):
         raise ApiError(404, "no_such_issue", "There is no newsletter with that number.")
     except issues.Locked:
         raise ApiError(409, "issue_sent", "This newsletter has been sent, so it can no longer be changed.")
+    except issues.NotReady as e:
+        raise _not_ready(e)
     except mailchimp.MailchimpProblem as e:
         raise _problem(e)
 
@@ -66,7 +72,7 @@ def refresh_all(user: User = Depends(current_user)):
     return {"ok": True}
 
 
-@router.post("/issues/{issue_id}/mailchimp/test", response_model=Issue, summary="Send a test of the issue through Mailchimp")
+@router.post("/issues/{issue_id}/mailchimp/test", response_model=Issue, summary="Send a test of the issue through Mailchimp, once Tarkistus lists no error")
 def send_test(issue_id: int, body: TestIn, user: User = Depends(not_demo)):
     emails = [e.strip() for e in body.emails if e.strip()]
     bad = [e for e in emails if not EMAIL.match(e)]
@@ -78,6 +84,8 @@ def send_test(issue_id: int, body: TestIn, user: User = Depends(not_demo)):
         raise ApiError(404, "no_such_issue", "There is no newsletter with that number.")
     except issues.Locked:
         raise ApiError(409, "issue_sent", "This newsletter has been sent, so it can no longer be changed.")
+    except issues.NotReady as e:
+        raise _not_ready(e)
     except mailchimp.MailchimpProblem as e:
         raise _problem(e)
 

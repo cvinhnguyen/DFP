@@ -5,10 +5,12 @@ The editors' web app, in Finnish with an English switch for the team.
 - **Artikkelit**: everything the tool collected, read by topic. A column of
   topics and lists on the left, the list in the middle, the article on the
   right with its Finnish summary, its subject tags and the buttons that
-  decide: add it to the newsletter (in a section), keep it for later, or
-  leave it out. The next article opens by itself, and keys do the same as
-  the buttons. Both editors see who decided what. Skipped and failed
-  articles say why, and can be summarised anyway.
+  decide. The panel names the newsletter the article goes into, and each of
+  its four sections says what belongs there; pressing one adds the article.
+  "Säästä myöhemmäksi" keeps it for later and "Ei käytetä" leaves it out.
+  The next article opens by itself, and keys do the same as the buttons.
+  Both editors see who decided what. Skipped and failed articles say why,
+  and can be summarised anyway.
 - **Uutiskirjeet**: every newsletter, drafts first, like Mailchimp's list of
   campaigns. Each one opens to a checklist: articles, subject line and
   preview text, content, Mailchimp, with a preview beside it.
@@ -99,8 +101,9 @@ choose one with `/password` in the bot.
    the draft chosen under "Valinnat menevät" at the bottom of the left
    column: the newest draft, marked "Uudet valinnat tulevat tähän" on
    Uutiskirjeet, unless an editor chooses another. One is made and named
-   after the month the first time it is needed, and an editor can start
-   another with Luo uutiskirje.
+   after the month the first time it is needed. Luo uutiskirje starts
+   another and opens its page, and "Valitse artikkeleita" there sends the
+   next picks into it.
 2. Open the newsletter. Its checklist shows what is done: the articles, the
    subject line and preview text, the content, and Mailchimp.
 3. Open the editor. The first time, it asks for a template, grouped the way
@@ -126,12 +129,18 @@ choose one with `/password` in the bot.
    is about one article, not the trend.
 5. Check. Each article starts as its Finnish summary, outlined in amber until
    someone ticks it as checked. Tarkistus lists what stops the email (unchecked
-   articles, placeholder text, no unsubscribe link, no postal address, no
-   subject line) and what is worth a look (headlines left in English, pictures
-   without a description, empty links, an email big enough for Gmail to cut
-   short). Clicking an item shows the block. Every preview shows a
-   wireframe, a grey box with a picture icon, where a picture has not been
-   added yet; the email that goes out leaves those places out.
+   articles and AI drafts, the template's sample text, no unsubscribe link, no
+   postal address, no subject line) and what is worth a look (headlines left
+   in English, pictures without a description, empty links, an email big
+   enough for Gmail to cut short). Clicking an item shows the block. Every
+   preview shows a wireframe, a grey box with a picture icon, where a picture
+   has not been added yet; the email that goes out leaves those places out.
+   Until Tarkistus lists no error, the email stays in the dashboard: Vie
+   Mailchimpiin lists what is left and leads back to the editor instead of
+   offering its three ways, Lähetä testi waits as well, and the server
+   refuses the draft, the test and the files the same way
+   (`issues.check_ready`). That is the promise to the association: nothing
+   the AI wrote reaches Mailchimp before a person has read it.
 6. The editor saves by itself a moment after each change. If someone else
    saved in between, it asks which version stays. Tallenna ja poistu runs
    the check first and lists what is still open.
@@ -143,7 +152,9 @@ choose one with `/password` in the bot.
      works on every plan, Essentials too.
    - as a file: a ZIP for Mailchimp's Import ZIP, or the HTML.
 8. Lähetä testi, in the editor, has Mailchimp send the draft to the
-   addresses typed in, after bringing it up to date there.
+   addresses typed in, after bringing it up to date there. Because it
+   updates the draft, it waits for Tarkistus like the export does; the
+   preview works any time.
 9. The editors look the draft over in Mailchimp, change it there if they
    want, and send or schedule it there. The dashboard never sends.
 10. Uutiskirjeet asks Mailchimp what became of each draft, and marks one
@@ -292,7 +303,7 @@ Nothing it writes goes out unread:
 
 A draft goes into the email unchecked, outlined in orange like an article's
 AI summary, and Tarkistus counts it until an editor has read it and ticked
-"Tarkistettu". "Kirjoita uusi luonnos" writes it again in other words, and
+"Tarkistettu"; until then the email cannot go to Mailchimp. "Kirjoita uusi luonnos" writes it again in other words, and
 asks first if someone has changed the text since. Asking again for the same
 thing, on the same articles, comes from the AI's cache at no cost. Each
 answer says how many tokens it took and what it cost; it is in `llm_usage`

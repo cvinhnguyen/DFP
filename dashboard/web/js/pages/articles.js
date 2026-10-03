@@ -95,7 +95,9 @@ function readTarget() {
   }
 }
 
-function saveTarget(id) {
+// Also from the newsletter pages: a newsletter just made, or the one whose
+// "Valitse artikkeleita" was pressed, is where the next picks go.
+export function saveTarget(id) {
   try {
     localStorage.setItem(TARGET_KEY, String(id));
   } catch {

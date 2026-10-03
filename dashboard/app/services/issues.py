@@ -48,6 +48,16 @@ class EditedElsewhere(Exception):
         self.saved_by = saved_by
 
 
+class NotReady(Exception):
+    """Tarkistus still lists something that keeps the email in the dashboard.
+    problems counts each kind, by the codes Tarkistus uses."""
+
+    def __init__(self, problems):
+        listed = ", ".join(f"{n} {code}" for code, n in problems.items())
+        super().__init__(f"Fix what Tarkistus lists before the email leaves the dashboard: {listed}.")
+        self.problems = problems
+
+
 def month_name(year, month):
     return f"{MONTHS[month - 1]} {year}"
 
@@ -152,6 +162,58 @@ def mark_sent(issue_id, user_id):
     _draft(issue_id)
     queries.mark_sent(issue_id, user_id)
     return get(issue_id)
+
+
+# What keeps an email in the dashboard, the way Tarkistus counts it
+# (web/js/newsletter/checks.js): an article or a text the AI drafted that no
+# person has ticked as read, the template's sample text, no subject line.
+# The pages stop there before the email goes to Mailchimp, as a draft, a test
+# or a file; this is the same rule for a request that comes some other way.
+# The four sections of picked articles go out only with an article in them.
+ARTICLE_SECTIONS = ("own_news", "events", "member_news", "highlights")
+
+
+def _blocks(blocks):
+    for block in blocks or []:
+        yield block
+        if block.get("type") == "columns":
+            for column in block.get("columns") or []:
+                yield from _blocks(column.get("blocks"))
+
+
+def _goes_out(section):
+    if section.get("role") in ARTICLE_SECTIONS:
+        return any(b.get("type") == "article" for b in _blocks(section.get("blocks")))
+    return bool(section.get("blocks"))
+
+
+def not_ready(issue_id):
+    """What still keeps the issue's email in the dashboard, counted by kind.
+    Empty when it may go to Mailchimp."""
+    found = queries.one(issue_id)
+    if not found:
+        raise NotFound()
+    design = (queries.design(issue_id) or {}).get("design") or {}
+    problems = {}
+    for section in design.get("sections") or []:
+        if not _goes_out(section):
+            continue
+        for block in _blocks(section.get("blocks")):
+            if block.get("type") == "article" and not block.get("checked"):
+                problems["unchecked"] = problems.get("unchecked", 0) + 1
+            if block.get("type") == "text" and block.get("ai") and not block.get("checked"):
+                problems["uncheckedDraft"] = problems.get("uncheckedDraft", 0) + 1
+            if block.get("placeholder"):
+                problems["placeholders"] = problems.get("placeholders", 0) + 1
+    if not (found.get("subject") or "").strip():
+        problems["subject"] = 1
+    return problems
+
+
+def check_ready(issue_id):
+    problems = not_ready(issue_id)
+    if problems:
+        raise NotReady(problems)
 
 
 # The dashboard's own markers on the email, from the old editor: which

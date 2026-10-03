@@ -19,6 +19,7 @@ import { checkDesign } from '../newsletter/checks.js';
 import { startDesign } from '../newsletter/templates.js';
 import { setBrand } from '../newsletter/brand.js';
 import { draftTask, draftReplacesEdits, greetingOpening, draftedHtml, suggestionsBox } from '../newsletter/writing.js';
+import { notReadyBox } from '../newsletter/handoff.js';
 import { createStore } from './store.js';
 import { createCanvas, setField } from './canvas.js';
 import { createDnd } from './dnd.js';
@@ -487,6 +488,20 @@ async function changeTemplate() {
 // ---------- sending a test through Mailchimp ----------
 
 function sendTest() {
+  // A test brings the draft in Mailchimp up to date first, so it waits for
+  // Tarkistus like the way into Mailchimp does. The preview works any time.
+  runChecks();
+  if (lastChecks.errorCount) {
+    modal({
+      title: t('test.title'),
+      body: notReadyBox(lastChecks.errors, { title: t('test.notReady'), lead: t('test.notReadyLead') }),
+      actions: [
+        { label: t('dialog.cancel'), value: null },
+        { label: t('editor.resolve'), primary: true, onClick: (close) => { close(); openRail('check'); } },
+      ],
+    });
+    return;
+  }
   let saved = '';
   try {
     saved = localStorage.getItem('dfp.testEmails') || '';
@@ -704,7 +719,10 @@ async function start() {
   $('ed-test').hidden = !(context.mailchimp && context.mailchimp.connected);
   $('ed-undo').disabled = true;
   $('ed-redo').disabled = true;
-  showPanel('blocks');
+  // "Korjaa editorissa", from the way into Mailchimp, opens on Tarkistus.
+  const firstPanel = new URLSearchParams(location.search).get('panel');
+  if (RAIL.includes(firstPanel)) openRail(firstPanel);
+  else showPanel('blocks');
   runChecks();
   await canvas.ready();
   document.body.classList.add('ed-ready');

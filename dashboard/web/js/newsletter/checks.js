@@ -1,13 +1,17 @@
 // What still needs a look before the newsletter goes to Mailchimp. Worked out
 // from the design, so the editor and the newsletter page say the same.
 //
-// Errors are what Mailchimp itself would refuse (no unsubscribe link, no
-// postal address, placeholder text, no subject line) and what Kaisa asked for: a person reads
-// every AI-written text before it goes out. That reading is the "checked"
-// tick on each article, and on each text the AI drafted for the greeting or
-// a trend (newsletter/writing.js); it is also what lets AI-written text go
-// out without an AI label under the EU's transparency rules, because a
-// person has reviewed it and the association takes responsibility for it.
+// Errors keep the email in the dashboard: no draft in Mailchimp, no test
+// email and no file until there are none (newsletter/handoff.js, and
+// services/issues.py on the server). They are what every email needs (an
+// unsubscribe link, the postal address Mailchimp requires, a subject line),
+// the template's sample text, which would otherwise go out as it is, and
+// what Kaisa asked for: a person reads every AI-written text before it goes
+// out. That reading is the "checked" tick on each article, and on each text
+// the AI drafted for the greeting or a trend (newsletter/writing.js); it is
+// also what lets AI-written text go out without an AI label under the EU's
+// transparency rules, because a person has reviewed it and the association
+// takes responsibility for it.
 //
 // Warnings are worth a look but can be right as they are.
 

@@ -199,12 +199,14 @@ def _audience(s):
 def export_draft(issue_id, user_id):
     """Creates the issue's draft campaign in Mailchimp, or updates the one
     made before, with the finished email, its pictures copied into Mailchimp,
-    the subject line, the preview text and the sender. Returns the issue."""
+    the subject line, the preview text and the sender. Returns the issue.
+    Raises issues.NotReady while Tarkistus lists an error."""
     issue = issues.get(issue_id)
     if issue.status != "draft":
         raise issues.Locked()
     if not issue.html:
         raise MailchimpProblem("not_designed_yet", "Open the newsletter in the editor and save it first.")
+    issues.check_ready(issue_id)
     s = _settings()
     audience_id, reply_to = _audience(s)
     html = issues.without_notes(issue.html) if issue.html.lstrip().lower().startswith("<!doctype") else issues.export_document(issue_id)
@@ -266,7 +268,8 @@ def refresh_all(user_id):
 
 def send_test(issue_id, emails, user_id):
     """Brings the draft up to date in Mailchimp, then has Mailchimp send a
-    test of it to the given addresses."""
+    test of it to the given addresses. Bringing it up to date is an export,
+    so a test waits for Tarkistus like the draft does."""
     issue = issues.get(issue_id)
     if not issue.mailchimp_campaign_id or issue.mailchimp_changed:
         issue = export_draft(issue_id, user_id)

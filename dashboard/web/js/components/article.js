@@ -7,6 +7,7 @@
 import { t, tn, currentLanguage } from '../texts.js';
 import { esc, safeUrl, date, when, number, languageName, finnishDay } from '../format.js';
 import { colourOf } from './side.js';
+import { icon } from '../ui/icons.js';
 
 // The reason the summarisation workflow gives when the model did not answer.
 const AI_DID_NOT_ANSWER = 'waiting for the AI to answer again';
@@ -232,29 +233,37 @@ function decision(item, target) {
     return `<div class="rd-decide"><p class="rd-sent">${esc(t('reader.sentIn', { issue: item.pick_issue_name }))}</p></div>`;
   }
   const picked = item.decision === 'picked';
+  // What to do here, in words an editor new to the tool can follow: which
+  // newsletter, and that pressing a section is the choice. Each section says
+  // what goes in it; its key is in the corner, for those who use the keys.
   const where = picked
     ? t('pick.inIssue', { issue: item.pick_issue_name, section: t(`section.${item.pick_section}`) })
     : (target ? t('reader.addTo', { issue: target }) : t('reader.addToNew'));
+  const how = picked ? t('reader.howMove') : (target ? t('reader.how') : t('reader.howNew'));
   const buttons = SECTIONS.map((s, n) => {
     const chosen = picked && item.pick_section === s;
-    const hint = chosen ? t('reader.chosen')
-      : (!item.decision && item.suggested_section === s ? t('reader.suggested', { key: n + 1 }) : t('reader.key', { key: n + 1 }));
-    return `<button type="button" class="rd-sec${chosen ? ' chosen' : ''}${!item.decision && item.suggested_section === s ? ' suggested' : ''}"
+    const suggested = !item.decision && item.suggested_section === s;
+    const badge = chosen ? `<span class="rd-sec-badge">${esc(t('reader.chosen'))}</span>`
+      : (suggested ? `<span class="rd-sec-badge">${esc(t('reader.suggested'))}</span>` : '');
+    return `<button type="button" class="rd-sec${chosen ? ' chosen' : ''}${suggested ? ' suggested' : ''}"
               data-act="pick" data-section="${s}" aria-pressed="${chosen}">
-              <span>${esc(t(`section.${s}`))}</span><small>${esc(hint)}</small></button>`;
+              <span class="rd-sec-name">${icon(chosen ? 'check' : 'plus', 16)}<span>${esc(t(`section.${s}`))}</span></span>
+              <small class="rd-sec-what">${esc(t(`reader.sectionWhat.${s}`))}</small>
+              ${badge}<kbd class="rd-sec-key" aria-hidden="true">${n + 1}</kbd></button>`;
   }).join('');
   const by = item.decided_by && item.decided_at
     ? `<span class="rd-by">${esc(t('reader.decidedBy', { name: item.decided_by, when: when(item.decided_at) }))}</span>` : '';
   return `
     <div class="rd-decide">
-      <p class="rd-where">${esc(where)}</p>
+      <p class="rd-where"><strong>${esc(where)}</strong> <span>${esc(how)}</span></p>
       <div class="rd-secs">${buttons}</div>
       <div class="rd-other">
-        <button type="button" class="btn ghost small${item.decision === 'later' ? ' on' : ''}" data-act="later" aria-pressed="${item.decision === 'later'}">${esc(t('reader.later'))}</button>
-        <button type="button" class="btn ghost small${item.decision === 'dismissed' ? ' on' : ''}" data-act="dismiss" aria-pressed="${item.decision === 'dismissed'}">${esc(t('reader.dismiss'))}</button>
+        ${picked ? '' : `<span class="rd-other-k">${esc(t('reader.notForIt'))}</span>`}
+        <button type="button" class="btn ghost small${item.decision === 'later' ? ' on' : ''}" data-act="later" aria-pressed="${item.decision === 'later'}" title="${esc(t('reader.laterHint'))}">${esc(t('reader.later'))}</button>
+        <button type="button" class="btn ghost small${item.decision === 'dismissed' ? ' on' : ''}" data-act="dismiss" aria-pressed="${item.decision === 'dismissed'}" title="${esc(t('reader.dismissHint'))}">${esc(t('reader.dismiss'))}</button>
         ${item.decision ? `<button type="button" class="linkish" data-act="clear">${esc(t('reader.clear'))}</button>` : ''}
         ${by}
-        <span class="rd-keys" aria-hidden="true"><kbd>J</kbd> <kbd>K</kbd> ${esc(t('reader.keysMove'))} · <kbd>1</kbd>–<kbd>4</kbd> ${esc(t('reader.keysAdd'))} · <kbd>L</kbd> ${esc(t('reader.later').toLowerCase())} · <kbd>X</kbd> ${esc(t('reader.dismiss').toLowerCase())}</span>
+        <span class="rd-keys" aria-hidden="true"><kbd>J</kbd> <kbd>K</kbd> ${esc(t('reader.keysMove'))} · <kbd>L</kbd> ${esc(t('reader.keysLater'))} · <kbd>X</kbd> ${esc(t('reader.keysDismiss'))}</span>
       </div>
       <p class="row-error" role="alert" hidden></p>
     </div>`;

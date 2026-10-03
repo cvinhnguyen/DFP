@@ -18,6 +18,15 @@ NOT_FOUND = (404, "no_such_issue", "There is no newsletter with that number.")
 LOCKED = (409, "issue_sent", "This newsletter has been sent, so it can no longer be changed.")
 
 
+def _ready(issue_id):
+    """A file of the email is a way into Mailchimp too, so it waits for
+    Tarkistus like the draft does."""
+    try:
+        issues.check_ready(issue_id)
+    except issues.NotReady as e:
+        raise ApiError(409, "not_ready", str(e), count=sum(e.problems.values()), problems=e.problems)
+
+
 @router.get("", response_model=list[IssueSummary], summary="Every newsletter, the one in preparation first")
 def list_issues():
     return issues.summaries()
@@ -122,7 +131,7 @@ def preview(issue_id: int):
                     headers={"Content-Security-Policy": PREVIEW_POLICY, "X-Frame-Options": "SAMEORIGIN"})
 
 
-@router.get("/{issue_id}/export", summary="The finished email as an HTML file",
+@router.get("/{issue_id}/export", summary="The finished email as an HTML file, once Tarkistus lists no error",
             responses={200: {"content": {"text/html": {}}}})
 def export(issue_id: int):
     try:
@@ -131,12 +140,13 @@ def export(issue_id: int):
         raise ApiError(*NOT_FOUND)
     if document is None:
         raise ApiError(409, "not_designed_yet", "Open the newsletter in the editor and save it first.")
+    _ready(issue_id)
     name = issues.file_name(issues.get(issue_id))
     return Response(document, media_type="text/html; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{name}.html"'})
 
 
-@router.get("/{issue_id}/export.zip", summary="The finished email as a ZIP for Mailchimp's Import ZIP",
+@router.get("/{issue_id}/export.zip", summary="The finished email as a ZIP for Mailchimp's Import ZIP, once Tarkistus lists no error",
             responses={200: {"content": {"application/zip": {}}}})
 def export_zip(issue_id: int):
     try:
@@ -145,5 +155,6 @@ def export_zip(issue_id: int):
         raise ApiError(*NOT_FOUND)
     if data is None:
         raise ApiError(409, "not_designed_yet", "Open the newsletter in the editor and save it first.")
+    _ready(issue_id)
     return Response(data, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})

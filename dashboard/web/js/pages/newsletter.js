@@ -10,11 +10,12 @@ import { esc, safeUrl, when, date, number } from '../format.js';
 import { readDesign } from '../newsletter/model.js';
 import { checkDesign } from '../newsletter/checks.js';
 import { byteSize } from '../newsletter/render.js';
-import { openHandoff } from '../newsletter/handoff.js';
+import { openHandoff, describeCheck } from '../newsletter/handoff.js';
 import { icon } from '../ui/icons.js';
 import { toast, confirmDialog, promptDialog } from '../ui/dialogs.js';
 import { mailchimpLine } from './newsletters.js';
 import { suggestionsBox } from '../newsletter/writing.js';
+import { saveTarget } from './articles.js';
 
 const SECTION_ORDER = ['own_news', 'events', 'member_news', 'highlights'];
 
@@ -69,7 +70,7 @@ export function showNewsletter(root) {
       }).join('')}</ul>`;
     }).join('')}</div>`;
     const action = `${issue.articles.length ? `<button type="button" class="btn ghost small" data-act="toggle" data-what="articles">${esc(open.articles ? t('issue.hide') : t('issue.show'))}</button>` : ''}
-      ${issue.status === 'draft' ? `<a class="btn ghost small" href="#/">${esc(t('issue.pickMore'))}</a>` : ''}`;
+      ${issue.status === 'draft' ? `<a class="btn ghost small" href="#/" data-act="pick-more">${esc(t('issue.pickMore'))}</a>` : ''}`;
     return line('articles', issue.articles.length > 0, t('issue.lineArticles'), summary, action, list);
   }
 
@@ -111,10 +112,9 @@ export function showNewsletter(root) {
     }
     const errors = checks.errors.filter((e) => e.code !== 'subject');
     const warnings = checks.warnings;
-    const describe = (e) => (e.items.length ? tn(`check.${e.code}`, e.count, e.params) : t(`check.${e.code}.one`, e.params));
     const list = [
-      ...errors.map((e) => `<li class="error">${icon('error', 16)} ${esc(describe(e))}</li>`),
-      ...warnings.map((w) => `<li class="warning">${icon('warning', 16)} ${esc(describe(w))}</li>`),
+      ...errors.map((e) => `<li class="error">${icon('error', 16)} ${esc(describeCheck(e))}</li>`),
+      ...warnings.map((w) => `<li class="warning">${icon('warning', 16)} ${esc(describeCheck(w))}</li>`),
     ];
     const summary = `
       <p class="nl-meta">${esc(t('issue.savedBy', { when: when(issue.design_saved_at), name: issue.design_saved_by || '?' }))}</p>
@@ -222,7 +222,11 @@ export function showNewsletter(root) {
     if (!target) return;
     const act = target.dataset.act;
     try {
-      if (act === 'toggle') {
+      if (act === 'pick-more') {
+        // The articles page picks into this newsletter from now on; the link
+        // itself goes there.
+        saveTarget(issue.id);
+      } else if (act === 'toggle') {
         open[target.dataset.what] = !open[target.dataset.what];
         render();
         if (target.dataset.what === 'subject' && open.subject) root.querySelector('#nl-subject')?.focus();
@@ -266,6 +270,7 @@ export function showNewsletter(root) {
         target.disabled = false;
         openHandoff({
           issue, design, mailchimp,
+          errors: checks ? checks.errors : [],
           onChanged: (fresh) => {
             issue = { ...issue, ...fresh };
             refreshChecks();

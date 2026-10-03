@@ -10,11 +10,14 @@
 //          pictures are copied into Mailchimp first so they show.
 //   file   a ZIP for Mailchimp's Import ZIP, or the HTML. Standard plan.
 //
+// None of them opens while Tarkistus lists an error (newsletter/checks.js):
+// the window says what is left and leads to the editor instead. The server
+// refuses the draft, the test email and the files the same way.
 // Sending is always an editor's click in Mailchimp.
-// Jira: DM42-37
+// Jira: DM42-37, DM42-38
 
 import { api } from '../api.js';
-import { t } from '../texts.js';
+import { t, tn, has } from '../texts.js';
 import { when } from '../format.js';
 import { sectionsForPaste, renderEmail } from './render.js';
 import { h, fill } from '../ui/dom.js';
@@ -25,6 +28,31 @@ const ZIP_LIMIT = 1024 * 1024;
 
 function steps(keys, params = {}) {
   return h('ol', { class: 'ho-steps' }, keys.map((k) => h('li', {}, t(k, params))));
+}
+
+// The email as a file from the server, or why it cannot have it: not saved in
+// the editor yet, or Tarkistus still lists an error.
+async function fetchFile(path) {
+  const response = await fetch(path, { credentials: 'same-origin' });
+  if (response.ok) return response;
+  const data = await response.json().catch(() => null);
+  const code = data && data.code ? `error.${data.code}` : null;
+  throw new Error(code && has(code) ? t(code, data.params || {}) : t('error.not_designed_yet'));
+}
+
+// One line of Tarkistus, as its list says it: "3 artikkelia tarkistamatta".
+export function describeCheck(entry) {
+  return entry.items.length ? tn(`check.${entry.code}`, entry.count, entry.params) : t(`check.${entry.code}.one`, entry.params);
+}
+
+// What Tarkistus still lists, at the top of a window that cannot go on until
+// it is fixed: this one, and the editor's test email. action leads to fixing.
+export function notReadyBox(errors, { title, lead, action }) {
+  return h('div', { class: 'not-ready', role: 'alert' },
+    h('p', { class: 'not-ready-title', html: `${icon('error', 18)} ` }, title),
+    h('p', {}, lead),
+    h('ul', { class: 'not-ready-list' }, errors.map((e) => h('li', {}, describeCheck(e)))),
+    action ? h('div', { class: 'not-ready-actions' }, action) : null);
 }
 
 // Formatted text and its plain version on the clipboard, so pasting into a
@@ -60,7 +88,9 @@ async function copyRich(html, text) {
   await navigator.clipboard.writeText(text);
 }
 
-export function openHandoff({ issue, design, mailchimp, onChanged }) {
+// errors: what Tarkistus lists for the issue's design and subject line.
+export function openHandoff({ issue, design, mailchimp, errors = [], onChanged }) {
+  const ready = errors.length === 0;
   const connected = !!(mailchimp && mailchimp.connected);
   const plan = (mailchimp && mailchimp.plan) || 'unknown';
   const base = (mailchimp && mailchimp.dashboard_url) || location.origin;
@@ -81,7 +111,7 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
     }
     return picturesReady;
   }
-  copyPictures().catch(() => {});
+  if (ready) copyPictures().catch(() => {});
   const mapSrc = (src) => (pictures && pictures[src]) || (src.startsWith('/') ? base + src : src);
 
   function card(key, title, body, { open = false } = {}) {
@@ -110,7 +140,7 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
     }
     fill(draftStatus, ...parts);
   }
-  const draftButton = h('button', { type: 'button', class: 'btn' }, current.mailchimp_exported_at ? t('handoff.updateDraft') : t('handoff.createDraft'));
+  const draftButton = h('button', { type: 'button', class: 'btn', disabled: !ready }, current.mailchimp_exported_at ? t('handoff.updateDraft') : t('handoff.createDraft'));
   draftButton.addEventListener('click', async () => {
     if (current.mailchimp_exported_at && !(await confirmDialog(t('handoff.updateConfirm'), { okLabel: t('handoff.updateDraft') }))) return;
     draftButton.disabled = true;
@@ -125,7 +155,7 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
     } catch (e) {
       toast(e.message, 'warn');
     } finally {
-      draftButton.disabled = false;
+      draftButton.disabled = !ready;
       draftButton.textContent = current.mailchimp_exported_at ? t('handoff.updateDraft') : t('handoff.createDraft');
       drawDraftStatus();
     }
@@ -173,17 +203,17 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
     connected ? h('p', { class: 'cf-hint' }, t('handoff.picturesCopied'))
       : local ? h('p', { class: 'st-warn' }, t('handoff.picturesLocal')) : null,
     h('ul', { class: 'ho-sections' }, sections.map((sec) => {
-      const button = h('button', { type: 'button', class: 'btn ghost small' }, t('handoff.copy'));
+      const button = h('button', { type: 'button', class: 'btn ghost small', disabled: !ready }, t('handoff.copy'));
       button.addEventListener('click', () => copySection(sec, button));
       return h('li', {}, h('span', { class: 'ho-section-name' }, sec.name), button);
     })),
     h('div', { class: 'ho-actions' },
-      h('button', { type: 'button', class: 'btn ghost small', disabled: !current.subject, onclick: () => copyText(current.subject, t('handoff.subject')) }, t('handoff.copySubject')),
-      h('button', { type: 'button', class: 'btn ghost small', disabled: !current.preheader, onclick: () => copyText(current.preheader, t('handoff.preheader')) }, t('handoff.copyPreheader'))),
+      h('button', { type: 'button', class: 'btn ghost small', disabled: !ready || !current.subject, onclick: () => copyText(current.subject, t('handoff.subject')) }, t('handoff.copySubject')),
+      h('button', { type: 'button', class: 'btn ghost small', disabled: !ready || !current.preheader, onclick: () => copyText(current.preheader, t('handoff.preheader')) }, t('handoff.copyPreheader'))),
     h('details', { class: 'ho-more' },
       h('summary', {}, t('handoff.codeTitle')),
       h('p', {}, t('handoff.codeLead')),
-      h('button', { type: 'button', class: 'btn ghost small', onclick: async () => {
+      h('button', { type: 'button', class: 'btn ghost small', disabled: !ready, onclick: async () => {
         try {
           if (connected && !pictures) await copyPictures();
           await copyText(renderEmail(design, { mode: 'fragment', mapSrc }), t('handoff.wholeEmail'));
@@ -197,8 +227,7 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
   async function downloadZip(button) {
     button.disabled = true;
     try {
-      const response = await fetch(`/api/issues/${current.id}/export.zip`, { credentials: 'same-origin' });
-      if (!response.ok) throw new Error(t('error.not_designed_yet'));
+      const response = await fetchFile(`/api/issues/${current.id}/export.zip`);
       const blob = await response.blob();
       const name = (response.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/);
       const a = h('a', { href: URL.createObjectURL(blob), download: name ? name[1] : 'uutiskirje.zip', hidden: true });
@@ -212,17 +241,23 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
       button.disabled = false;
     }
   }
-  const zipButton = h('button', { type: 'button', class: 'btn', html: `${icon('upload', 16)} ` }, t('handoff.downloadZip'));
+  const zipButton = h('button', { type: 'button', class: 'btn', disabled: !ready, html: `${icon('upload', 16)} ` }, t('handoff.downloadZip'));
   zipButton.addEventListener('click', () => downloadZip(zipButton));
   const fileBody = h('div', {},
     h('p', {}, t('handoff.fileLead')),
     plan === 'essentials' ? h('p', { class: 'st-warn' }, t('handoff.essentialsWarning')) : null,
     steps(['handoff.fileStep1', 'handoff.fileStep2', 'handoff.fileStep3', 'handoff.fileStep4']),
     h('div', { class: 'ho-actions' }, zipButton,
-      h('a', { class: 'btn ghost small', href: `/api/issues/${current.id}/export`, download: '' }, t('handoff.downloadHtml')),
-      h('button', { type: 'button', class: 'btn ghost small', onclick: async () => {
-        const response = await fetch(`/api/issues/${current.id}/export`, { credentials: 'same-origin' });
-        await copyText(await response.text(), 'HTML');
+      ready
+        ? h('a', { class: 'btn ghost small', href: `/api/issues/${current.id}/export`, download: '' }, t('handoff.downloadHtml'))
+        : h('button', { type: 'button', class: 'btn ghost small', disabled: true }, t('handoff.downloadHtml')),
+      h('button', { type: 'button', class: 'btn ghost small', disabled: !ready, onclick: async () => {
+        try {
+          const response = await fetchFile(`/api/issues/${current.id}/export`);
+          await copyText(await response.text(), 'HTML');
+        } catch (e) {
+          toast(e.message, 'warn');
+        }
       } }, t('handoff.copyHtml'))));
 
   // ---------- the window ----------
@@ -247,9 +282,14 @@ export function openHandoff({ issue, design, mailchimp, onChanged }) {
       }
     } }, t('issue.markSent'))) : null;
 
+  const blocked = ready ? null : notReadyBox(errors, {
+    title: t('handoff.notReady'),
+    lead: t('handoff.notReadyLead'),
+    action: h('a', { class: 'btn small', href: `editor.html?issue=${current.id}&panel=check` }, t('handoff.fixInEditor')),
+  });
   const dialog = modal({
     title: t('handoff.title'),
-    body: h('div', { class: 'ho' }, h('p', { class: 'ho-lead' }, t('handoff.lead')), planLine, ...order.map((k) => cards[k]), markSent),
+    body: h('div', { class: 'ho' }, blocked, h('p', { class: 'ho-lead' }, t('handoff.lead')), planLine, ...order.map((k) => cards[k]), markSent),
     className: 'md-handoff',
   });
   return dialog;

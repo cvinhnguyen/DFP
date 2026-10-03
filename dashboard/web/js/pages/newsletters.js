@@ -1,7 +1,9 @@
 // Uutiskirjeet: every newsletter, drafts first, like Mailchimp's list of
 // campaigns. Each row says where the issue is: still a draft, exported to
-// Mailchimp, changed since, or sent. A new one starts here, from a template
-// or from an earlier issue.
+// Mailchimp, changed since, or sent. A new one starts here and opens on its
+// own page, where picking its articles comes first; one made from an earlier
+// issue opens in the editor with that issue's look. Either way the next
+// picks go into it.
 // Jira: DM42-37
 
 import { api } from '../api.js';
@@ -11,6 +13,7 @@ import { icon } from '../ui/icons.js';
 import { h } from '../ui/dom.js';
 import { promptDialog, confirmDialog, toast } from '../ui/dialogs.js';
 import { popover, closePopover } from '../ui/controls.js';
+import { saveTarget } from './articles.js';
 
 export function mailchimpLine(issue) {
   if (issue.status === 'sent') return issue.mailchimp_status === 'sent' ? t('list.mcSent') : t('list.mcMarked');
@@ -132,11 +135,12 @@ export function showNewsletters(root) {
   }
 
   async function create() {
-    const name = await promptDialog(t('list.createTitle'), '', { label: t('list.nameLabel'), hint: t('list.nameHint'), okLabel: t('list.createButton') });
+    const name = await promptDialog(t('list.createTitle'), '', { label: t('list.nameLabel'), hint: t('list.nameHint'), okLabel: t('list.create') });
     if (name === null) return;
     try {
       const issue = await api.post('/api/issues', { name: name || undefined });
-      location.href = `editor.html?issue=${issue.id}`;
+      saveTarget(issue.id);
+      location.hash = `#/newsletter?id=${issue.id}`;
     } catch (e) {
       toast(e.message, 'warn');
     }
@@ -157,6 +161,7 @@ export function showNewsletters(root) {
         const name = await promptDialog(t('list.replicateTitle'), '', { label: t('list.nameLabel'), hint: t('list.replicateHint'), okLabel: t('list.createButton') });
         if (name === null) return;
         const created = await api.post('/api/issues', { name: name || undefined, template: `issue:${issue.id}` });
+        saveTarget(created.id);
         location.href = `editor.html?issue=${created.id}`;
       } } : null,
       issue.status === 'draft' ? { label: t('list.delete'), iconName: 'trash', danger: true, run: async () => {
