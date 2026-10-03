@@ -1,9 +1,10 @@
 // Asetukset, for admins: the Mailchimp connection and how drafts are set up
-// there, what the AI costs against its monthly budget, and how long the text
-// of collected articles is kept. The Mailchimp key itself is never here: it
-// lives in n8n's credential store, and this page only says whether n8n can
-// reach Mailchimp with it.
-// Jira: DM42-37, DM42-74, DM42-39, DM42-45
+// there, the banners and logo, what the AI costs against its monthly budget,
+// how long the text of collected articles is kept, the member organisations,
+// and how often the suggested sections were right. The Mailchimp key itself
+// is never here: it lives in n8n's credential store, and this page only says
+// whether n8n can reach Mailchimp with it.
+// Jira: DM42-37, DM42-74, DM42-39, DM42-45, DM42-32
 
 import { api } from '../api.js';
 import { t, tn } from '../texts.js';
@@ -14,6 +15,7 @@ import { costsCard } from '../components/costs.js';
 import { retentionCard } from '../components/retention.js';
 import { brandCard } from '../components/brand.js';
 import { membersCard } from '../components/members.js';
+import { suggestionsCard } from '../components/suggestions.js';
 
 export function showSettings(root, { user }) {
   let state = null;
@@ -22,9 +24,10 @@ export function showSettings(root, { user }) {
   let brand = null;
   let brandBusy = null;   // the banner or logo being uploaded
   let members = null;
+  let sugg = null;
   let gone = false;
   let busy = false;
-  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '' };
+  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '' };
 
   function status() {
     if (!state) return '';
@@ -48,7 +51,8 @@ export function showSettings(root, { user }) {
       ${problems.brand ? `<p class="problem">${esc(problems.brand)}</p>` : (brand ? brandCard(brand, brandBusy) : '')}
       ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
       ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}
-      ${problems.members ? `<p class="problem">${esc(problems.members)}</p>` : (members ? membersCard(members) : '')}`;
+      ${problems.members ? `<p class="problem">${esc(problems.members)}</p>` : (members ? membersCard(members) : '')}
+      ${problems.sugg ? `<p class="problem">${esc(problems.sugg)}</p>` : (sugg ? suggestionsCard(sugg) : '')}`;
   }
 
   function mailchimpCard() {
@@ -112,6 +116,17 @@ export function showSettings(root, { user }) {
     } catch (e) {
       if (e.status === 401) return;
       problems.keep = e.message;
+    }
+    if (!gone) render();
+  }
+
+  async function loadSuggestions() {
+    try {
+      sugg = await api.get('/api/suggestions');
+      problems.sugg = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.sugg = e.message;
     }
     if (!gone) render();
   }
@@ -205,6 +220,18 @@ export function showSettings(root, { user }) {
       }
       return;
     }
+    const remove = event.target.closest('[data-act="sugg-remove"]');
+    if (remove) {
+      remove.disabled = true;
+      try {
+        const done = await api.put(`/api/sources/${remove.dataset.source}/section`, { section: null });
+        toast(t('sugg.removed', { source: done.source }));
+      } catch (e) {
+        toast(e.message, 'warn');
+      }
+      await loadSuggestions();
+      return;
+    }
     const target = event.target.closest('[data-act="test"]');
     if (!target) return;
     busy = true;
@@ -263,5 +290,6 @@ export function showSettings(root, { user }) {
   loadCosts();
   loadRetention();
   loadMembers();
+  loadSuggestions();
   return { leave() { gone = true; } };
 }

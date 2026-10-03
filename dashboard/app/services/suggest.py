@@ -11,19 +11,26 @@ The first rule that fits decides:
      word names, such as a call for webinar presenters  ->  Tapahtumat
   3. an invitation: an event word and an invitation such as "ilmoittaudu" or
      "call for" in the title or summary, when the AI found no date  ->  Tapahtumat
-  4. the association's own site: its "Mitä kuuluu jäsenille" posts are
-     Jäsenkuulumisia, everything else Ajankohtaista yhdistykseltä
-  5. a member organisation's own website, or a member as the publisher  ->
+  4. the association's "Mitä kuuluu jäsenille" posts  ->  Jäsenkuulumisia
+  5. a section the editors chose for the source  ->  that section
+  6. anything else on the association's own site  ->  Ajankohtaista yhdistykseltä
+  7. a member organisation's own website, or a member as the publisher  ->
      Jäsenkuulumisia. The members are the association's community members,
      read from its members page every week (29-members.sql)
-  6. the association named in the title or summary  ->  Ajankohtaista yhdistykseltä
-  7. a member named in the title  ->  Jäsenkuulumisia
-  8. anything else  ->  Nostoja kentältä
+  8. the association named in the title or summary  ->  Ajankohtaista yhdistykseltä
+  9. a member named in the title  ->  Jäsenkuulumisia
+ 10. anything else  ->  Nostoja kentältä
 
 An event that has been is news, not something to go to, so a past date
 falls through to the other rules: the association's report of its own
 webinar is its news. A word alone does not make an event either: a
 minister's speech at a seminar names one but invites nobody.
+
+The source's section is the editors' own: Artikkelit asks for it when a
+source's articles keep going to another section than the one suggested
+(services/suggestions.py). It comes after what an article itself says, a
+date or a member post, and before what is only guessed from where it was
+published or whom it names.
 """
 
 import re
@@ -35,6 +42,10 @@ from ..queries import suggest as queries
 from .collection import HELSINKI
 
 SECTIONS = ("own_news", "events", "member_news", "highlights")
+# The reasons a section chosen for the source takes the place of, None
+# being Nostoja kentältä when nothing else fits. Only the picks with one of
+# these count towards asking for a source's section.
+SOURCE_DECIDES = (None, "source_section", "own_site", "member_site", "association_named", "member_named")
 
 ASSOCIATION_SITE = "eoppimiskeskus.fi"
 # The association's blog series of its members' news.
@@ -89,10 +100,11 @@ def _plain(name):
 
 def _names(name, site):
     """What an article's title might call a member: its name without Oy or
-    ry, each part of a name with a slash, a closing acronym such as XAMK, a
-    long word its website is named after (itslearning), and a short website
-    name as an acronym (hamk.fi: HAMK). A short ordinary word is never one:
-    Linnan Kehitys is not every "Linnan" in a headline."""
+    ry, each part of a name with a slash, a closing acronym such as XAMK and
+    the name without it (Kaakkois-Suomen ammattikorkeakoulu), a long word its
+    website is named after (itslearning), and a short website name as an
+    acronym (hamk.fi: HAMK). A short ordinary word is never one: Linnan
+    Kehitys is not every "Linnan" in a headline."""
     names = set()
     for part in [name, *re.split(r"\s*/\s*", name)]:
         part = _plain(part)
@@ -101,6 +113,9 @@ def _names(name, site):
         acronym = ACRONYM.search(part)
         if acronym:
             names.add(acronym.group(1))
+            spelled = part[:acronym.start()].rstrip(" -–—,")
+            if " " in spelled and len(spelled) >= 10:
+                names.add(spelled)
     stem = site.split(".")[0]
     words = re.findall(r"[\w-]+", name)
     if any(w.lower() == stem for w in words):
@@ -154,9 +169,12 @@ def suggest(found, today=None):
 
     url = found.get("url") or ""
     host = _host(url)
-    if _on(host, ASSOCIATION_SITE):
-        if MEMBER_POSTS.match(urlparse(url).path or ""):
-            return "member_news", "member_post", None
+    own = _on(host, ASSOCIATION_SITE)
+    if own and MEMBER_POSTS.match(urlparse(url).path or ""):
+        return "member_news", "member_post", None
+    if found.get("source_section") in SECTIONS:
+        return found["source_section"], "source_section", None
+    if own:
         return "own_news", "own_site", None
 
     publisher = LEGAL.sub("", (found.get("publisher") or "").strip()).strip().lower()

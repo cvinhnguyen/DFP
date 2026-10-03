@@ -9,7 +9,7 @@
 import { api } from '../api.js';
 import { t, tn } from '../texts.js';
 import { aiUsage, date, esc, number, finnishDay } from '../format.js';
-import { articleRow, articleReader, dayHeading, termOptions, SECTIONS } from '../components/article.js';
+import { articleRow, articleReader, dayHeading, offerBox, termOptions, SECTIONS } from '../components/article.js';
 import { sideHtml } from '../components/side.js';
 import { topicRows, topicEditor } from '../components/topics.js';
 import { statusLines } from '../components/status.js';
@@ -169,6 +169,10 @@ export function showArticles(root) {
   // with its answer and articles; shown is the one on screen.
   const asked = { list: [], shown: -1, busy: false };
   let seenTimer = null;
+  // Sources whose last three articles went to another section than the one
+  // suggested; the first is asked about above the sections.
+  let offers = [];
+  let offerBusy = false;
 
   root.classList.add('wide');
   root.innerHTML = layout();
@@ -345,7 +349,7 @@ export function showArticles(root) {
     read.innerHTML = articleReader(item, {
       place: placeName(), index, total, topics: topicsById,
       canPrev: index > 0, canNext: index < rows.length - 1 || rows.length < total,
-      target: target ? target.name : null,
+      target: target ? target.name : null, offer: offers[0] || null,
     });
     read.scrollTop = 0;
     if (focus) read.focus({ preventScroll: true });
@@ -760,6 +764,7 @@ export function showArticles(root) {
       renderRows();
       openItem(restored.id);
       refreshSide();
+      loadOffers();
     } catch (e) {
       toast(e.message);
     }
@@ -788,10 +793,56 @@ export function showArticles(root) {
       applyItem(updated, { advance: Boolean(decision) });
       toast(text, () => restore(updated, before, index));
       refreshSide();
+      loadOffers();
     } catch (e) {
       read.querySelectorAll('.rd-decide button').forEach((b) => { b.disabled = false; });
       showError(e.message);
     }
+  }
+
+  // ---------- a section for a source ----------
+
+  // After a pick, or when the page opens: is there a source to ask about?
+  // The question goes into the open article's panel without drawing the
+  // article again, so nothing moves under the editor's eyes.
+  async function loadOffers() {
+    try {
+      offers = (await api.get('/api/suggestions/offers')).offers;
+    } catch {
+      offers = [];
+    }
+    const panel = read.querySelector('.rd-decide');
+    if (!panel || offerBusy) return;
+    panel.querySelector('.rd-offer')?.remove();
+    if (panel.querySelector('.rd-where')) panel.insertAdjacentHTML('afterbegin', offerBox(offers[0]));
+  }
+
+  async function answerOffer(yes) {
+    const offer = offers[0];
+    if (!offer || offerBusy) return;
+    offerBusy = true;
+    read.querySelectorAll('.rd-offer button').forEach((b) => { b.disabled = true; });
+    const section = t(`section.${offer.section}`);
+    try {
+      if (!yes) {
+        await api.post(`/api/sources/${offer.source_id}/section/declined`);
+        toast(t('toast.sourceSectionKept'));
+      } else {
+        await api.put(`/api/sources/${offer.source_id}/section`, { section: offer.kind === 'set' ? offer.section : null });
+        toast(offer.kind === 'set' ? t('toast.sourceSection', { source: offer.source, section })
+          : t('toast.sourceSectionStopped', { source: offer.source }));
+        // The source's articles in the list are suggested anew.
+        const at = read.scrollTop;
+        offers = offers.slice(1);
+        await loadList({ keep: state.item });
+        read.scrollTop = at;
+      }
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      offerBusy = false;
+    }
+    loadOffers();
   }
 
   async function summarise() {
@@ -1048,7 +1099,9 @@ export function showArticles(root) {
       undo = null;
       toastEl.hidden = true;
       action();
-    } else if (act === 'check') startCheck(target);
+    } else if (act === 'offer-yes') answerOffer(true);
+    else if (act === 'offer-no') answerOffer(false);
+    else if (act === 'check') startCheck(target);
     else if (act === 'find-signals') findSignals(target);
     else if (act === 'view') goPlace(target.dataset.view);
     else if (act === 'cite') openItem(target.dataset.id);
@@ -1219,6 +1272,7 @@ export function showArticles(root) {
   fit();
   loadOverview();
   loadSide({ sources: true }).catch(() => {}).finally(() => show());
+  loadOffers();
 
   return {
     leave() {

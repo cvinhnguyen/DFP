@@ -43,7 +43,7 @@ docker compose up -d
 
 | Table | What it holds | Defined in |
 |---|---|---|
-| `sources` | the sites, feeds, journals and archives we follow, how each is read, and what the pictures on its pages are (`picture_rights`: own, open, check or none) | `02-schema.sql`, `07`, `11`, `14`, `20`, `28` |
+| `sources` | the sites, feeds, journals and archives we follow, how each is read, what the pictures on its pages are (`picture_rights`: own, open, check or none), and the section the editors chose for its articles (`suggested_section`) | `02-schema.sql`, `07`, `11`, `14`, `20`, `28`, `30` |
 | `items` | one row per article or thesis, with what came of looking for the picture on its page | `02-schema.sql`, `10`, `11`, `20`, `25`, `28` |
 | `summaries` | the Finnish summaries, each carrying its source link and publisher, a Finnish title and, for an event, its dates, time, place and deadline | `02-schema.sql`, `12`, `15`, `21` |
 | `collection_runs` | one row each time a source is checked, with any error | `02-schema.sql` |
@@ -69,7 +69,7 @@ docker compose up -d
 | `members` | the association's member organisations from its members page, with their websites, so their articles are suggested for Jäsenkuulumisia; organisations only | `29-members.sql` |
 | `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, imported from their public archive to check the system against (`docs/evaluation.md`) | `26-archive.sql` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
-| `item_picks` | what the editors decided about each article: picked (for which issue and which of the four sections), later, or not used | `17-newsletter.sql`, `19` |
+| `item_picks` | what the editors decided about each article: picked (for which issue and which of the four sections), later, or not used, with the section the dashboard suggested at the time and why | `17-newsletter.sql`, `19`, `30` |
 | `images` | pictures uploaded in the newsletter editor, and each article's picture from its own page, kept with the article's id, whose it is and its credit | `17-newsletter.sql`, `28-article-pictures.sql` |
 | `newsletter_templates` | templates and sections the editors saved, to start a newsletter from | `18-editor-mailchimp.sql` |
 | `issue_comments` | the editors' comments on a newsletter, each on one block or on the whole email | `18-editor-mailchimp.sql` |

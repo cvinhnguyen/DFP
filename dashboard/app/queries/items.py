@@ -63,6 +63,8 @@ SELECT i.id,
        s.id                                    AS source_id,
        s.name                                  AS source,
        s.type                                  AS source_type,
+       -- the section the editors chose for the source, see 30-section-suggestions.sql
+       s.suggested_section                     AS source_section,
        u.display_name                          AS sent_by,
        i.published_at,
        i.created_at                            AS collected_at,

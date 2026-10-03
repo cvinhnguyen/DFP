@@ -20,7 +20,8 @@ The editors' web app, in Finnish with an English switch for the team.
   undo. It starts from a template with the picked articles in place.
 - **Asetukset**, for admins: the Mailchimp connection, the banners and logo
   new emails start with, what the AI costs against its monthly budget, how
-  long articles are kept, and the member organisations.
+  long articles are kept, the member organisations, and how often the
+  suggested sections were right.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
 DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
@@ -267,6 +268,7 @@ rule that fits:
 | the last day to sign up for something an event word names, such as a call for webinar presenters | Tapahtumat | Ilmoittautuminen 7.10.2026 mennessä |
 | an event word and an invitation ("ilmoittaudu", "kutsu", "call for", "save the date"), with no date | Tapahtumat | Kutsu tapahtumaan |
 | the association's own "Mitä kuuluu jäsenille" posts | Jäsenkuulumisia | Yhdistyksen jäsenkuulumisista |
+| a section the editors chose for the source, see below | that one | Toimittajien valinta tälle lähteelle |
 | anything else on the association's own site | Ajankohtaista yhdistykseltä | Yhdistyksen omalta sivulta |
 | a member organisation's own website, or a member as the publisher | Jäsenkuulumisia | Jäseneltä: Sanoma Pro |
 | the association named in the title or summary | Ajankohtaista yhdistykseltä | Mainitsee yhdistyksen |
@@ -285,10 +287,41 @@ website: 31 so far. A member no longer on the page stops counting. Only
 organisations are read; individual members are personal data and never are.
 Asetukset lists them. In a title, a member is found by its name without Oy or
 ry, each part of a name with a slash, an acronym such as XAMK or HAMK
-matched as written, so the Norwegian "takk" is not TAKK, and a long word its
+matched as written, so the Norwegian "takk" is not TAKK, the name without
+its acronym (Kaakkois-Suomen ammattikorkeakoulu), and a long word its
 website is named after, such as itslearning; never by a short ordinary word,
 so not every "Linnan" is Linnan Kehitys. `GET /api/members`;
 `db/init/29-members.sql`.
+
+### Learning from the editors' picks
+
+The suggestions learn from where the editors put things, but only with
+their say-so (`services/suggestions.py`, `db/init/30-section-suggestions.sql`):
+
+- Each pick keeps the section suggested when it was made, and why. When an
+  article is moved to another section in the email editor, its pick moves
+  with it, so a pick's section is where the article really is.
+- When the last three picked articles of a source all went to the same
+  section, and none of them was suggested there, Artikkelit asks above the
+  sections: "Ehdotetaanko sen artikkeleille jatkossa osiota Tapahtumat?".
+  Yes makes that the source's section; no leaves things as they are. Either
+  way the picks before the answer stop counting, so the question comes again
+  only after three more. Only the picks the source's section would decide
+  count: an event with a date stays an event, and the association's member
+  posts members' news. The Telegram capture is never asked about, as its
+  links come from all kinds of sites.
+- When the last three went somewhere else than the source's section, it asks
+  whether to stop suggesting it.
+- Asetukset shows how often the suggestion was right, by reason and by
+  source, with the sections chosen for sources, who chose them and when, and
+  removes one.
+
+Three picks are few, and a source's articles can be of many kinds, which is
+why it asks rather than changing the suggestion on its own. In the
+association's past newsletters the same site's links went under news,
+events and courses alike (`docs/evaluation.md`). `GET /api/suggestions`,
+`GET /api/suggestions/offers`, `PUT /api/sources/{id}/section` and
+`POST /api/sources/{id}/section/declined`.
 
 **Muokkaa aiheita** at the end of the topics opens the topics themselves: the
 list shows each topic, and the pane on the right renames it, follows it, adds

@@ -294,6 +294,13 @@ button.chip:hover { border-color: var(--link); }
 .rd-sec-badge { justify-self: start; font-size: 11.5px; font-weight: 650; padding: 1px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--green); }
 .rd-sec-key { position: absolute; bottom: 8px; right: 8px; }
 .rd-sec-why { font-size: 11.5px; font-weight: 500; line-height: 1.35; color: var(--green); margin-right: 22px; }
+.rd-offer {
+  display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--link);
+  background: var(--brand-soft); font-size: 13.5px; line-height: 1.45;
+}
+.rd-offer p { margin: 0; }
+.rd-offer small { color: var(--soft); font-size: 12.5px; }
+.rd-offer-act { display: flex; flex-wrap: wrap; gap: 8px; }
 .rd-sec:hover { border-color: var(--link); }
 .rd-sec.suggested { border-color: var(--link); box-shadow: inset 0 0 0 1px var(--link); }
 .rd-sec.chosen { background: var(--button); border-color: var(--button); color: var(--button-ink); }

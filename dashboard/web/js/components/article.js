@@ -237,7 +237,29 @@ function suggestionWhy(item) {
   return t(`reader.why.${reason}`, { name: detail, date: /^\d{4}-\d{2}-\d{2}$/.test(detail) ? date(detail) : detail });
 }
 
-function decision(item, target) {
+// A question about a source whose last three articles went to another
+// section than the one suggested (services/suggestions.py): whether to
+// suggest that section for it from now on, or to stop suggesting the one
+// chosen before. It stays above the sections until it is answered.
+export function offerBox(offer) {
+  if (!offer) return '';
+  const section = t(`section.${offer.section}`);
+  const said = offer.kind === 'stop' ? t('offer.stop', { source: offer.source, section })
+    : offer.suggested ? t('offer.set', { source: offer.source, section, suggested: t(`section.${offer.suggested}`) })
+      : t('offer.setOther', { source: offer.source, section });
+  const ask = offer.kind === 'stop' ? t('offer.stopAsk') : t('offer.setAsk', { section });
+  const note = offer.kind === 'set' && offer.section !== 'events' ? `<small>${esc(t('offer.setNote'))}</small>` : '';
+  return `
+    <div class="rd-offer" role="group" aria-label="${esc(t('offer.label'))}">
+      <p>${esc(said)} <strong>${esc(ask)}</strong></p>${note}
+      <div class="rd-offer-act">
+        <button type="button" class="btn small" data-act="offer-yes">${esc(t(`offer.${offer.kind}Yes`))}</button>
+        <button type="button" class="btn ghost small" data-act="offer-no">${esc(t(`offer.${offer.kind}No`))}</button>
+      </div>
+    </div>`;
+}
+
+function decision(item, target, offer) {
   if (item.decision === 'picked' && item.pick_issue_status === 'sent') {
     return `<div class="rd-decide"><p class="rd-sent">${esc(t('reader.sentIn', { issue: item.pick_issue_name }))}</p></div>`;
   }
@@ -265,6 +287,7 @@ function decision(item, target) {
     ? `<span class="rd-by">${esc(t('reader.decidedBy', { name: item.decided_by, when: when(item.decided_at) }))}</span>` : '';
   return `
     <div class="rd-decide">
+      ${offerBox(offer)}
       <p class="rd-where"><strong>${esc(where)}</strong> <span>${esc(how)}</span></p>
       <div class="rd-secs">${buttons}</div>
       <div class="rd-other">
@@ -353,7 +376,7 @@ export function articleReader(item, ctx) {
     ${chips(item, ctx.topics)}
     ${signalNotes(item)}
     <div class="rd-body">${body(item)}</div>
-    ${decision(item, ctx.target)}
+    ${decision(item, ctx.target, ctx.offer)}
     ${facts(item)}`;
 }
 

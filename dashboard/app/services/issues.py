@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..queries import images as image_queries
 from ..queries import issues as queries
+from ..queries import picks as pick_queries
 from ..queries import settings
 from ..schemas.issues import Issue, IssueSummary, PickedArticle
 from . import events
@@ -155,7 +156,28 @@ def save_design(issue_id, design, html, user_id, based_on, force):
     if saved_at is None:
         latest = queries.one(issue_id)
         raise EditedElsewhere(latest["design_saved_at"], latest["design_saved_by"])
+    # An article moved to another section in the email is picked into that
+    # section: where it ends up is where the editors put it, and what the
+    # suggestions learn from (services/suggestions.py).
+    pick_queries.follow_design(issue_id, _placed(design))
     return saved_at
+
+
+def _placed(design):
+    """Where the email has each article: {item id: section}, for the
+    articles in the four sections of picked articles."""
+    placed = {}
+    for section in (design or {}).get("sections") or []:
+        if section.get("role") not in ARTICLE_SECTIONS:
+            continue
+        for block in _blocks(section.get("blocks")):
+            if block.get("type") != "article":
+                continue
+            try:
+                placed[int(block.get("itemId"))] = section["role"]
+            except (TypeError, ValueError):
+                continue
+    return placed
 
 
 def mark_sent(issue_id, user_id):
