@@ -176,7 +176,7 @@ export const fi = {
   'handoff.afterSending': 'Lähetitkö kirjeen Mailchimpista toisella tavalla kuin luonnoksena? Merkitse se lähetetyksi, niin sen artikkelit merkitään käytetyiksi.',
 
   'admin.title': 'Asetukset',
-  'admin.lead': 'Mailchimp-yhteys, se miten luonnokset tehdään Mailchimpiin, kirjeiden banneri ja logo, tekoälyn kulut ja artikkelien säilytys.',
+  'admin.lead': 'Mailchimp-yhteys, se miten luonnokset tehdään Mailchimpiin, kirjeiden banneri ja logo, tekoälyn kulut, artikkelien säilytys, jäsenorganisaatiot ja osioehdotukset.',
   'admin.mailchimp': 'Mailchimp',
   'admin.test': 'Testaa yhteys',
   'admin.testing': 'Testataan…',
@@ -495,7 +495,7 @@ export const en = {
   'handoff.afterSending': 'Did you send it from Mailchimp some other way than as the draft? Mark it sent so its articles show as used.',
 
   'admin.title': 'Settings',
-  'admin.lead': 'The Mailchimp connection, how drafts are made in Mailchimp, the banners and logo of the emails, what the AI costs, and how long articles are kept.',
+  'admin.lead': 'The Mailchimp connection, how drafts are made in Mailchimp, the banners and logo of the emails, what the AI costs, how long articles are kept, the member organisations and the section suggestions.',
   'admin.mailchimp': 'Mailchimp',
   'admin.test': 'Test the connection',
   'admin.testing': 'Testing…',

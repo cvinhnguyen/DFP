@@ -10,10 +10,11 @@ import { api } from '../api.js';
 import { t, tn } from '../texts.js';
 import { aiUsage, date, esc, number, finnishDay } from '../format.js';
 import { articleRow, articleReader, dayHeading, offerBox, termOptions, SECTIONS } from '../components/article.js';
-import { sideHtml } from '../components/side.js';
+import { colourOf, sideHtml } from '../components/side.js';
 import { topicRows, topicEditor } from '../components/topics.js';
 import { statusLines } from '../components/status.js';
 import { confirmDialog } from '../ui/dialogs.js';
+import { icon } from '../ui/icons.js';
 
 // The lists of the editors' own decisions and of what the AI did. A topic, a
 // tag, a source, a signal or "no topic" is a place too: topic:3, tag:12,
@@ -25,6 +26,11 @@ const DEFAULTS = { place: 'inbox', q: '', sort: 'collected', item: '' };
 const PER_PAGE = 50;
 // Which newsletter picks go into, remembered in this browser.
 const TARGET_KEY = 'dfp.pickTarget';
+// Kysy artikkeleilta keeps its conversation, the last 15 questions, for as
+// long as the browser tab is open.
+const ASK_KEY = 'dfp.ask';
+const ASK_KEEP = 15;
+const ASK_DAYS = [30, 90, 365, 3650];
 const NARROW = window.matchMedia('(max-width: 760px)');
 
 function parsePlace(text) {
@@ -78,12 +84,16 @@ function readState() {
   return state;
 }
 
-function writeState(state) {
+function hashOf(state) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(state)) {
     if (value && value !== DEFAULTS[key]) params.set(key, value);
   }
-  const hash = params.toString() ? `#/?${params}` : '#/';
+  return params.toString() ? `#/?${params}` : '#/';
+}
+
+function writeState(state) {
+  const hash = hashOf(state);
   if (location.hash !== hash) history.replaceState(null, '', hash);
 }
 
@@ -112,11 +122,12 @@ function layout() {
     <div class="ar" id="ar">
       <nav class="ar-side" id="side" aria-label="${esc(t('side.label'))}"></nav>
       <section class="ar-list" aria-labelledby="place-name">
+        <nav class="ar-places" id="places" aria-label="${esc(t('places.label'))}"></nav>
         <div class="ar-head">
           <div class="ar-title">
-            <button type="button" class="btn ghost small ar-sidebtn" data-act="side">${esc(t('side.open'))}</button>
             <h3 id="place-name"></h3>
             <span class="ar-count" id="place-count"></span>
+            <button type="button" class="btn ghost small ask-new" id="ask-new" data-act="ask-new" hidden>${icon('plus', 16)}<span>${esc(t('ask.new'))}</span></button>
           </div>
           <p class="ar-note" id="place-note"></p>
           <form class="ar-tools" id="tools" role="search">
@@ -124,18 +135,22 @@ function layout() {
                    placeholder="${esc(t('search.hint'))}" aria-label="${esc(t('search.label'))}">
             <select id="sort" aria-label="${esc(t('filter.sort'))}"></select>
           </form>
-          <form class="ar-ask" id="ask" hidden>
-            <label class="sr-only" for="ask-q">${esc(t('ask.label'))}</label>
-            <textarea id="ask-q" rows="2" maxlength="300" placeholder="${esc(t('ask.placeholder'))}"></textarea>
-            <div class="ar-ask-row">
-              <select id="ask-days" aria-label="${esc(t('ask.days'))}">
-                ${[30, 90, 365, 3650].map((d) => `<option value="${d}"${d === 90 ? ' selected' : ''}>${esc(t(`ask.days.${d}`))}</option>`).join('')}
-              </select>
-              <button type="submit" class="btn small" id="ask-go">${esc(t('ask.submit'))}</button>
-            </div>
-          </form>
         </div>
         <div class="ar-rows" id="rows" aria-busy="true"></div>
+        <form class="chat-compose" id="ask" hidden>
+          <label class="sr-only" for="ask-q">${esc(t('ask.label'))}</label>
+          <div class="chat-box">
+            <textarea id="ask-q" rows="1" maxlength="300" placeholder="${esc(t('ask.placeholder'))}"></textarea>
+            <div class="chat-box-row">
+              <select id="ask-days" aria-label="${esc(t('ask.days'))}">
+                ${ASK_DAYS.map((d) => `<option value="${d}"${d === 90 ? ' selected' : ''}>${esc(t(`ask.days.${d}`))}</option>`).join('')}
+              </select>
+              <span class="chat-count" id="ask-count" aria-live="polite"></span>
+              <button type="submit" class="btn small chat-send" id="ask-go" disabled>${icon('send', 16)}<span>${esc(t('ask.submit'))}</span></button>
+            </div>
+          </div>
+          <p class="chat-alone">${esc(t('ask.alone'))}</p>
+        </form>
       </section>
       <article class="ar-read" id="read" tabindex="-1"></article>
     </div>
@@ -167,8 +182,9 @@ export function showArticles(root) {
   const tv = { preview: null, showDropped: false, creating: false };
   // Kysy artikkeleilta: the questions asked on this page, newest last, each
   // with its answer and articles; shown is the one on screen.
-  const asked = { list: [], shown: -1, busy: false };
+  const asked = { list: loadAsked(), busy: false, pending: null };
   let seenTimer = null;
+  let readingStep = false;  // the history step a phone's open article added
   // Sources whose last three articles went to another section than the one
   // suggested; the first is asked about above the sections.
   let offers = [];
@@ -194,6 +210,44 @@ export function showArticles(root) {
       sources: side.sources, drafts: side.drafts, target: side.target,
       signals: side.signals, signalsLatest: side.signalsLatest,
     });
+    renderPlaces();
+  }
+
+  // On a narrow screen the column on the left is folded away. This bar takes
+  // its place at the top of the list: the editors' lists, Kysy and the
+  // followed topics one tap away, and Valikko for the rest of the column.
+  function renderPlaces() {
+    const bar = $('places');
+    const c = side.counts || {};
+    const current = placeKey(place);
+    const followed = side.topics.filter((x) => x.followed);
+    const chip = (key, label, n) => `<button type="button" class="ar-place" data-place="${esc(key)}"
+        aria-current="${key === current}">${label}${n ? `<span class="ar-place-n">${number(n)}</span>` : ''}</button>`;
+    // A place the bar has no button for, such as a topic not followed or a
+    // source, shows first, so the editor sees where they are.
+    const listed = ['inbox', 'ask', 'picked', 'later', 'dismissed', ...followed.map((x) => `topic:${x.id}`)];
+    const here = listed.includes(current) ? ''
+      : `<button type="button" class="ar-place" aria-current="true" data-place="${esc(current)}"><span class="ar-place-name">${esc(placeName())}</span></button>`;
+    bar.innerHTML = `
+      <button type="button" class="ar-place menu" data-act="side" aria-expanded="${ar.classList.contains('side-open')}">${icon('blocks', 16)}<span>${esc(t('places.menu'))}</span></button>
+      ${here}
+      ${chip('inbox', esc(t('place.inbox')), c.inbox)}
+      ${chip('ask', `${icon('comment', 15)}<span>${esc(t('places.ask'))}</span>`, null)}
+      ${chip('picked', esc(t('view.picked')), c.picked)}
+      ${chip('later', esc(t('view.later')), c.later)}
+      ${chip('dismissed', esc(t('view.dismissed')), c.dismissed)}
+      ${followed.length ? '<span class="ar-places-gap" aria-hidden="true"></span>' : ''}
+      ${followed.map((x) => chip(`topic:${x.id}`, `<span class="dot c${colourOf(x.position)}" aria-hidden="true"></span><span class="ar-place-name">${esc(x.name)}</span>`, x.new)).join('')}`;
+    const on = bar.querySelector('.ar-place[aria-current="true"]');
+    if (on) {
+      const left = on.getBoundingClientRect().left - bar.getBoundingClientRect().left;
+      if (left < 0 || left + on.offsetWidth > bar.clientWidth) bar.scrollLeft += left - 48;
+    }
+  }
+
+  function toggleMenu(open = !ar.classList.contains('side-open')) {
+    ar.classList.toggle('side-open', open);
+    $('places').querySelector('.menu')?.setAttribute('aria-expanded', String(open));
   }
 
   async function loadSide({ sources = false } = {}) {
@@ -252,7 +306,7 @@ export function showArticles(root) {
     if (place.kind === 'view') return place.view === 'inbox' ? t('place.note.inbox', { days: side.windowDays }) : t(`note.${place.view}`);
     if (place.kind === 'none') return t('place.note.none');
     if (place.kind === 'topics') return t('place.note.topics');
-    if (place.kind === 'ask') return t('place.note.ask');
+    if (place.kind === 'ask') return '';
     if (place.kind === 'topic') {
       const topic = topicsById.get(place.id);
       return topic ? t('place.note.topic', { terms: topic.tags.map((x) => x.label).join(', ') }) : '';
@@ -267,11 +321,15 @@ export function showArticles(root) {
 
   function renderHead() {
     $('place-name').textContent = placeName();
-    const counted = place.kind !== 'topics' && (place.kind !== 'ask' || asked.shown >= 0);
+    const counted = place.kind !== 'topics' && place.kind !== 'ask';
     $('place-count').textContent = counted ? tn('count', total, { n: number(total) }) : '';
     $('place-note').textContent = placeNote();
     $('tools').hidden = place.kind === 'topics' || place.kind === 'ask';
     $('ask').hidden = place.kind !== 'ask';
+    $('ask-new').hidden = place.kind !== 'ask' || !asked.list.length;
+    ar.classList.toggle('asking', place.kind === 'ask');
+    $('place-note').classList.toggle('of-view', place.kind === 'view' || place.kind === 'ask');
+    renderPlaces();
   }
 
   function dayOf(item) {
@@ -295,9 +353,8 @@ export function showArticles(root) {
       return;
     }
     if (place.kind === 'ask') {
-      rowsEl.innerHTML = askHtml() + rows.map((item, i) => articleRow(item, {
-        selected: String(item.id) === state.item, topics: topicsById, number: i + 1,
-      })).join('');
+      rowsEl.innerHTML = chatHtml();
+      saveAsked();
       return;
     }
     if (!rows.length) {
@@ -341,7 +398,8 @@ export function showArticles(root) {
     }
     const item = current();
     if (!item) {
-      read.innerHTML = rows.length ? `<p class="ar-empty-read">${esc(t('reader.empty'))}</p>` : '';
+      read.innerHTML = place.kind === 'ask' ? `<p class="ar-empty-read">${esc(t('ask.readerEmpty'))}</p>`
+        : (rows.length ? `<p class="ar-empty-read">${esc(t('reader.empty'))}</p>` : '');
       return;
     }
     const index = rows.indexOf(item);
@@ -358,7 +416,7 @@ export function showArticles(root) {
   function setItem(id, { scroll = true, focus = false } = {}) {
     state.item = id ? String(id) : '';
     writeState(state);
-    rowsEl.querySelectorAll('.ar-row').forEach((row) => row.setAttribute('aria-current', String(row.dataset.id === state.item)));
+    rowsEl.querySelectorAll('.ar-row, .chat-src').forEach((row) => row.setAttribute('aria-current', String(row.dataset.id === state.item)));
     renderReader({ focus });
     if (!id) ar.classList.remove('reading');
     const row = rowsEl.querySelector(`.ar-row[data-id="${state.item}"]`);
@@ -390,12 +448,32 @@ export function showArticles(root) {
 
   // Opens an article the editor chose. On a phone the article takes the
   // screen, and Takaisin brings the list back.
+  // On a phone, opening an article from the list adds a step to the
+  // browser's history, so the phone's Back returns to the list rather than
+  // leaving the page. Going from one article to the next does not.
   function openItem(id, { focus = false } = {}) {
+    if (id && NARROW.matches && !ar.classList.contains('reading')) {
+      // The step back is the list without the article, also when a link
+      // named the article.
+      const list = hashOf({ ...state, item: '' });
+      history.replaceState(null, '', list);
+      history.pushState(null, '', list);
+      readingStep = true;
+    }
     setItem(id, { scroll: !NARROW.matches, focus: focus || NARROW.matches });
     if (id && NARROW.matches) {
       ar.classList.add('reading');
       window.scrollTo({ top: ar.getBoundingClientRect().top + window.scrollY - 8 });
     }
+  }
+
+  // Back to the list on a phone, where the article is in it: its row, or in
+  // a conversation the answer that cites it.
+  function closeReading() {
+    const was = state.item;
+    ar.classList.remove('reading');
+    const cited = [...rowsEl.querySelectorAll(`.chat-src[data-id="${was}"]`)].pop();
+    (rowsEl.querySelector(`.ar-row[data-id="${was}"]`) || cited)?.scrollIntoView({ block: 'center' });
   }
 
   async function loadList({ append = false, keep = null } = {}) {
@@ -417,7 +495,12 @@ export function showArticles(root) {
       // The article asked for stays open; otherwise the first one opens, on
       // a wide screen. On a phone the list comes first.
       const wanted = keep ?? state.item;
-      if (rows.some((r) => String(r.id) === String(wanted))) setItem(wanted, { scroll: !append });
+      if (rows.some((r) => String(r.id) === String(wanted))) {
+        // An article named in the address, as a link from the bot names it,
+        // opens on a phone as well.
+        if (NARROW.matches && !append && keep === null && !ar.classList.contains('reading')) openItem(wanted);
+        else setItem(wanted, { scroll: !append });
+      }
       else if (!append) setItem(!NARROW.matches && rows.length ? rows[0].id : null);
       return true;
     } catch (e) {
@@ -454,43 +537,94 @@ export function showArticles(root) {
 
   // ---------- asking the articles ----------
 
-  // The answer on screen, and its articles as the list.
+  // A conversation: each question with its answer, and under the answer the
+  // articles it cites, numbered as it cites them. An article opens beside
+  // the conversation, to read and to pick. Each question is answered on its
+  // own: the AI does not remember the ones before, and the box says so.
+  function loadAsked() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(ASK_KEY) || '[]');
+      return Array.isArray(saved)
+        ? saved.filter((a) => a && typeof a.question === 'string' && Array.isArray(a.sources) && ASK_DAYS.includes(a.days))
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveAsked() {
+    try {
+      const kept = asked.list.slice(-ASK_KEEP).map((a) => ({ ...a, sources: a.sources.map(fresh) }));
+      sessionStorage.setItem(ASK_KEY, JSON.stringify(kept));
+    } catch {
+      // Without storage the conversation lasts until the page is left.
+    }
+  }
+
+  // An article as it is now: a decision made about it since is in rows.
+  function fresh(source) {
+    return rows.find((r) => r.id === source.id) || source;
+  }
+
+  // Every article the answers cite, once, in the order they came: what J
+  // and K go through.
+  function askedRows() {
+    const found = new Map();
+    for (const a of asked.list) for (const s of a.sources) if (!found.has(s.id)) found.set(s.id, fresh(s));
+    return [...found.values()];
+  }
+
   function showAsk({ open = true } = {}) {
-    const shown = asked.list[asked.shown];
-    rows = shown ? shown.sources : [];
+    rows = askedRows();
     total = rows.length;
     renderHead();
     renderRows();
-    // The first article opens beside the answer, and the answer stays in
-    // view from its start.
+    rowsEl.removeAttribute('aria-busy');
+    // The newest answer's first article opens beside it, on a wide screen.
     if (!rows.some((r) => String(r.id) === state.item)) {
-      setItem(open && !NARROW.matches && rows.length ? rows[0].id : null, { scroll: false });
+      const last = asked.list[asked.list.length - 1];
+      const first = open && !NARROW.matches && last && last.sources[0];
+      setItem(first ? first.id : null, { scroll: false });
     } else renderReader();
-    rowsEl.scrollTop = 0;
-    if (!shown && !NARROW.matches) $('ask-q').focus({ preventScroll: true });
+    toLatest();
+    updateComposer();
+    if (!NARROW.matches) $('ask-q').focus({ preventScroll: true });
   }
 
-  async function askQuestion(question) {
-    const text = question.trim();
+  // The newest question at the top of the conversation, its answer under it.
+  function toLatest() {
+    const turns = rowsEl.querySelectorAll('.chat-turn');
+    const last = turns[turns.length - 1];
+    if (!last) return;
+    if (NARROW.matches) last.scrollIntoView({ block: 'start' });
+    else rowsEl.scrollTop += last.getBoundingClientRect().top - rowsEl.getBoundingClientRect().top - 12;
+  }
+
+  async function askQuestion(question, days = Number($('ask-days').value) || 90) {
+    const text = String(question || '').replace(/\s+/g, ' ').trim();
     if (text.length < 3 || asked.busy) return;
     asked.busy = true;
-    $('ask-go').disabled = true;
+    asked.pending = { question: text, days };
+    $('ask-q').value = '';
+    updateComposer();
     renderRows();
+    rowsEl.removeAttribute('aria-busy');
+    toLatest();
+    let turn;
     try {
-      const found = await api.post('/api/ask', { question: text, days: Number($('ask-days').value) || 90 });
-      asked.list.push({ question: text, ...found });
-      asked.shown = asked.list.length - 1;
-      state.item = '';
+      turn = { question: text, days, ...(await api.post('/api/ask', { question: text, days })) };
     } catch (e) {
-      toast(e.message);
-    } finally {
-      asked.busy = false;
-      $('ask-go').disabled = false;
+      turn = { question: text, days, answer: null, sources: [], error: e.message };
     }
+    asked.busy = false;
+    asked.pending = null;
+    asked.list = [...asked.list, turn].slice(-ASK_KEEP);
+    saveAsked();
     if (place.kind === 'ask') showAsk();
   }
 
-  // The answer's [1], [2]… as buttons that open those articles.
+  // The answer's paragraphs, its [1], [2]… as buttons that open those
+  // articles.
   function answerHtml(a) {
     const cite = (whole, n) => {
       const source = a.sources[Number(n) - 1];
@@ -502,29 +636,108 @@ export function showArticles(root) {
       .map((p) => `<p>${p.replace(/\[(\d{1,2})\]/g, cite).replace(/\n/g, '<br>')}</p>`).join('');
   }
 
-  function askHtml() {
-    const shown = asked.list[asked.shown];
+  function questionHtml(a) {
+    return `<div class="chat-q"><p>${esc(a.question)}</p><small>${esc(t(`ask.days.${a.days}`))}</small></div>`;
+  }
+
+  function sourceHtml(s, n) {
+    const decided = s.decision === 'picked' ? t('ask.state.picked', { section: t(`section.${s.pick_section}`) })
+      : (s.decision ? t(`ask.state.${s.decision}`) : '');
+    const meta = [s.publisher || s.source, date(s.published_at || s.collected_at), decided].filter(Boolean).join(' · ');
+    const label = t('ask.cite', { n, title: s.title_fi || s.title });
+    return `<li><button type="button" class="chat-src" data-act="cite" data-id="${s.id}" aria-label="${esc(label)}"
+        aria-current="${String(s.id) === state.item}">
+        <span class="chat-src-n" aria-hidden="true">${n}</span>
+        <span class="chat-src-body"><span class="chat-src-t">${esc(s.title_fi || s.title)}</span><small>${esc(meta)}</small></span>
+      </button></li>`;
+  }
+
+  function turnHtml(a, n) {
+    let answer;
+    if (a.error) {
+      answer = `<div class="chat-a problem" role="alert"><p>${esc(a.error)}</p>
+        <div><button type="button" class="btn ghost small" data-act="ask-retry" data-n="${n}">${esc(t('ask.retry'))}</button></div></div>`;
+    } else if (a.answer === null) {
+      const wider = ASK_DAYS[ASK_DAYS.indexOf(a.days) + 1];
+      answer = `<div class="chat-a none"><p>${esc(t('ask.none', { when: t(`ask.days.${a.days}`).toLowerCase() }))}</p>
+        ${wider ? `<div><button type="button" class="btn ghost small" data-act="ask-wider" data-n="${n}">${esc(t('ask.wider', { when: t(`ask.days.${wider}`).toLowerCase() }))}</button></div>` : ''}</div>`;
+    } else {
+      const usage = aiUsage(a);
+      answer = `<div class="chat-a">
+        <div class="chat-a-text">${answerHtml(a)}</div>
+        <ol class="chat-sources" aria-label="${esc(t('ask.sources'))}">${a.sources.map((s, i) => sourceHtml(fresh(s), i + 1)).join('')}</ol>
+        <div class="chat-a-foot">
+          <span>${esc(tn('ask.meta', a.sources.length))}${usage ? ` · ${esc(usage)}` : ''}. ${esc(t('ask.check'))}</span>
+          <button type="button" class="linkish" data-act="ask-copy" data-n="${n}">${esc(t('ask.copy'))}</button>
+        </div>
+      </div>`;
+    }
+    return `<article class="chat-turn" data-n="${n}">${questionHtml(a)}${answer}</article>`;
+  }
+
+  function chatHtml() {
     let out = '';
-    if (asked.busy) out += `<p class="ask-busy" role="status">${esc(t('ask.busy'))}</p>`;
-    if (!shown && !asked.busy) {
-      out += `<div class="ask-intro"><p>${esc(t('ask.intro'))}</p><p class="ask-try">${esc(t('ask.try'))}</p>
-        <div class="ask-examples">${['ask.example1', 'ask.example2', 'ask.example3'].map((k) => `
-          <button type="button" class="ask-example" data-act="ask-example" data-q="${esc(t(k))}">${esc(t(k))}</button>`).join('')}</div></div>`;
+    if (!asked.list.length && !asked.pending) {
+      out += `<div class="chat-empty">
+        <span class="chat-mark" aria-hidden="true">${icon('comment', 26)}</span>
+        <h4>${esc(t('ask.emptyTitle'))}</h4>
+        <p>${esc(t('ask.intro'))}</p>
+        <div class="chat-try" role="group" aria-label="${esc(t('ask.try'))}">${['ask.example1', 'ask.example2', 'ask.example3']
+          .map((k) => `<button type="button" class="chat-chip" data-act="ask-example" data-q="${esc(t(k))}">${esc(t(k))}</button>`).join('')}</div>
+      </div>`;
     }
-    if (shown && !asked.busy) {
-      const usage = aiUsage(shown);
-      out += `<section class="ask-answer" aria-label="${esc(t('ask.answer'))}">
-        <p class="ask-q">${esc(shown.question)}</p>
-        ${shown.answer === null ? `<p class="ask-none">${esc(t('ask.none'))}</p>` : `${answerHtml(shown)}
-        <p class="ask-meta">${esc(tn('ask.meta', shown.sources.length))}${usage ? ` · ${esc(usage)}` : ''}</p>
-        <p class="ask-meta">${esc(t('ask.check'))}</p>`}
-      </section>`;
+    out += asked.list.map(turnHtml).join('');
+    if (asked.pending) {
+      out += `<article class="chat-turn">${questionHtml(asked.pending)}
+        <div class="chat-a busy" role="status"><span class="chat-dots" aria-hidden="true"><i></i><i></i><i></i></span>${esc(t('ask.busy'))}</div></article>`;
     }
-    const earlier = asked.list.map((a, i) => (i === asked.shown ? '' : `
-      <button type="button" class="ask-earlier-q" data-act="ask-show" data-n="${i}">${esc(a.question)}</button>`)).join('');
-    if (earlier.trim()) out += `<div class="ask-earlier"><p class="ask-earlier-h">${esc(t('ask.earlier'))}</p>${earlier}</div>`;
-    if (shown && shown.sources.length && !asked.busy) out += `<h4 class="ar-day">${esc(t('ask.sources'))}</h4>`;
-    return `<div class="ask">${out}</div>`;
+    return `<div class="chat">${out}</div>`;
+  }
+
+  // The box grows with the question, up to a few lines, and says how much
+  // room is left near the end.
+  function updateComposer() {
+    const box = $('ask-q');
+    $('ask-go').disabled = asked.busy || box.value.trim().length < 3;
+    const left = 300 - box.value.length;
+    $('ask-count').textContent = left <= 50 ? t('ask.left', { n: left }) : '';
+    box.style.height = 'auto';
+    box.style.height = `${Math.min(box.scrollHeight, 160)}px`;
+  }
+
+  async function copyAnswer(n) {
+    const a = asked.list[n];
+    if (!a || !a.answer) return;
+    const list = a.sources.map((s, i) => `[${i + 1}] ${[s.title_fi || s.title, s.publisher, s.url].filter(Boolean).join(', ')}`);
+    try {
+      await navigator.clipboard.writeText(`${a.question}\n\n${a.answer}\n\n${t('ask.sources')}:\n${list.join('\n')}`);
+      toast(t('ask.copied'));
+    } catch {
+      toast(t('ask.copyFailed'));
+    }
+  }
+
+  function newConversation() {
+    if (!asked.list.length || asked.busy) return;
+    const before = asked.list;
+    asked.list = [];
+    saveAsked();
+    showAsk({ open: false });
+    toast(t('ask.cleared'), () => {
+      asked.list = before;
+      saveAsked();
+      if (place.kind === 'ask') showAsk({ open: false });
+    });
+  }
+
+  function askAgain(n, wider) {
+    const a = asked.list[n];
+    if (!a || asked.busy) return;
+    const days = wider ? ASK_DAYS[ASK_DAYS.indexOf(a.days) + 1] : a.days;
+    if (!days) return;
+    if (!wider) asked.list = asked.list.filter((_, i) => i !== n);
+    $('ask-days').value = String(days);
+    askQuestion(a.question, days);
   }
 
   // ---------- editing topics ----------
@@ -1041,6 +1254,10 @@ export function showArticles(root) {
   });
 
   root.addEventListener('click', (event) => {
+    if (event.target === ar && ar.classList.contains('side-open')) {
+      toggleMenu(false);
+      return;
+    }
     const option = event.target.closest('.addtag-opt');
     if (option) {
       chooseTerm(option.dataset.uri);
@@ -1069,14 +1286,15 @@ export function showArticles(root) {
     else if (act === 'prev') move(-1);
     else if (act === 'next') move(1);
     else if (act === 'back') {
-      ar.classList.remove('reading');
-      rowsEl.querySelector(`.ar-row[data-id="${state.item}"]`)?.scrollIntoView({ block: 'center' });
+      // Takaisin goes the way the phone's Back does, when there is a step to go back to.
+      if (readingStep) history.back();
+      else closeReading();
     } else if (act === 'topic') goPlace(`topic:${target.dataset.topic}`);
     else if (act === 'tag') goPlace(`tag:${target.dataset.tag}`);
     else if (act === 'untag') removeTag(target.dataset.tag);
     else if (act === 'follow') follow(target.dataset.topic, true);
     else if (act === 'unfollow') follow(target.dataset.topic, false);
-    else if (act === 'side') ar.classList.toggle('side-open');
+    else if (act === 'side') toggleMenu();
     else if (act === 'more') loadList({ append: true, keep: state.item });
     else if (act === 'retry') show();
     else if (act === 'topic-new') {
@@ -1105,14 +1323,11 @@ export function showArticles(root) {
     else if (act === 'find-signals') findSignals(target);
     else if (act === 'view') goPlace(target.dataset.view);
     else if (act === 'cite') openItem(target.dataset.id);
-    else if (act === 'ask-show') {
-      asked.shown = Number(target.dataset.n);
-      state.item = '';
-      showAsk();
-    } else if (act === 'ask-example') {
-      $('ask-q').value = target.dataset.q;
-      askQuestion(target.dataset.q);
-    }
+    else if (act === 'ask-example') askQuestion(target.dataset.q);
+    else if (act === 'ask-new') newConversation();
+    else if (act === 'ask-copy') copyAnswer(Number(target.dataset.n));
+    else if (act === 'ask-retry') askAgain(Number(target.dataset.n), false);
+    else if (act === 'ask-wider') askAgain(Number(target.dataset.n), true);
   });
 
   root.addEventListener('change', (event) => {
@@ -1157,6 +1372,16 @@ export function showArticles(root) {
     }
   });
 
+  $('ask-q').addEventListener('input', updateComposer);
+
+  // Pointing at a number in an answer lights up its article under it.
+  rowsEl.addEventListener('mouseover', (event) => {
+    const cite = event.target.closest('.ar-cite');
+    const lit = cite && cite.closest('.chat-turn')?.querySelector(`.chat-src[data-id="${cite.dataset.id}"]`);
+    rowsEl.querySelectorAll('.chat-src.lit').forEach((b) => { if (b !== lit) b.classList.remove('lit'); });
+    if (lit) lit.classList.add('lit');
+  });
+
   // Enter asks; Shift+Enter starts a new line in the question.
   $('ask-q').addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -1191,12 +1416,13 @@ export function showArticles(root) {
     if (document.querySelector('dialog[open]')) return;
     const key = event.key.toLowerCase();
     if (key === 'escape') {
-      ar.classList.remove('side-open');
+      toggleMenu(false);
       return;
     }
     if (place.kind === 'topics') return;
-    if (key === 'j') move(1);
-    else if (key === 'k') move(-1);
+    // J is the key on the left, so the article before; K the one after.
+    if (key === 'j') move(-1);
+    else if (key === 'k') move(1);
     else if (!current()) return;
     else if (['1', '2', '3', '4'].includes(key)) decide('picked', SECTIONS[Number(key) - 1]);
     else if (key === 'l') decide('later');
@@ -1242,9 +1468,17 @@ export function showArticles(root) {
   function onHash() {
     const next = readState();
     if (next.place === state.place && next.q === state.q && next.sort === state.sort) {
+      if (ar.classList.contains('reading') && next.item !== state.item) {
+        // The phone's Back, or Takaisin: from the article to the list.
+        readingStep = false;
+        closeReading();
+        state.item = next.item;
+        return;
+      }
       if (next.item !== state.item && rows.some((r) => String(r.id) === next.item)) setItem(next.item);
       return;
     }
+    readingStep = false;
     state = next;
     place = parsePlace(state.place);
     q.value = state.q;

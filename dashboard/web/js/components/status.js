@@ -15,13 +15,16 @@ export function statusLines(overview, { checking = false, done = '', view = '' }
   if (checking || o.checking_now) {
     lines.push(`<p class="line busy"><span class="spinner" aria-hidden="true"></span><span>${esc(t('status.checking'))}</span></p>`);
   } else {
-    const text = [
+    // On a phone only the first part shows: when, and what is new today.
+    const first = [
       o.last_check_at ? t('status.lastCheck', { when: when(o.last_check_at) }) : t('status.neverChecked'),
       o.new_today ? tn('status.newToday', o.new_today) : t('status.nothingToday'),
+    ].join(' ');
+    const more = [
       o.new_theses_today ? tn('status.thesesToday', o.new_theses_today) : '',
       o.next_check_at ? t('status.next', { when: when(o.next_check_at) }) : t('status.off'),
     ].filter(Boolean).join(' ');
-    lines.push(`<p class="line"><span>${esc(text)}</span>
+    lines.push(`<p class="line"><span>${esc(first)} <span class="line-more">${esc(more)}</span></span>
       <button type="button" class="btn small" data-act="check">${esc(t('status.checkNow'))}</button></p>`);
   }
   if (done) lines.push(`<p class="line good">${esc(done)}</p>`);

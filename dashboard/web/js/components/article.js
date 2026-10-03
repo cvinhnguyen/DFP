@@ -106,8 +106,7 @@ function topicDots(item, topics) {
 }
 
 // topics: a Map of the topics by id, for their colours.
-// number: the article's number in an answer from the AI, which cites it so.
-export function articleRow(item, { selected = false, topics = new Map(), number = null } = {}) {
+export function articleRow(item, { selected = false, topics = new Map() } = {}) {
   const meta = [...byline(item).map(esc), kindLabel(item) ? `<span class="kind">${esc(kindLabel(item))}</span>` : '']
     .filter(Boolean).join(' · ');
   let tags = item.tags.slice(0, 3).map((g) => `<span class="tg${g.origin === 'signal' ? ' sig' : ''}">${esc(g.label)}</span>`).join('');
@@ -119,7 +118,7 @@ export function articleRow(item, { selected = false, topics = new Map(), number 
     : `<span${langAttr(item.language)}>${esc(item.title)}</span>`;
   return `
     <button type="button" class="ar-row${item.decision ? ' decided' : ''}${item.seen ? '' : ' unseen'}" data-id="${item.id}" aria-current="${selected}">
-      <span class="ar-row-title">${number ? `<span class="ar-row-n" title="${esc(t('row.number', { n: number }))}">${number}</span>` : ''}${langBadge(item)}${title}</span>
+      <span class="ar-row-title">${langBadge(item)}${title}</span>
       <span class="ar-row-meta"><span class="ar-row-by">${meta}</span>${eventChip(item)}<span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
       ${tags ? `<span class="ar-row-tags">${tags}</span>` : ''}
     </button>`;
@@ -296,7 +295,7 @@ function decision(item, target, offer) {
         <button type="button" class="btn ghost small${item.decision === 'dismissed' ? ' on' : ''}" data-act="dismiss" aria-pressed="${item.decision === 'dismissed'}" title="${esc(t('reader.dismissHint'))}">${esc(t('reader.dismiss'))}</button>
         ${item.decision ? `<button type="button" class="linkish" data-act="clear">${esc(t('reader.clear'))}</button>` : ''}
         ${by}
-        <span class="rd-keys" aria-hidden="true"><kbd>J</kbd> <kbd>K</kbd> ${esc(t('reader.keysMove'))} · <kbd>L</kbd> ${esc(t('reader.keysLater'))} · <kbd>X</kbd> ${esc(t('reader.keysDismiss'))}</span>
+        <span class="rd-keys" aria-hidden="true"><kbd>J</kbd> ${esc(t('reader.keysPrev'))} · <kbd>K</kbd> ${esc(t('reader.keysNext'))} · <kbd>L</kbd> ${esc(t('reader.keysLater'))} · <kbd>X</kbd> ${esc(t('reader.keysDismiss'))}</span>
       </div>
       <p class="row-error" role="alert" hidden></p>
     </div>`;
@@ -362,8 +361,8 @@ export function articleReader(item, ctx) {
       <button type="button" class="btn ghost small rd-back" data-act="back">‹ ${esc(t('reader.back'))}</button>
       <span class="rd-pos">${esc(t('reader.position', { place: ctx.place, n: number(ctx.index + 1), total: number(ctx.total) }))}</span>
       <span class="rd-nav">
-        <button type="button" class="btn ghost small" data-act="prev"${ctx.canPrev ? '' : ' disabled'}>‹ ${esc(t('reader.prev'))}</button>
-        <button type="button" class="btn ghost small" data-act="next"${ctx.canNext ? '' : ' disabled'}>${esc(t('reader.next'))} ›</button>
+        <button type="button" class="btn ghost small" data-act="prev" aria-label="${esc(t('reader.prev'))}"${ctx.canPrev ? '' : ' disabled'}>‹ <span class="rd-word">${esc(t('reader.prev'))}</span></button>
+        <button type="button" class="btn ghost small" data-act="next" aria-label="${esc(t('reader.next'))}"${ctx.canNext ? '' : ' disabled'}><span class="rd-word">${esc(t('reader.next'))}</span> ›</button>
       </span>
     </div>
     ${item.title_fi

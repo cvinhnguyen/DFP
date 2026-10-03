@@ -251,9 +251,20 @@ article shows the author's abstract and what its licence allows. A thesis
 joins a topic only when it also has a learning tag, because most theses are
 about other fields.
 
-Keys, whenever no text box has the focus: J and K move down and up the list,
-1 to 4 add the article to a section, L keeps it for later, X leaves it out.
-After each decision a note offers to take it back.
+Keys, whenever no text box has the focus: J opens the article before and K
+the one after, 1 to 4 add the article to a section, L keeps it for later, X
+leaves it out. After each decision a note offers to take it back.
+
+On a narrower screen, a tablet or a phone, the left column folds away and a
+bar at the top of the list takes its place: Valikko, which opens the column,
+then Uudet, Kysy, Valitut, Myöhemmin and Ei käytetä, then the followed
+topics, each one tap away. On a phone the bar stays at the top while the
+list scrolls, and the list comes first with less above it: a shorter status
+line and no description. An article opens over the list in the order an
+editor reads: the title, the summary, the sections to add it to, and then
+its topics, tags and details. The phone's own Back returns to the list, as
+"Takaisin" does, and a link to an article, such as one from the bot, opens
+the article itself.
 
 ### Which section is suggested
 
@@ -391,15 +402,20 @@ are: `POST /api/issues/{id}/ai/subject`, `/api/issues/{id}/ai/greeting` and
 
 ### Kysy artikkeleilta
 
-A place on Artikkelit for asking, in Finnish, what the sources have written
-about something: "Mitä tekoälystä on kirjoitettu opettajille?" The
+A conversation on Artikkelit for asking, in Finnish, what the sources have
+written about something: "Mitä tekoälystä on kirjoitettu opettajille?" The
 dashboard finds the articles that fit best, at most eight, from the time
 chosen (30 days to all time), and the AI answers from their summaries only,
-citing them as 1, 2, 3. A number opens that article in the reader, and the
-articles are listed under the answer like any others, to read and pick for
-the newsletter. When no article fits, the dashboard says so and the AI is
-not asked. Earlier questions on the page can be opened again without asking
-anew.
+citing them as 1, 2, 3. Each answer lists its articles under it, numbered as
+it cites them; a number or an article opens it beside the conversation, to
+read and pick for the newsletter, and J and K go through them. When no
+article fits, the dashboard says so, the AI is not asked, and one button
+asks again over a longer time. An answer can be copied with its articles.
+The conversation lasts as long as the browser tab, the last 15 questions,
+and Uusi keskustelu starts again, with a note to take that back. Each
+question is answered on its own: the AI does not remember the ones before,
+and the box under the conversation says so. On a phone the box stays at the
+bottom of the screen.
 
 Finding the articles is `queries/ask.py`: any word of the question, as the
 Finnish stemmer leaves it and as the start of a word, in the title, the

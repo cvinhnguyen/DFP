@@ -190,3 +190,9 @@
 .brand-info .cf-hint { margin: 2px 0 8px; }
 .brand-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 640px) { .brand-row { grid-template-columns: 1fr; } }
+/* A phone: the newsletters by name and state, without the small previews. */
+@media (max-width: 640px) {
+  .nl-cell-name { min-width: 0; }
+  .nl-thumb { display: none; }
+  .nl-table th, .nl-table td { padding-left: 10px; padding-right: 10px; }
+}

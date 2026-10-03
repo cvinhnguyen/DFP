@@ -132,7 +132,6 @@
 .ar-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
 .ar-title h3 { margin: 0; font-size: 18px; font-weight: 650; }
 .ar-count { color: var(--soft); font-size: 13.5px; font-variant-numeric: tabular-nums; }
-.ar-sidebtn { display: none; align-self: center; }
 .ar-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--soft); }
 .ar-note:empty { display: none; }
 .ar-tools { display: flex; gap: 8px; margin-top: 2px; }
@@ -381,7 +380,9 @@ ul.copies { margin: 0; padding-left: 20px; }
 
 /* ---------- narrower screens ---------- */
 
-/* The column on the left opens over the list with the Aiheet button. */
+/* The column on the left folds away: the bar at the top of the list has
+   the lists, Kysy and the followed topics, and Valikko opens the column
+   over the list. */
 @media (max-width: 1100px) {
   .ar { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); }
   .ar-side { display: none; }
@@ -389,8 +390,16 @@ ul.copies { margin: 0; padding-left: 20px; }
     display: flex; position: absolute; z-index: 20; top: 0; bottom: 0; left: 0; width: 290px;
     box-shadow: 8px 0 24px rgba(0, 0, 0, .18);
   }
-  .ar-sidebtn, .side-close { display: inline-block; }
+  .ar.side-open::before { content: ""; position: absolute; inset: 0; z-index: 19; background: rgba(0, 0, 0, .28); }
+  .side-close { display: inline-block; }
   .rd-secs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ar-places {
+    display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto; scrollbar-width: none;
+    background: var(--surface); border-bottom: 1px solid var(--rule);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .ar-places::-webkit-scrollbar { display: none; }
 }
 
 /* On a phone the list and the article take turns, and the page scrolls. */
@@ -399,14 +408,31 @@ ul.copies { margin: 0; padding-left: 20px; }
   .ar { display: block; height: auto !important; min-height: 0; overflow: visible; border-radius: 8px; }
   .ar-list { border-right: 0; }
   .ar-rows { overflow: visible; }
-  .ar-day { top: 0; }
+  .ar-places { position: sticky; top: 0; z-index: 6; }
+  .ar-day { top: 53px; }
+  .ar-note.of-view { display: none; }
+  .status { padding: 2px 12px; }
+  .status .line { font-size: 13.5px; gap: 4px 10px; }
+  .status .line-more { display: none; }
   .ar-read { display: none; overflow: visible; padding: 14px 14px 20px; }
   .ar.reading .ar-list { display: none; }
   .ar.reading .ar-read { display: flex; }
   .rd-back { display: inline-block; }
+  /* One row: back, where in the list, and arrows for the article before and after. */
+  .rd-top { flex-wrap: nowrap; }
+  .rd-pos { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rd-nav { flex: 0 0 auto; }
+  .rd-nav .btn { min-width: 40px; }
+  .rd-word { display: none; }
+  .ar.side-open::before { position: fixed; z-index: 1099; }
   .rd-title { font-size: 20px; }
   .rd-keys { display: none; }
-  .rd-decide { bottom: 0; padding-bottom: 12px; }
+  /* Read, then decide: the summary first, the sections right under it, and
+     the topics, tags and details after them. Nothing covers the text. */
+  .rd-decide { position: static; order: 1; margin-top: 4px; padding-bottom: 4px; box-shadow: none; }
+  .rd-chips, .rd-signal { order: 2; }
+  .rd-facts { order: 3; }
+  .rd-picture img { max-height: 200px; object-fit: cover; }
   /* No keyboard on a phone, and less room: each section by its name. */
   .rd-sec-what, .rd-sec-key { display: none; }
   .rd-sec { padding-right: 10px; }
@@ -416,48 +442,118 @@ ul.copies { margin: 0; padding-left: 20px; }
   .tp-counts > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); }
 }
 
-/* Kysy artikkeleilta: the question in the head, the answer over its
-   articles in the list. */
+@media (min-width: 1101px) { .ar-places { display: none; } }
+.ar-place {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 5px 12px;
+  font: inherit; font-size: 14px; font-weight: 550; white-space: nowrap; color: var(--ink); cursor: pointer;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 999px;
+}
+.ar-place:hover { border-color: var(--link); }
+.ar-place[aria-current="true"] { color: var(--button-ink); background: var(--button); border-color: var(--button); }
+.ar-place.menu { color: var(--link); background: var(--surface); }
+.ar-place-n { font-size: 12.5px; font-weight: 600; opacity: .75; font-variant-numeric: tabular-nums; }
+.ar-place-name { max-width: 13em; overflow: hidden; text-overflow: ellipsis; }
+.ar-places-gap { flex: 0 0 1px; margin: 6px 2px; background: var(--rule); }
+
+/* Kysy artikkeleilta: a conversation in the middle, wider than the list,
+   with the question box under it; the article an answer cites opens on
+   the right. */
 .side-item.ask .side-name { font-weight: 600; }
-.ar-ask { display: grid; gap: 6px; margin-top: 2px; }
-.ar-ask textarea {
-  font: inherit; font-size: 14px; line-height: 1.45; padding: 7px 9px; color: var(--ink); background: var(--surface);
-  border: 1px solid var(--rule); border-radius: 6px; resize: vertical; min-height: 58px; width: 100%; box-sizing: border-box;
+.ar.asking .rd-secs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ar.asking { grid-template-columns: 250px minmax(0, 1.15fr) minmax(0, 1fr); }
+.ask-new { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 5px; }
+.chat { display: grid; gap: 22px; padding: 18px 18px 10px; }
+
+.chat-empty { display: grid; justify-items: center; gap: 10px; max-width: 480px; margin: 0 auto; padding: 32px 8px 8px; text-align: center; }
+.chat-mark { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--brand-soft); color: var(--link); }
+.chat-empty h4 { margin: 4px 0 0; font-size: 19px; font-weight: 650; text-wrap: balance; }
+.chat-empty p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--soft); text-wrap: pretty; }
+.chat-try { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.chat-chip {
+  font: inherit; font-size: 13.5px; line-height: 1.35; padding: 7px 13px; color: var(--ink); text-align: left;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; cursor: pointer;
 }
-.ar-ask textarea:focus, .ar-ask select:focus { border-color: var(--link); outline: none; }
-.ar-ask-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
-.ar-ask select {
-  font: inherit; font-size: 13.5px; padding: 5px 8px; color: var(--ink); background: var(--surface);
-  border: 1px solid var(--rule); border-radius: 6px; min-width: 0;
+.chat-chip:hover, .chat-chip:focus-visible { border-color: var(--link); background: var(--brand-soft); }
+
+.chat-turn { display: grid; gap: 8px; }
+.chat-q { justify-self: end; display: grid; justify-items: end; gap: 3px; max-width: 85%; }
+.chat-q p {
+  margin: 0; padding: 9px 14px; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere;
+  color: var(--button-ink); background: var(--button); border-radius: 16px 16px 4px 16px;
 }
-.ask { padding: 10px 14px 4px; }
-.ask:empty { display: none; }
-.ask-intro p { margin: 0 0 8px; font-size: 14px; line-height: 1.5; color: var(--soft); }
-.ask-try { font-weight: 600; color: var(--ink); }
-.ask-examples { display: grid; gap: 6px; margin-bottom: 8px; }
-.ask-example, .ask-earlier-q {
-  text-align: left; font: inherit; font-size: 14px; line-height: 1.35; padding: 7px 10px; color: var(--ink);
-  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; overflow-wrap: anywhere;
+.chat-q small { font-size: 12px; color: var(--soft); }
+.chat-a {
+  display: grid; gap: 12px; padding: 14px 16px; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 4px 16px 16px 16px;
 }
-.ask-example:hover, .ask-earlier-q:hover { border-color: var(--link); background: var(--bg); }
-.ask-busy { margin: 4px 0 10px; color: var(--soft); font-size: 14px; }
-.ask-answer {
-  margin: 0 0 10px; padding: 12px 14px 8px; background: var(--surface); border: 1px solid var(--rule);
-  border-left: 3px solid var(--link); border-radius: 6px;
-}
-.ask-answer p { margin: 0 0 9px; font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; }
-.ask-answer .ask-q { font-weight: 650; }
-.ask-answer .ask-meta { margin: 0 0 4px; font-size: 12.5px; color: var(--soft); }
+.chat-a-text p { margin: 0 0 10px; font-size: 15px; line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; }
+.chat-a-text p:last-child { margin-bottom: 0; }
 .ar-cite {
-  font: inherit; font-size: 11.5px; font-weight: 650; line-height: 1.45; min-width: 1.6em; padding: 0 5px; margin: 0 1px;
-  color: var(--link); background: transparent; border: 1px solid currentColor; border-radius: 10px; cursor: pointer;
-  vertical-align: 1px;
+  font: inherit; font-size: 11.5px; font-weight: 700; line-height: 1.45; min-width: 1.5em; padding: 0 4px; margin: 0 0 0 2px;
+  color: var(--link); background: var(--brand-soft); border: 1px solid transparent; border-radius: 10px; cursor: pointer;
+  vertical-align: 1px; font-variant-numeric: tabular-nums;
 }
 .ar-cite:hover, .ar-cite:focus-visible { color: var(--surface); background: var(--link); border-color: var(--link); }
-.ask-earlier { margin: 0 0 10px; display: grid; gap: 6px; }
-.ask-earlier-h { margin: 0; font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
-.ar-row-n {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 1.5em; height: 1.5em; margin-right: 6px;
-  padding: 0 4px; font-size: 11.5px; font-weight: 650; color: var(--link); border: 1px solid currentColor; border-radius: 10px;
-  vertical-align: 1px; box-sizing: border-box;
+.chat-sources { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.chat-src {
+  width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; text-align: left;
+  font: inherit; color: var(--ink); padding: 8px 10px; background: var(--bg); border: 1px solid var(--rule);
+  border-radius: 10px; cursor: pointer; transition: border-color .15s, background-color .15s;
+}
+.chat-src:hover, .chat-src:focus-visible, .chat-src.lit { border-color: var(--link); }
+.chat-src[aria-current="true"] { border-color: var(--link); background: var(--row-on); }
+.chat-src-n {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; box-sizing: border-box;
+  font-size: 12px; font-weight: 700; color: var(--link); border: 1px solid currentColor; border-radius: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chat-src-body { display: grid; gap: 2px; min-width: 0; }
+.chat-src-t {
+  font-size: 14px; font-weight: 600; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.chat-src small { font-size: 12.5px; color: var(--soft); }
+.chat-a-foot { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 14px; font-size: 12.5px; line-height: 1.45; color: var(--soft); }
+.chat-a-foot .linkish { font-size: 13px; white-space: nowrap; }
+.chat-a.none p, .chat-a.problem p { margin: 0; font-size: 14.5px; line-height: 1.5; }
+.chat-a.problem { border-color: var(--amber); background: var(--amber-soft); }
+.chat-a.problem p { color: var(--amber); }
+.chat-a.busy { justify-self: start; display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--soft); }
+.chat-dots { display: inline-flex; gap: 4px; }
+.chat-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--link); opacity: .35; animation: chat-dot 1.2s infinite ease-in-out; }
+.chat-dots i:nth-child(2) { animation-delay: .15s; }
+.chat-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes chat-dot { 0%, 80%, 100% { opacity: .35; transform: none; } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .chat-dots i { animation: none; opacity: .7; } }
+
+.chat-compose { display: grid; gap: 6px; padding: 10px 14px 12px; background: var(--surface); border-top: 1px solid var(--rule); }
+.chat-box {
+  display: grid; gap: 6px; padding: 9px 9px 8px 13px; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 14px; transition: border-color .15s, box-shadow .15s;
+}
+.chat-box:focus-within { border-color: var(--link); box-shadow: 0 0 0 3px var(--brand-soft); }
+.chat-box textarea {
+  width: 100%; min-height: 24px; max-height: 160px; padding: 2px 0; resize: none; box-sizing: border-box;
+  font: inherit; font-size: 15px; line-height: 1.45; color: var(--ink); background: transparent; border: 0; outline: none;
+}
+.chat-box-row { display: flex; align-items: center; gap: 8px; }
+.chat-box select {
+  min-width: 0; font: inherit; font-size: 13px; padding: 4px 8px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--rule); border-radius: 999px;
+}
+.chat-count { margin-left: auto; font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
+.chat-count:empty { display: none; }
+.chat-send { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; }
+.chat-count:not(:empty) + .chat-send { margin-left: 0; }
+.chat-alone { margin: 0; font-size: 12px; line-height: 1.4; color: var(--soft); text-align: center; }
+@media (max-width: 1100px) {
+  .ar.asking { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* On a phone the box stays at the bottom of the screen. */
+@media (max-width: 760px) {
+  .chat { padding: 14px 12px 8px; }
+  .chat-q { max-width: 92%; }
+  .chat-turn { scroll-margin-top: 64px; }
+  .chat-compose { position: sticky; bottom: 0; z-index: 3; padding: 8px 10px 10px; }
+  .chat-alone { display: none; }
 }
