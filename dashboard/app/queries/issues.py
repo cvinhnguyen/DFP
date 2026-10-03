@@ -50,6 +50,11 @@ SELECT i.id, p.section, i.title, i.source_url AS url,
        sm.event_starts, sm.event_ends, sm.event_time, sm.event_place,
        nullif(btrim(i.excerpt), '') AS excerpt,
        i.published_at,
+       -- the picture from the article's own page, see 28-article-pictures.sql
+       (SELECT jsonb_build_object('src', '/media/' || img.key, 'width', img.width, 'height', img.height,
+                                  'alt', i.picture_alt, 'credit', img.credit,
+                                  'rights', coalesce(img.rights, 'check'))
+          FROM images img WHERE img.item_id = i.id) AS picture,
        u.display_name AS decided_by,
        p.decided_at
   FROM item_picks p

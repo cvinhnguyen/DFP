@@ -36,6 +36,20 @@ export function createCheckPanel({ store, root, context, actions }) {
         if (added[0]) show(added[0].id);
       } }, t('check.insert')));
     }
+    if (code === 'pictureRights') {
+      buttons.push(h('button', { type: 'button', class: 'btn small', onclick: () => store.change((d) => {
+        const f = findBlock(d, item.blockId);
+        if (f) f.block.image = { ...f.block.image, allowed: true };
+      }) }, t('check.pictureAllowed')));
+      // Without its picture the article is text, rather than an empty place.
+      buttons.push(h('button', { type: 'button', class: 'btn ghost small', onclick: () => store.change((d) => {
+        const f = findBlock(d, item.blockId);
+        if (f) {
+          f.block.image = { src: '', alt: '' };
+          f.block.layout = 'text';
+        }
+      }) }, t('check.removePicture')));
+    }
     if (code === 'orphans') {
       buttons.push(h('button', { type: 'button', class: 'btn ghost small', onclick: () => store.change((d) => removeBlock(d, item.blockId)) }, t('check.removeFromEmail')));
     }

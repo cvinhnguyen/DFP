@@ -43,8 +43,8 @@ docker compose up -d
 
 | Table | What it holds | Defined in |
 |---|---|---|
-| `sources` | the sites, feeds, journals and archives we follow, and how each is read | `02-schema.sql`, `07`, `11`, `14`, `20` |
-| `items` | one row per article or thesis | `02-schema.sql`, `10`, `11`, `20` |
+| `sources` | the sites, feeds, journals and archives we follow, how each is read, and what the pictures on its pages are (`picture_rights`: own, open, check or none) | `02-schema.sql`, `07`, `11`, `14`, `20`, `28` |
+| `items` | one row per article or thesis, with what came of looking for the picture on its page | `02-schema.sql`, `10`, `11`, `20`, `25`, `28` |
 | `summaries` | the Finnish summaries, each carrying its source link and publisher, a Finnish title and, for an event, its dates, time, place and deadline | `02-schema.sql`, `12`, `15`, `21` |
 | `collection_runs` | one row each time a source is checked, with any error | `02-schema.sql` |
 | `filter_runs` | what the filter skipped and the tokens that saved | `11-filter.sql` |
@@ -65,11 +65,11 @@ docker compose up -d
 | `password_links` | the one-time links from /adduser and /password, where someone chooses their password, and their email if they have only used Telegram, as hashes | `22-password-links.sql` |
 | `alerts` | what the team was told on Telegram: sources that stopped working, workflows that failed, the AI budget, and when each was over | `23-alerts.sql` |
 | `ai_budget` (view) | this month's AI spending against `monthly_budget_eur`: warn at 80 %, over when used up | `24-ai-budget.sql` |
-| `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, and the old ones kept because they are in use | `25-retention.sql` |
+| `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, the pictures from their pages that went with it, and the old ones kept because they are in use | `25-retention.sql`, `28` |
 | `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, imported from their public archive to check the system against (`docs/evaluation.md`) | `26-archive.sql` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
 | `item_picks` | what the editors decided about each article: picked (for which issue and which of the four sections), later, or not used | `17-newsletter.sql`, `19` |
-| `images` | pictures uploaded in the newsletter editor | `17-newsletter.sql` |
+| `images` | pictures uploaded in the newsletter editor, and each article's picture from its own page, kept with the article's id, whose it is and its credit | `17-newsletter.sql`, `28-article-pictures.sql` |
 | `newsletter_templates` | templates and sections the editors saved, to start a newsletter from | `18-editor-mailchimp.sql` |
 | `issue_comments` | the editors' comments on a newsletter, each on one block or on the whole email | `18-editor-mailchimp.sql` |
 | `mailchimp_files` | which pictures are already in Mailchimp's Content Studio, so each is uploaded once | `18-editor-mailchimp.sql` |
@@ -83,9 +83,9 @@ The ones most code touches:
   attribution printed in the newsletter.
 - `author` is often empty. Nothing should depend on it.
 - `excerpt` is the publisher's own short description.
-- `raw_text` is to be deleted after the retention period, with the link,
-  title, publisher and summary kept. The cleanup is DM42-45 and is not built
-  yet.
+- `raw_text` is deleted after the retention period, with the link, title,
+  publisher and summary kept, and so is the picture from the article's page
+  (`25-retention.sql`, `28-article-pictures.sql`).
 - `created_at` is when an article first arrived. `fetched_at` moves forward
   each time a source sends it again.
 - `status` is `on_request` for items from a source whose `filter_mode` is

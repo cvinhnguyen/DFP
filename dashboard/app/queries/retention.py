@@ -22,7 +22,7 @@ def state():
                       AND (i.raw_text IS NOT NULL OR i.excerpt IS NOT NULL OR i.author IS NOT NULL)
                       AND NOT EXISTS (SELECT 1 FROM item_picks p
                                        WHERE p.item_id = i.id AND p.decision IN ('picked', 'later'))) AS next_night,
-                  (SELECT to_jsonb(r) FROM (SELECT ran_at, items_cleared, chars_removed, cache_removed, kept_in_use
+                  (SELECT to_jsonb(r) FROM (SELECT ran_at, items_cleared, chars_removed, cache_removed, kept_in_use, pictures_removed
                                               FROM retention_runs ORDER BY id DESC LIMIT 1) r) AS last_run
              FROM keep""")
 

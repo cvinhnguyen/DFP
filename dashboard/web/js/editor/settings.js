@@ -4,7 +4,7 @@
 
 import {
   findBlock, findSection, NETWORKS, NETWORK_NAMES, LAYOUTS, setLayout, FOOTER_HTML,
-  removeSection, duplicateSection, moveBlock, ARTICLE_SECTIONS, isArticleSection,
+  removeSection, duplicateSection, moveBlock, ARTICLE_SECTIONS, isArticleSection, articlePicture,
 } from '../newsletter/model.js';
 import { blockPadding } from '../newsletter/render.js';
 import { FONTS } from '../newsletter/fonts.js';
@@ -126,6 +126,28 @@ export function createSettings({ store, root, actions, context }) {
         h('button', { type: 'button', class: 'btn ghost small', onclick: () => actions.library(onPick) }, t('settings.replace')),
         h('button', { type: 'button', class: 'btn ghost small', onclick: () => actions.upload(onPick) }, h('span', { html: icon('upload', 16) }), ` ${t('settings.upload')}`),
         onRemove ? h('button', { type: 'button', class: 'st-icon-btn', title: t('settings.removeImage'), 'aria-label': t('settings.removeImage'), html: icon('trash', 18), onclick: onRemove }) : null));
+  }
+
+  // Where an article's picture came from: whose it is and, for a source whose
+  // pictures need permission, the editor's word that it may be used. An
+  // article without a picture can take its own back from its page.
+  function sourcePicture(b) {
+    const img = b.image || {};
+    if (img.src && img.credit) {
+      return h('div', { class: 'st-source-pic' },
+        h('p', { class: 'cf-hint' }, `${t('settings.pictureFrom', { credit: img.credit })} ${t(`settings.pictureRights.${img.rights || 'check'}`)}`),
+        img.rights === 'check' ? h('div', { class: `st-checked${img.allowed ? ' on' : ''}` },
+          toggle(!!img.allowed, (v) => { setBlock(b.id, null, (blk) => { blk.image = { ...blk.image, allowed: v }; }); refresh(); }, t('settings.pictureAllowed')),
+          h('p', { class: 'cf-hint' }, t('settings.pictureAllowedHint'))) : null);
+    }
+    const article = context.articles.find((a) => Number(a.id) === Number(b.itemId));
+    if (!img.src && article && article.picture) {
+      return h('button', { type: 'button', class: 'btn ghost small st-source-use', onclick: () => {
+        setBlock(b.id, null, (blk) => { blk.image = articlePicture(article); });
+        refresh();
+      } }, t('settings.useSourcePicture'));
+    }
+    return null;
   }
 
   function altField(value, onChange) {
@@ -362,8 +384,10 @@ export function createSettings({ store, root, actions, context }) {
           ], b.layout || 'text', (v) => { setBlock(b.id, 'layout', (blk) => { blk.layout = v; }); refresh(); })),
           b.layout && b.layout !== 'text' ? group(t('settings.articleImage'),
             imagePicker(b.image && b.image.src, (img) => setBlock(b.id, null, (blk) => {
-              blk.image = { ...(blk.image || {}), src: img.src, naturalWidth: img.width, naturalHeight: img.height };
+              // A picture of the editors' own: no credit, and no permission to ask.
+              blk.image = { src: img.src, alt: '', naturalWidth: img.width, naturalHeight: img.height };
             }), () => setBlock(b.id, null, (blk) => { blk.image = { src: '', alt: '' }; })),
+            sourcePicture(b),
             altField(b.image && b.image.alt, (v) => setBlock(b.id, 'imageAlt', (blk) => { blk.image = { ...(blk.image || {}), alt: v }; })),
             h('p', { class: 'cf-hint' }, t('settings.imageRights'))) : null,
           field(t('settings.moveTo'), select(ARTICLE_SECTIONS.map((s) => ({ value: s, label: SECTION_NAMES[s] })), b.section, (v) => {

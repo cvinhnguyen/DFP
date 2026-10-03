@@ -185,6 +185,10 @@
 .st-checked { border: 2px solid var(--warn); background: var(--warn-soft); border-radius: 10px; padding: 12px 12px 4px; margin: 0 0 16px; }
 .st-checked.on { border-color: var(--sel); background: var(--sel-soft); }
 .st-checked .cf-toggle { font-weight: 650; margin: 0 0 6px; }
+/* Where an article's picture came from, under the picture's buttons. */
+.st-source-pic { margin: 8px 0 0; }
+.st-source-pic .cf-hint { margin: 0 0 8px; }
+.st-source-use { margin: 8px 0 4px; }
 .st-original { margin: 0 0 12px; font-size: 13.5px; }
 .st-original a { display: inline-flex; align-items: center; gap: 4px; word-break: break-word; }
 .st-social { display: flex; flex-direction: column; gap: 10px; margin: 0 0 10px; }

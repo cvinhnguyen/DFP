@@ -297,6 +297,21 @@ function facts(item) {
 
 // ctx: place (its name), index and total (for "3 / 25"), canPrev, canNext,
 // target (the name of the newsletter picks go into) and topics (a Map by id).
+// The picture from the article's own page, with whose it is and what using it
+// in the newsletter takes (28-article-pictures.sql). Small, so the summary
+// stays in sight.
+function picture(item) {
+  const p = item.picture;
+  if (!p || !p.src) return '';
+  const rights = ['own', 'open', 'check'].includes(p.rights) ? p.rights : 'check';
+  const size = p.width && p.height ? ` width="${Number(p.width)}" height="${Number(p.height)}"` : '';
+  return `
+    <figure class="rd-picture">
+      <img src="${esc(p.src)}" alt="${esc(p.alt || '')}" loading="lazy"${size}>
+      <figcaption>${p.credit ? `${esc(t('reader.pictureCredit', { credit: p.credit }))} · ` : ''}<span class="rd-picture-rights ${rights}">${esc(t(`reader.pictureRights.${rights}`))}</span></figcaption>
+    </figure>`;
+}
+
 export function articleReader(item, ctx) {
   const url = safeUrl(item.url);
   const kind = kindLabel(item);
@@ -323,6 +338,7 @@ export function articleReader(item, ctx) {
        <p class="rd-original">${esc(t('reader.originalTitle'))}: <span${langAttr(item.language)}>${esc(item.title)}</span>. ${esc(t('reader.titleByAi'))}</p>`
     : `<h2 class="rd-title"${langAttr(item.language)}>${esc(item.title)}</h2>`}
     <p class="rd-meta">${meta}</p>
+    ${picture(item)}
     ${eventBox(item)}
     ${chips(item, ctx.topics)}
     ${signalNotes(item)}

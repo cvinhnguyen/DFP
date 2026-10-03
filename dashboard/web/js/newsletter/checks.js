@@ -11,11 +11,12 @@
 // the AI drafted for the greeting or a trend (newsletter/writing.js); it is
 // also what lets AI-written text go out without an AI label under the EU's
 // transparency rules, because a person has reviewed it and the association
-// takes responsibility for it.
+// takes responsibility for it. A picture from a source's page that needs
+// permission waits the same way, for an editor's "Saa käyttää".
 //
 // Warnings are worth a look but can be right as they are.
 
-import { eachBlock, isSent } from './model.js';
+import { eachBlock, isSent, showsPicture } from './model.js';
 import { toText } from './richtext.js';
 import { collectLinks } from './render.js';
 import { PLACEHOLDERS } from './templates.js';
@@ -85,6 +86,11 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
 
   add(errors, 'unchecked', sent.filter(({ block }) => block.type === 'article' && !block.checked).map(({ block, sec }) => item(block, sec)));
   add(errors, 'uncheckedDraft', sent.filter(({ block }) => block.type === 'text' && block.ai && !block.checked).map(({ block, sec }) => item(block, sec)));
+  // A picture from a source's page belongs to its publisher: one from a
+  // source whose pictures need permission waits for an editor to say it may
+  // be used (28-article-pictures.sql).
+  add(errors, 'pictureRights', sent.filter(({ block }) => showsPicture(block) && block.image.rights === 'check' && !block.image.allowed)
+    .map(({ block, sec }) => item(block, sec)));
   add(errors, 'placeholders', sent.filter(({ block }) => hasPlaceholder(block)).map(({ block, sec }) => item(block, sec)));
 
   const links = collectLinks(design);

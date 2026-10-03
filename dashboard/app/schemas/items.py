@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .pictures import Picture
+
 # The places the list can show.
 #   inbox      Uudet: summarised news nobody has decided about, and the theses
 #              of the followed topics, from the last month
@@ -86,6 +88,8 @@ class Item(BaseModel):
     summary: Summary | None
     details: dict | None = Field(description="What the source knows beyond the shared fields. For a thesis: "
                                              "kind, level, programme and licence")
+    picture: Picture | None = Field(default=None, description="The picture from the article's own page, "
+                                    "once n8n has found it")
     from_archive: bool = Field(description="From an archive such as Theseus: summarised only on request, "
                                            "and in a topic only with a learning tag")
     abstract: str | None = Field(description="The author's own abstract, for an archive item")

@@ -1,0 +1,234 @@
+{
+  "id": "artPictures2026a",
+  "name": "Article pictures",
+  "active": true,
+  "nodes": [
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7001",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7002",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7003",
+      "name": "Pick articles",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        240,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "parameters": {
+        "operation": "executeQuery",
+        "options": {},
+        "query": "-- Summarised articles whose picture nobody has looked for yet, newest\n-- first: from the sources whose pages we read, and only while their\n-- text is kept. Ten a run, so a slow site cannot hold the run up past\n-- n8n's time limit. See db/init/28-article-pictures.sql.\nSELECT i.id, coalesce(i.canonical_url, i.source_url) AS url\n  FROM items i\n  JOIN sources s ON s.id = i.source_id\n WHERE i.status = 'summarised'\n   AND i.picture_status IS NULL\n   AND i.text_removed_at IS NULL\n   AND s.picture_rights <> 'none'\n   AND coalesce(i.canonical_url, i.source_url) ~* '^https?://'\n ORDER BY i.id DESC\n LIMIT 10;"
+      }
+    },
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7004",
+      "name": "Find the picture",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        100
+      ],
+      "parameters": {
+        "jsCode": "// For each article: read its page for the picture (og:image, or the site's\n// featured image), download it, and pass it on to the dashboard, which keeps\n// it (POST /api/items/{id}/picture). An article whose page has no picture,\n// or whose page or picture cannot be read, is marked so it is not looked for\n// again. See db/init/28-article-pictures.sql.\n//\n// One article at a time, with a pause between, so no site gets a burst.\nconst AGENT = 'DFP newsletter bot (HAMK student project)';\nconst MAX_BYTES = 10 * 1024 * 1024;\n// A login or bot wall is not the article: its picture would be the site's.\nconst LOGIN_LIKE = /(log ?in|sign ?in|sign ?up|kirjaudu|rekister|access denied|just a moment|are you a robot)/i;\n\nconst unescape = (s) => String(s)\n  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (_, n) => String.fromCodePoint(Number(n)))\n  .replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&#0?39;/g, \"'\")\n  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&').trim();\n\n// A <meta> tag's content, whichever order its attributes come in.\nconst meta = (html, names) => {\n  for (const name of names) {\n    const n = name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n    const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=[\"']${n}[\"'][^>]*?content=[\"']([^\"']+)[\"']`, 'i'))\n      || html.match(new RegExp(`<meta[^>]+content=[\"']([^\"']+)[\"'][^>]*?(?:property|name)=[\"']${n}[\"']`, 'i'));\n    if (m) return unescape(m[1]);\n  }\n  return null;\n};\n\nconst findPicture = (html) => {\n  let src = meta(html, ['og:image:secure_url', 'og:image', 'og:image:url', 'twitter:image', 'twitter:image:src']);\n  if (!src) {\n    const link = html.match(/<link[^>]+rel=[\"']image_src[\"'][^>]*href=[\"']([^\"']+)[\"']/i);\n    if (link) src = unescape(link[1]);\n  }\n  if (!src) {\n    // WordPress marks the post's own picture.\n    const img = html.match(/<img[^>]+class=[\"'][^\"']*wp-post-image[^\"']*[\"'][^>]*>/i);\n    const s = img && img[0].match(/\\ssrc=[\"']([^\"']+)[\"']/i);\n    if (s) src = unescape(s[1]);\n  }\n  return src;\n};\n\n// A picture's address as the page gives it, made whole.\nconst absolute = (src, page) => {\n  if (/^https?:\\/\\//i.test(src)) return src;\n  if (src.startsWith('//')) return `${(page.match(/^(https?:)/i) || ['', 'https:'])[1]}${src}`;\n  const origin = (page.match(/^(https?:\\/\\/[^\\/?#]+)/i) || [])[1];\n  if (!origin) return src;\n  if (src.startsWith('/')) return origin + src;\n  return page.replace(/[?#].*$/, '').replace(/[^\\/]*$/, '') + src;\n};\n\n// The picture's bytes as n8n hands them over: a Buffer, or, from a task\n// runner, the same written out as { type: 'Buffer', data: [...] }.\nconst bytesOf = (body) => {\n  if (!body || typeof body === 'string') return null;\n  if (body.type === 'Buffer' && Array.isArray(body.data)) return Uint8Array.from(body.data);\n  if (body instanceof ArrayBuffer) return new Uint8Array(body);\n  if (ArrayBuffer.isView(body)) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);\n  if (Array.isArray(body)) return Uint8Array.from(body);\n  return null;\n};\n\nconst toBase64 = (bytes) => {\n  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64');\n  let text = '';\n  for (let i = 0; i < bytes.length; i += 1) text += String.fromCharCode(bytes[i]);\n  return btoa(text);\n};\n\nconst pause = (ms) => new Promise((resolve) => (typeof setTimeout === 'function' ? setTimeout(resolve, ms) : resolve()));\n\nconst out = [];\nfor (const item of $input.all()) {\n  const { id, url } = item.json;\n  const result = { id, outcome: 'none', picture_url: null, alt: null, data: null };\n  try {\n    const html = String(await this.helpers.httpRequest({\n      url, timeout: 12000, json: false, headers: { 'User-Agent': AGENT },\n    }));\n    const title = (html.match(/<title[^>]*>([^<]*)<\\/title>/i) || ['', ''])[1];\n    let src = LOGIN_LIKE.test(title) ? null : findPicture(html);\n    if (src) src = absolute(src, url);\n    if (src && /^https?:\\/\\//i.test(src) && !/\\.svg(\\?|#|$)/i.test(src)) {\n      result.picture_url = src;\n      const answer = await this.helpers.httpRequest({\n        url: src, timeout: 15000, encoding: 'arraybuffer', returnFullResponse: true, json: false,\n        headers: { 'User-Agent': AGENT, Referer: url },\n      });\n      const type = String((answer.headers || {})['content-type'] || '');\n      const bytes = bytesOf(answer.body);\n      const size = bytes ? bytes.length : 0;\n      if (!size || size > MAX_BYTES || (type && !/^image\\//i.test(type)) || /svg/i.test(type)) {\n        result.outcome = 'failed';\n        result.error = `not a picture we can use: ${type || 'no type'}, ${size} bytes, ${typeof answer.body}`;\n      } else {\n        result.outcome = 'picture';\n        result.alt = meta(html, ['og:image:alt', 'twitter:image:alt']);\n        result.data = toBase64(bytes);\n      }\n    }\n  } catch (e) {\n    result.outcome = 'failed';\n    // Shown in a failed run's data, for whoever looks into it.\n    result.error = String((e && e.message) || e).slice(0, 300);\n  }\n  out.push({ json: result });\n  await pause(400);\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7005",
+      "name": "Found one",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "found",
+              "leftValue": "={{ $json.outcome === 'picture' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7006",
+      "name": "Send to the dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      },
+      "parameters": {
+        "method": "POST",
+        "url": "=http://dashboard:8000/api/items/{{ $json.id }}/picture",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.picture_url, alt: $json.alt, data: $json.data }) }}",
+        "options": {
+          "timeout": 60000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "5b0e3a52-6c61-4f0e-9d7a-2c1e8f4a7007",
+      "name": "Mark the rest",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        960,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      },
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- No picture on the page (none), or the page or the picture could not\n-- be read (failed): not looked for again.\nUPDATE items SET picture_status = $1, picture_url = nullif($2, '')\n WHERE id = $3::bigint AND picture_status IS NULL;",
+        "options": {
+          "queryReplacement": "={{ [ $json.outcome, $json.picture_url || '', String($json.id) ] }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Pick articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Pick articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick articles": {
+      "main": [
+        [
+          {
+            "node": "Find the picture",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find the picture": {
+      "main": [
+        [
+          {
+            "node": "Found one",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Found one": {
+      "main": [
+        [
+          {
+            "node": "Send to the dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark the rest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  }
+}

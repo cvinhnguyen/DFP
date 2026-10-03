@@ -11,6 +11,7 @@ class RetentionRun(BaseModel):
     chars_removed: int
     cache_removed: int = Field(description="Old answers taken out of the AI's cache")
     kept_in_use: int = Field(description="Old articles kept whole, because a newsletter or an editor has them")
+    pictures_removed: int = Field(default=0, description="Pictures from the articles' pages that went with their text")
 
 
 class Retention(BaseModel):

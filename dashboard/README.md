@@ -112,7 +112,9 @@ choose one with `/password` in the bot.
    association's own: the newsletter as it goes out from its Mailchimp today,
    and the member letter. The others share their look. A template saved
    earlier or an earlier newsletter's look works too. The picked articles go
-   into their sections, and a section with nothing picked is left out. Every
+   into their sections, each with the picture from its own page and a "Kuva:"
+   credit under it (see Pictures from the articles' pages), and a section
+   with nothing picked is left out. Every
    template is the association's own design: Mailchimp's templates are
    Mailchimp's, and its terms forbid copying them.
 4. Edit. Drag a block or a ready-made section in, click any text to write,
@@ -129,8 +131,9 @@ choose one with `/password` in the bot.
    is about one article, not the trend.
 5. Check. Each article starts as its Finnish summary, outlined in amber until
    someone ticks it as checked. Tarkistus lists what stops the email (unchecked
-   articles and AI drafts, the template's sample text, no unsubscribe link, no
-   postal address, no subject line) and what is worth a look (headlines left
+   articles and AI drafts, pictures from the sources' pages that wait for
+   permission, the template's sample text, no unsubscribe link, no postal
+   address, no subject line) and what is worth a look (headlines left
    in English, pictures without a description, empty links, an email big
    enough for Gmail to cut short). Clicking an item shows the block. Every
    preview shows a wireframe, a grey box with a picture icon, where a picture
@@ -338,6 +341,45 @@ There is no free chat with the model: one would only know what is typed
 into it, and the system keeps member data out. An answer is about the
 articles here, and says which.
 
+## Pictures from the articles' pages
+
+Each summarised article comes with the picture from its own page: the
+page's `og:image`, or the featured image on the association's site. Artikkelit
+shows it above the summary, and a picked article starts its newsletter entry
+with it, "Kuva: Yle" under it. In a section whose articles are text, an
+article with a picture has it at its side. The editor removes it, swaps in
+their own from Kuvapankki or an upload, or puts the text-only layout back;
+an article without its picture can take it back with "Käytä artikkelin omaa
+kuvaa". Jira: DM42-37, DM42-31.
+
+A picture on a publisher's page is the publisher's or its photographer's, and
+the newsletters end up in the association's public Mailchimp archive. So each
+source says what its pictures are (`sources.picture_rights`):
+
+| Value | Sources | In the newsletter |
+|---|---|---|
+| `own` | the association's own news, in Finnish and English | used as they are |
+| `open` | an open licence such as CC BY | used, credited |
+| `check` | everything else, the default | Tarkistus stops the export until an editor ticks "Saa käyttää" (permission asked, or a picture the publisher offers for media use) or removes or replaces it |
+| `none` | the journals read only as metadata, and theses | no picture is fetched |
+
+A picture that needs permission is counted on the server too, so it holds
+the draft, the test and the files like an unchecked article does.
+
+How it gets here: `n8n/workflows/article-pictures.json` takes ten
+summarised articles every 15 minutes, reads each page, downloads the picture
+and hands it to `POST /api/items/{id}/picture` with n8n's token. The
+dashboard opens it and saves it again like an upload (shrunk to email size,
+the camera's metadata gone) and keeps it in `images` with the article's id
+and whose it is; `/media/` serves it, and an export carries it into Mailchimp.
+Kuvapankki does not list these pictures; they belong to their articles. The
+same picture for two articles of a source is its logo or a stock photo, not
+the article's own, and is left out, as is anything under 300 by 150 pixels.
+A page with no picture, or one that cannot be read, is not tried again
+(`items.picture_status`). The pictures go with the articles' text after
+`raw_text_retention_days`, unless the article is in a newsletter or kept for
+later. `db/init/28-article-pictures.sql`.
+
 ## Banners and logo
 
 The newsletter template starts with the association's green Uutiskirje
@@ -357,8 +399,9 @@ The text of a collected article goes after `raw_text_retention_days`, 90 by
 default, which an admin changes on Asetukset (30 to 365 days; agree it with
 the client). What goes is the full text, the excerpt from the feed and the
 author's name; the link, title, publisher, tags and the AI's summary stay,
-and the article says when its text went. An article picked into a
-newsletter, sent or not, or kept for later stays whole. Two reasons, from
+and the article says when its text went. The picture from its page goes
+too. An article picked into a newsletter, sent or not, or kept for later
+stays whole. Two reasons, from
 the kickoff: copyright, and the names and opinions of real people that
 article text carries. The cleanup runs in n8n every night
 (`n8n/workflows/retention.json`) and logs each run in `retention_runs`;
@@ -467,8 +510,12 @@ for it.
   preview cannot use it up. A link to choose a password works the same way,
   and is used when the form is sent. The bot sends links only in private chats.
 - Everything under `/api` needs a login, except logging in and choosing a
-  password with a link. The bot's account
-  endpoint needs n8n's token instead.
+  password with a link. The bot's account endpoint and the one that takes
+  the articles' pictures need n8n's token instead.
+- The dashboard never fetches a picture from a publisher's site itself: n8n,
+  which reads those pages anyway, downloads it and hands it over. The
+  dashboard opens it as a picture and saves it again before keeping it, so a
+  file that is not a picture never goes further.
 - A request that changes something is refused when it comes from another
   website.
 - Titles and summaries come from other websites and from a language model.

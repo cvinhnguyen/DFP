@@ -3,6 +3,8 @@
 Every image is opened and saved again, which does three things: it proves the
 file really is a picture, it shrinks big photos to what an email needs, and it
 drops the camera's metadata, which can include where the photo was taken.
+The pictures n8n brings from the articles' pages go through the same
+(services/pictures.py).
 """
 
 from io import BytesIO
@@ -27,7 +29,7 @@ class BadImage(Exception):
         self.code = code
 
 
-def _prepare(raw):
+def prepare(raw):
     if len(raw) > MAX_BYTES:
         raise BadImage("image_too_big", "The image is over 10 MB. Save it smaller and try again.")
     try:
@@ -60,7 +62,7 @@ def _prepare(raw):
 
 
 def upload(raw, filename, issue_id, user_id):
-    mime, data, width, height = _prepare(raw)
+    mime, data, width, height = prepare(raw)
     key = queries.add(issue_id, (filename or "")[:200] or None, mime, data, width, height, user_id)
     return _shape({"key": key, "filename": filename, "width": width, "height": height, "created_at": None})
 

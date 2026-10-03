@@ -19,6 +19,31 @@ export const WIDTH = 660;
 // be dropped rather than shown.
 export const ARTICLE_SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
 
+// The layouts that show an article's picture; in 'text' it stays out.
+export const PICTURE_LAYOUTS = ['image-left', 'image-right', 'image-top'];
+
+export function showsPicture(block) {
+  return block.type === 'article' && PICTURE_LAYOUTS.includes(block.layout) && !!(block.image && block.image.src);
+}
+
+// The picture from the article's own page (28-article-pictures.sql), as an
+// article block keeps it: with whose it is, and, for a source whose pictures
+// need permission, whether an editor has said it may be used. None, an empty
+// picture.
+export function articlePicture(article) {
+  const p = article && article.picture;
+  if (!p || !p.src) return { src: '', alt: '', naturalWidth: 0, naturalHeight: 0 };
+  return {
+    src: p.src,
+    alt: p.alt || article.title_fi || article.title || '',
+    naturalWidth: p.width || 0,
+    naturalHeight: p.height || 0,
+    credit: p.credit || '',
+    rights: p.rights || 'check',
+    allowed: false,
+  };
+}
+
 export const BLOCK_TYPES = ['text', 'image', 'button', 'divider', 'spacer', 'social', 'video', 'logo', 'footer', 'columns', 'article'];
 
 export const LAYOUTS = {
@@ -232,8 +257,10 @@ export function articleBlock(article, section = article.section) {
     summary: fromText(startingText(article, variant)),
     source: sourceLine(article, variant),
     button: { show: variant === 'event', text: 'Tutustu ja ilmoittaudu' },
-    image: { src: '', alt: '', naturalWidth: 0, naturalHeight: 0 },
-    layout: 'text',
+    // The article's own picture, at its side, unless the section gives its
+    // articles another layout (templates.js, placeArticles).
+    image: articlePicture(article),
+    layout: article.picture && article.picture.src ? 'image-right' : 'text',
   });
 }
 

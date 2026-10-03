@@ -32,7 +32,8 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule, /reschedule and /help, and passes /login, /password, /adduser, /people, /remove and /alerts to the dashboard |
 | `bot-commands.json` | the list Telegram suggests when someone types / to the bot, as BotFather's /setcommands would set it: the everyday commands for everyone, and the admin commands too in each admin's own chat. Every morning, or Run now after a change |
 | `alerts.json` | tells the team on Telegram when something breaks: a source whose last two checks failed or found nothing, or a workflow that stopped with an error. Once when it breaks, and once when a source works again; also 80 % of the AI budget, and a budget used up. /alerts in the bot says where. The workflows that run on their own name it as their error workflow |
-| `retention.json` | every night at 3.30, takes away the text of articles collected longer ago than `raw_text_retention_days` (90), except what a newsletter or an editor still has, and old answers from the AI's cache |
+| `retention.json` | every night at 3.30, takes away the text of articles collected longer ago than `raw_text_retention_days` (90), and the pictures from their pages, except what a newsletter or an editor still has, and old answers from the AI's cache |
+| `article-pictures.json` | every 15 minutes, finds the picture on ten summarised articles' pages, downloads it and hands it to the dashboard (`POST /api/items/{id}/picture`) |
 
 `ingest-api.json` is the write path for collected items: `POST
 /webhook/ingest` with a batch, and it answers accepted or rejected for each
@@ -137,6 +138,28 @@ the rest noticing:
   scored highest, score, the window as `period_start` and `period_end`), and
   a row in `signal_items` for each article it came from. The dashboard reads
   them through `GET /api/signals`.
+
+`article-pictures.json` brings each summarised article's own picture to
+the dashboard, for Artikkelit and as the picture its newsletter entry starts
+with. Every 15 minutes it takes ten articles nobody has looked at yet,
+newest first, from the sources whose `picture_rights` is not `none`. For
+each it reads the page for `og:image` (or `twitter:image`, or the featured
+image of a WordPress site such as the association's), downloads the picture
+with the bot's user agent, and posts it to the dashboard with the ingest
+token, one at a time, so the dashboard notices a logo several articles
+share. A page with no picture is marked `none`, and a page or picture that
+cannot be read `failed`; neither is tried again. A login or bot wall is not
+the article's page and counts as no picture. Jira: DM42-37, DM42-31.
+
+- In (to the dashboard): `{"url": "...", "alt": "..." | null, "data":
+  "<base64>"}`, at most 10 MB.
+- Out: `{"status": "stored" | "generic" | "small" | "failed" | "none"}`; the
+  dashboard has marked the article either way.
+- A picture passes through as base64, so the workflow keeps no data of a
+  successful run (`saveDataSuccessExecution: none`): n8n's database would
+  fill with pictures. A failed run is kept, with each article's error.
+- Run now in the editor takes the next ten; the articles collected before it
+  existed get their pictures that way, or over a few hours on their own.
 
 `writing-help.json` writes for the editors when they press a button in the
 dashboard: subject lines and preview texts, a draft of the greeting, a

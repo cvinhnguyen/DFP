@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import database, errors, middleware
 from .dependencies import current_user
 from .routes import (archive, auth, brand, comments, costs, images, issues, items, mailchimp, overview,
-                     retention, signals, telegram, templates, topics, writing)
+                     pictures, retention, signals, telegram, templates, topics, writing)
 
 log = logging.getLogger("uvicorn.error")
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -67,8 +67,10 @@ private.include_router(brand.router)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(private)
-# Only n8n, with its token: the bot's account commands.
+# Only n8n, with its token: the bot's account commands, and the pictures it
+# finds on the articles' pages.
 app.include_router(telegram.router, prefix="/api")
+app.include_router(pictures.router, prefix="/api")
 # Open to anyone with the address: newsletter images, for the readers.
 app.include_router(images.public)
 app.middleware("http")(middleware.guard)

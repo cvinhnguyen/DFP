@@ -10,6 +10,7 @@ export function retentionCard(state) {
   const run = state.last_run;
   const lastRun = run
     ? t('keep.lastRun', { when: when(run.ran_at), cleared: tn('keep.articles', run.items_cleared), kept: number(run.kept_in_use) })
+      + (run.pictures_removed ? ` ${tn('keep.pictures', run.pictures_removed)}` : '')
     : t('keep.notRunYet');
   return `
     <section class="card set-card keep-card">

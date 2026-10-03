@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .pictures import Picture
+
 # The parts of the newsletter the tool fills from collected articles. The
 # rest (the greeting, tips, the calendar) the editors write themselves.
 SectionKey = Literal["highlights", "events", "own_news", "member_news"]
@@ -30,6 +32,8 @@ class PickedArticle(BaseModel):
     summary: str | None
     excerpt: str | None
     published_at: datetime | None
+    picture: Picture | None = Field(default=None, description="The picture from the article's own page, "
+                                    "which its entry in the newsletter starts with")
     decided_by: str | None
     decided_at: datetime
 

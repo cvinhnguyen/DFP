@@ -166,11 +166,14 @@ def mark_sent(issue_id, user_id):
 
 # What keeps an email in the dashboard, the way Tarkistus counts it
 # (web/js/newsletter/checks.js): an article or a text the AI drafted that no
-# person has ticked as read, the template's sample text, no subject line.
+# person has ticked as read, a picture from a source's page that nobody has
+# said may be used, the template's sample text, no subject line.
 # The pages stop there before the email goes to Mailchimp, as a draft, a test
 # or a file; this is the same rule for a request that comes some other way.
 # The four sections of picked articles go out only with an article in them.
 ARTICLE_SECTIONS = ("own_news", "events", "member_news", "highlights")
+# The layouts that show an article's picture; in "text" it stays out.
+PICTURE_LAYOUTS = ("image-left", "image-right", "image-top")
 
 
 def _blocks(blocks):
@@ -205,6 +208,10 @@ def not_ready(issue_id):
                 problems["uncheckedDraft"] = problems.get("uncheckedDraft", 0) + 1
             if block.get("placeholder"):
                 problems["placeholders"] = problems.get("placeholders", 0) + 1
+            picture = block.get("image") or {}
+            if (block.get("type") == "article" and picture.get("src") and block.get("layout") in PICTURE_LAYOUTS
+                    and picture.get("rights") == "check" and not picture.get("allowed")):
+                problems["pictureRights"] = problems.get("pictureRights", 0) + 1
     if not (found.get("subject") or "").strip():
         problems["subject"] = 1
     return problems

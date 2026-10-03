@@ -85,6 +85,11 @@ SELECT i.id,
        -- opened by the editor asking, see 21-titles-events.sql
        EXISTS (SELECT 1 FROM item_views v WHERE v.item_id = i.id AND v.user_id = %(user)s) AS seen,
        i.details,
+       -- the picture from the article's own page, see 28-article-pictures.sql
+       (SELECT jsonb_build_object('src', '/media/' || img.key, 'width', img.width, 'height', img.height,
+                                  'alt', i.picture_alt, 'credit', img.credit,
+                                  'rights', coalesce(img.rights, 'check'))
+          FROM images img WHERE img.item_id = i.id) AS picture,
        coalesce(s.learning_tag_required, FALSE) AS from_archive,
        -- the author's own abstract, which an archive item is read from
        CASE WHEN s.learning_tag_required THEN i.raw_text END AS abstract,

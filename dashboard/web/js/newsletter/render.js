@@ -15,7 +15,7 @@
 // into a text block of the association's own Mailchimp template.
 
 import {
-  WIDTH, BLOCK_PADDING, BUTTON_SIZES, NETWORK_NAMES, columnShares, isArticleSection, isSent,
+  WIDTH, BLOCK_PADDING, BUTTON_SIZES, NETWORK_NAMES, columnShares, isArticleSection, isSent, showsPicture,
 } from './model.js';
 import { parse, escapeText, escapeAttr, styleText, cleanHref, toText, links as textLinks } from './richtext.js';
 import { fontStack } from './fonts.js';
@@ -475,8 +475,12 @@ const BLOCKS = {
     const sideWidth = Math.floor(width / 3) - 12;
     // The picture, or where it will go: a hint on the canvas and a grey
     // shape in a template's thumbnail. An email without it is just text.
+    // A picture from the article's page says whose it is under it.
+    const credit = img && block.image.credit
+      ? `<p class="nl-credit" style="${css({ ...textCss('p', ctx), margin: '4px 0 0', 'font-size': '11px', 'line-height': '1.4', color: '#6b6b6b' })}">Kuva: ${escapeText(block.image.credit)}</p>`
+      : '';
     const pictureOf = (w, high) => {
-      if (img) return linked({ url: block.url, blank: true }, imageTag(block.image.src, block.image.alt, w, ctx.styles.image, ctx, { fill: true, mcEdit: `${block.id}_img` }));
+      if (img) return linked({ url: block.url, blank: true }, imageTag(block.image.src, block.image.alt, w, ctx.styles.image, ctx, { fill: true, mcEdit: `${block.id}_img` })) + credit;
       if (ctx.mode === 'canvas') return placeholderBox(ctx.t('canvas.addArticleImage'), ctx, high);
       if (ctx.sketch || ctx.wireframe) return wireBox(0, high, { label: ctx.wireframe ? ctx.t('preview.pictureHere') : '' });
       return '';
@@ -714,7 +718,10 @@ function pasteBlock(block, ctx) {
       return block.columns.map((c) => c.blocks.map((b) => pasteBlock(b, ctx)).join('')).join('');
     case 'article': {
       let out = `<h3 class="nl-h3" style="${css(textCss('h3', ctx))}">${escapeText(block.title)}</h3>`;
-      if (block.image && block.image.src) out += `<p><img src="${escapeAttr(ctx.mapSrc(block.image.src))}" alt="${escapeAttr(block.image.alt || '')}" width="200" style="max-width:100%;height:auto;"></p>`;
+      if (showsPicture(block)) {
+        out += `<p><img src="${escapeAttr(ctx.mapSrc(block.image.src))}" alt="${escapeAttr(block.image.alt || '')}" width="200" style="max-width:100%;height:auto;"></p>`;
+        if (block.image.credit) out += `<p style="font-size:11px;color:#6b6b6b;">Kuva: ${escapeText(block.image.credit)}</p>`;
+      }
       out += renderRich(block.summary, ctx);
       if (block.source && !block.hideSource && toText(block.source)) out += renderRich(block.source, ctx);
       if (block.button && block.button.show && cleanHref(block.url)) {
@@ -806,7 +813,7 @@ export function imageSources(design) {
   const visit = (b) => {
     if ((b.type === 'image' || b.type === 'logo') && b.src) found.add(b.src);
     if (b.type === 'video' && b.thumb && b.thumb.src) found.add(b.thumb.src);
-    if (b.type === 'article' && b.image && b.image.src) found.add(b.image.src);
+    if (showsPicture(b)) found.add(b.image.src);
     if (b.type === 'social' && b.display !== 'text') (b.items || []).filter((i) => cleanHref(i.url)).forEach((i) => found.add(`/img/social/${i.network}-${b.iconStyle || 'color'}.png`));
     if (b.type === 'columns') b.columns.forEach((c) => c.blocks.forEach(visit));
   };

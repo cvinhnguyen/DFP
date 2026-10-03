@@ -21,8 +21,9 @@ def _like(text):
 
 def page(query, issue_id, limit, offset):
     """One page of images, newest first, with how many there are in all.
-    query matches the file name; issue_id keeps one issue's images."""
-    where = []
+    query matches the file name; issue_id keeps one issue's images. The
+    pictures from the articles' pages belong to their articles, not here."""
+    where = ["item_id IS NULL"]
     params = {"limit": limit, "offset": offset}
     if query:
         where.append("filename ILIKE %(q)s")
