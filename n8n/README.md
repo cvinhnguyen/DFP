@@ -34,6 +34,7 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `alerts.json` | tells the team on Telegram when something breaks: a source whose last two checks failed or found nothing, or a workflow that stopped with an error. Once when it breaks, and once when a source works again; also 80 % of the AI budget, and a budget used up. /alerts in the bot says where. The workflows that run on their own name it as their error workflow |
 | `retention.json` | every night at 3.30, takes away the text of articles collected longer ago than `raw_text_retention_days` (90), and the pictures from their pages, except what a newsletter or an editor still has, and old answers from the AI's cache |
 | `article-pictures.json` | every 15 minutes, finds the picture on ten summarised articles' pages, downloads it and hands it to the dashboard (`POST /api/items/{id}/picture`) |
+| `members.json` | every Monday at 5.30, reads the association's members page for its member organisations and their websites, so their articles are suggested for Jäsenkuulumisia |
 
 `ingest-api.json` is the write path for collected items: `POST
 /webhook/ingest` with a batch, and it answers accepted or rejected for each
@@ -160,6 +161,17 @@ the article's page and counts as no picture. Jira: DM42-37, DM42-31.
   fill with pictures. A failed run is kept, with each article's error.
 - Run now in the editor takes the next ten; the articles collected before it
   existed get their pictures that way, or over a few hours on their own.
+
+`members.json` reads the association's page of community members
+(`members_page_url` in `app_settings`) every Monday, or now with Run now. It
+takes the links under its two headings, päättävät and kannattavat
+yhteisöjäsenet, as each member's name and website, and hands them to
+`sync_members()` (`db/init/29-members.sql`): new ones are added, the rest
+kept up to date, and one no longer on the page marked as no longer listed.
+A page that gives fewer than five, as a changed layout would, stops the run
+with an error, and the team hears of it, rather than every member leaving.
+Only organisations are read: the association's individual members are on
+another page and are personal data. Jira: DM42-32.
 
 `writing-help.json` writes for the editors when they press a button in the
 dashboard: subject lines and preview texts, a draft of the greeting, a

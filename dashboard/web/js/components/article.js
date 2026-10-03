@@ -4,7 +4,7 @@
 // happens on a click.
 // Jira: DM42-80, DM42-31
 
-import { t, tn, currentLanguage } from '../texts.js';
+import { t, tn, has, currentLanguage } from '../texts.js';
 import { esc, safeUrl, date, when, number, languageName, finnishDay } from '../format.js';
 import { colourOf } from './side.js';
 import { icon } from '../ui/icons.js';
@@ -228,6 +228,15 @@ function body(item) {
   return `<p class="rd-state attention-${item.status}">${esc(stateText(item))}${action}</p>${excerpt}`;
 }
 
+// Why a section is suggested, in a few words (services/suggest.py): an
+// event's day, a member's name. Nothing for Nostoja kentältä, the default.
+function suggestionWhy(item) {
+  const reason = item.suggestion_reason;
+  if (!reason || !has(`reader.why.${reason}`)) return '';
+  const detail = item.suggestion_detail || '';
+  return t(`reader.why.${reason}`, { name: detail, date: /^\d{4}-\d{2}-\d{2}$/.test(detail) ? date(detail) : detail });
+}
+
 function decision(item, target) {
   if (item.decision === 'picked' && item.pick_issue_status === 'sent') {
     return `<div class="rd-decide"><p class="rd-sent">${esc(t('reader.sentIn', { issue: item.pick_issue_name }))}</p></div>`;
@@ -243,8 +252,9 @@ function decision(item, target) {
   const buttons = SECTIONS.map((s, n) => {
     const chosen = picked && item.pick_section === s;
     const suggested = !item.decision && item.suggested_section === s;
+    const why = suggested ? suggestionWhy(item) : '';
     const badge = chosen ? `<span class="rd-sec-badge">${esc(t('reader.chosen'))}</span>`
-      : (suggested ? `<span class="rd-sec-badge">${esc(t('reader.suggested'))}</span>` : '');
+      : (suggested ? `<span class="rd-sec-badge">${esc(t('reader.suggested'))}</span>${why ? `<small class="rd-sec-why">${esc(why)}</small>` : ''}` : '');
     return `<button type="button" class="rd-sec${chosen ? ' chosen' : ''}${suggested ? ' suggested' : ''}"
               data-act="pick" data-section="${s}" aria-pressed="${chosen}">
               <span class="rd-sec-name">${icon(chosen ? 'check' : 'plus', 16)}<span>${esc(t(`section.${s}`))}</span></span>

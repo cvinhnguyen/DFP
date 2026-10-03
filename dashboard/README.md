@@ -18,8 +18,9 @@ The editors' web app, in Finnish with an English switch for the team.
   so the editors find their way in both. Blocks, sections, styles, a check
   of everything that needs a look, a phone view, a preview, comments, and
   undo. It starts from a template with the picked articles in place.
-- **Asetukset**, for admins: the Mailchimp connection, and what the AI costs
-  against its monthly budget.
+- **Asetukset**, for admins: the Mailchimp connection, the banners and logo
+  new emails start with, what the AI costs against its monthly budget, how
+  long articles are kept, and the member organisations.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
 DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
@@ -252,6 +253,42 @@ about other fields.
 Keys, whenever no text box has the focus: J and K move down and up the list,
 1 to 4 add the article to a section, L keeps it for later, X leaves it out.
 After each decision a note offers to take it back.
+
+### Which section is suggested
+
+Each article suggests the section it most likely belongs in, marked
+"Ehdotus" with the reason under it. `services/suggest.py` decides; the first
+rule that fits:
+
+| Rule | Section | Reason shown |
+|---|---|---|
+| a section the workflow that brought it gave | that one | Valittu lähetettäessä |
+| an event still to come, by the date the AI found in it | Tapahtumat | Tapahtuma 6.10.2026 |
+| the last day to sign up for something an event word names, such as a call for webinar presenters | Tapahtumat | Ilmoittautuminen 7.10.2026 mennessä |
+| an event word and an invitation ("ilmoittaudu", "kutsu", "call for", "save the date"), with no date | Tapahtumat | Kutsu tapahtumaan |
+| the association's own "Mitä kuuluu jäsenille" posts | Jäsenkuulumisia | Yhdistyksen jäsenkuulumisista |
+| anything else on the association's own site | Ajankohtaista yhdistykseltä | Yhdistyksen omalta sivulta |
+| a member organisation's own website, or a member as the publisher | Jäsenkuulumisia | Jäseneltä: Sanoma Pro |
+| the association named in the title or summary | Ajankohtaista yhdistykseltä | Mainitsee yhdistyksen |
+| a member named in the title, as Finnish bends it: HAMKin, XAMK:n | Jäsenkuulumisia | Mainitsee jäsenen: … |
+| anything else | Nostoja kentältä | |
+
+An event that has been is news, so a past date counts for nothing: the
+association's report of its own webinar is its news. A word alone does not
+make an event either: a minister's speech at a seminar names one but invites
+nobody, and a funding call's deadline is not an event's.
+
+The members are the association's community members, päättävät and
+kannattavat, which `n8n/workflows/members.json` reads from its members page
+every Monday (`members_page_url` in `app_settings`), with each member's
+website: 31 so far. A member no longer on the page stops counting. Only
+organisations are read; individual members are personal data and never are.
+Asetukset lists them. In a title, a member is found by its name without Oy or
+ry, each part of a name with a slash, an acronym such as XAMK or HAMK
+matched as written, so the Norwegian "takk" is not TAKK, and a long word its
+website is named after, such as itslearning; never by a short ordinary word,
+so not every "Linnan" is Linnan Kehitys. `GET /api/members`;
+`db/init/29-members.sql`.
 
 **Muokkaa aiheita** at the end of the topics opens the topics themselves: the
 list shows each topic, and the pane on the right renames it, follows it, adds

@@ -66,6 +66,7 @@ docker compose up -d
 | `alerts` | what the team was told on Telegram: sources that stopped working, workflows that failed, the AI budget, and when each was over | `23-alerts.sql` |
 | `ai_budget` (view) | this month's AI spending against `monthly_budget_eur`: warn at 80 %, over when used up | `24-ai-budget.sql` |
 | `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, the pictures from their pages that went with it, and the old ones kept because they are in use | `25-retention.sql`, `28` |
+| `members` | the association's member organisations from its members page, with their websites, so their articles are suggested for Jäsenkuulumisia; organisations only | `29-members.sql` |
 | `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, imported from their public archive to check the system against (`docs/evaluation.md`) | `26-archive.sql` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
 | `item_picks` | what the editors decided about each article: picked (for which issue and which of the four sections), later, or not used | `17-newsletter.sql`, `19` |

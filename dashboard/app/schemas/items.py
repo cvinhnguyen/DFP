@@ -111,7 +111,13 @@ class Item(BaseModel):
     pick_issue_status: str | None = Field(description="draft, or sent once that newsletter has gone out")
     decided_by: str | None
     decided_at: datetime | None
-    suggested_section: str = Field(description="The section it most likely belongs in, as the default when picking")
+    suggested_section: str = Field(description="The section it most likely belongs in, as the default when picking "
+                                   "(services/suggest.py)")
+    suggestion_reason: str | None = Field(default=None, description="Why: chosen, event, deadline, invitation, "
+                                          "member_post, own_site, member_site, association_named or member_named; "
+                                          "none for Nostoja kentältä")
+    suggestion_detail: str | None = Field(default=None, description="What the reason names: the member, or the day "
+                                          "of the event or of the deadline")
 
 
 class Counts(BaseModel):

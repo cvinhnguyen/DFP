@@ -13,6 +13,7 @@ import { toast } from '../ui/dialogs.js';
 import { costsCard } from '../components/costs.js';
 import { retentionCard } from '../components/retention.js';
 import { brandCard } from '../components/brand.js';
+import { membersCard } from '../components/members.js';
 
 export function showSettings(root, { user }) {
   let state = null;
@@ -20,9 +21,10 @@ export function showSettings(root, { user }) {
   let keep = null;
   let brand = null;
   let brandBusy = null;   // the banner or logo being uploaded
+  let members = null;
   let gone = false;
   let busy = false;
-  const problems = { mailchimp: '', costs: '', keep: '', brand: '' };
+  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '' };
 
   function status() {
     if (!state) return '';
@@ -45,7 +47,8 @@ export function showSettings(root, { user }) {
       ${problems.mailchimp ? `<p class="problem">${esc(problems.mailchimp)}</p>` : (state ? mailchimpCard() : '')}
       ${problems.brand ? `<p class="problem">${esc(problems.brand)}</p>` : (brand ? brandCard(brand, brandBusy) : '')}
       ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
-      ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}`;
+      ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}
+      ${problems.members ? `<p class="problem">${esc(problems.members)}</p>` : (members ? membersCard(members) : '')}`;
   }
 
   function mailchimpCard() {
@@ -109,6 +112,17 @@ export function showSettings(root, { user }) {
     } catch (e) {
       if (e.status === 401) return;
       problems.keep = e.message;
+    }
+    if (!gone) render();
+  }
+
+  async function loadMembers() {
+    try {
+      members = await api.get('/api/members');
+      problems.members = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.members = e.message;
     }
     if (!gone) render();
   }
@@ -248,5 +262,6 @@ export function showSettings(root, { user }) {
   loadBrand();
   loadCosts();
   loadRetention();
+  loadMembers();
   return { leave() { gone = true; } };
 }

@@ -37,6 +37,7 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("29-members.sql", "SELECT to_regclass('public.members') IS NOT NULL AS ok"),
     ("28-article-pictures.sql", """SELECT EXISTS (SELECT 1 FROM information_schema.columns
                                     WHERE table_name = 'sources' AND column_name = 'picture_rights') AS ok"""),
     ("27-brand.sql", "SELECT EXISTS (SELECT 1 FROM app_settings WHERE key = 'brand_logo') AS ok"),
