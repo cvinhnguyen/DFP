@@ -30,12 +30,23 @@ class TrendDraft(Draft):
     signal: Signal = Field(description="The signal, as /api/signals gives it, so the box can be made again around the text")
 
 
+class AskPrevious(BaseModel):
+    question: str = Field(max_length=300, description="The question before, as it was answered")
+    answer: str = Field(max_length=3000, description="Its answer, citing its articles as [1], [2]…")
+    titles: list[str] = Field(default=[], max_length=8, description="The titles of the articles that answer cites, "
+                              "in order, so a follow-up can say \"the second one\"")
+
+
 class AskIn(BaseModel):
     question: str = Field(min_length=3, max_length=300, description="In Finnish, as the summaries are")
     days: int = Field(default=90, ge=7, le=3650, description="How far back to look, by the article's date")
+    previous: AskPrevious | None = Field(default=None, description="The question before in the conversation, for a "
+                                         "follow-up such as \"Entä lukioissa?\"; left out, the question stands alone")
 
 
 class AskAnswer(Usage):
     answer: str | None = Field(description="The AI's answer, citing the articles as [1], [2]…; "
                                "null when no article fits the question, and nothing was asked")
     sources: list[Item] = Field(description="The articles it read, in the order the numbers cite them")
+    asked_as: str | None = Field(default=None, description="A follow-up as the AI wrote it out whole to find its "
+                                 "articles, when that differs from the question asked")

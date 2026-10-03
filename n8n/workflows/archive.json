@@ -1,0 +1,96 @@
+{
+  "id": "nlArchive2026abc",
+  "name": "Newsletter archive",
+  "active": true,
+  "nodes": [
+    {
+      "id": "8d2e3f40-5b6c-4d7e-9f00-1b2c3d4e5001",
+      "name": "Every Monday",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6,
+              "triggerAtMinute": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8d2e3f40-5b6c-4d7e-9f00-1b2c3d4e5002",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8d2e3f40-5b6c-4d7e-9f00-1b2c3d4e5003",
+      "name": "Bring in new newsletters",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        100
+      ],
+      "notes": "The association's newsletters sent since last week, from its public archive in Mailchimp, so the dashboard can compare each with what the system found (Uutiskirjeet → Arkisto). The dashboard reads the archive; this only asks it to. Until an admin gives the archive's address there is nothing to do. dashboard/app/services/archive.py, db/init/32-archive-import.sql.",
+      "parameters": {
+        "method": "POST",
+        "url": "http://dashboard:8000/api/archive/refresh",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday": {
+      "main": [
+        [
+          {
+            "node": "Bring in new newsletters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Bring in new newsletters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26"
+  }
+}

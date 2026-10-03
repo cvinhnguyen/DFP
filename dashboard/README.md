@@ -6,7 +6,8 @@ The editors' web app, in Finnish with an English switch for the team.
   topics and lists on the left, the list in the middle, the article on the
   right with its Finnish summary, its subject tags and the buttons that
   decide. The panel names the newsletter the article goes into, and each of
-  its four sections says what belongs there; pressing one adds the article.
+  its five sections says what belongs there, Learning Factory's trainings
+  the fifth; pressing one adds the article.
   "Säästä myöhemmäksi" keeps it for later and "Ei käytetä" leaves it out.
   The next article opens by itself, and keys do the same as the buttons.
   Both editors see who decided what. Skipped and failed articles say why,
@@ -20,8 +21,8 @@ The editors' web app, in Finnish with an English switch for the team.
   undo. It starts from a template with the picked articles in place.
 - **Asetukset**, for admins: the Mailchimp connection, the banners and logo
   new emails start with, what the AI costs against its monthly budget, how
-  long articles are kept, the member organisations, and how often the
-  suggested sections were right.
+  long articles are kept, the member organisations, what each source's
+  pictures are, and how often the suggested sections were right.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
 DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
@@ -252,7 +253,7 @@ joins a topic only when it also has a learning tag, because most theses are
 about other fields.
 
 Keys, whenever no text box has the focus: J opens the article before and K
-the one after, 1 to 4 add the article to a section, L keeps it for later, X
+the one after, 1 to 5 add the article to a section, L keeps it for later, X
 leaves it out. After each decision a note offers to take it back.
 
 On a narrower screen, a tablet or a phone, the left column folds away and a
@@ -280,6 +281,7 @@ rule that fits:
 | an event word and an invitation ("ilmoittaudu", "kutsu", "call for", "save the date"), with no date | Tapahtumat | Kutsu tapahtumaan |
 | the association's own "Mitä kuuluu jäsenille" posts | Jäsenkuulumisia | Yhdistyksen jäsenkuulumisista |
 | a section the editors chose for the source, see below | that one | Toimittajien valinta tälle lähteelle |
+| Learning Factory's own sites, learningfactory.fi and its course hub | Learning Factory | Learning Factoryn sivulta |
 | anything else on the association's own site | Ajankohtaista yhdistykseltä | Yhdistyksen omalta sivulta |
 | a member organisation's own website, or a member as the publisher | Jäsenkuulumisia | Jäseneltä: Sanoma Pro |
 | the association named in the title or summary | Ajankohtaista yhdistykseltä | Mainitsee yhdistyksen |
@@ -412,10 +414,17 @@ read and pick for the newsletter, and J and K go through them. When no
 article fits, the dashboard says so, the AI is not asked, and one button
 asks again over a longer time. An answer can be copied with its articles.
 The conversation lasts as long as the browser tab, the last 15 questions,
-and Uusi keskustelu starts again, with a note to take that back. Each
-question is answered on its own: the AI does not remember the ones before,
-and the box under the conversation says so. On a phone the box stays at the
-bottom of the screen.
+and Uusi keskustelu starts again, with a note to take that back. On a phone
+the box stays at the bottom of the screen.
+
+A question goes with the one answered before it, so a follow-up works: "Entä
+lukioissa?" or "Kerro lisää toisesta jutusta". A follow-up has few words to
+find articles by, so the AI first writes it out whole from the question
+before, its answer and the titles of its articles, "Mitä on kerrottu
+oppimistulosten laskusta lukioissa?", and the articles are found and the
+answer written for that. The conversation shows it under the question,
+"Haettu muodossa: …". A question that stands on its own, a new subject,
+is kept as it is. In `llm_usage` the rewriting is `writing-standalone`.
 
 Finding the articles is `queries/ask.py`: any word of the question, as the
 Finnish stemmer leaves it and as the start of a word, in the title, the
@@ -451,6 +460,14 @@ source says what its pictures are (`sources.picture_rights`):
 
 A picture that needs permission is counted on the server too, so it holds
 the draft, the test and the files like an unchecked article does.
+
+An admin chooses what each source's pictures are on Asetukset, in the card
+Lähteiden kuvat (`GET /api/sources/pictures`, `PUT
+/api/sources/{id}/pictures`). The pictures already kept from the source say
+so too from the next newsletter on; an email in progress keeps what it has.
+With "Ei kuvia" n8n fetches no more, and the source's pictures that no
+picked or kept article, no email and no template uses are taken away; if
+the source gets pictures back, its articles are looked at again.
 
 How it gets here: `n8n/workflows/article-pictures.json` takes ten
 summarised articles every 15 minutes, reads each page, downloads the picture
@@ -495,15 +512,36 @@ Asetukset shows the last one and what the next night will take. Jira: DM42-45.
 
 ## The newsletter archive
 
-The association's past newsletters can be imported from their public archive
-in Mailchimp, to check what the system finds against what the editors chose:
+The association's past newsletters come from their public archive in
+Mailchimp, to check what the system finds against what the editors chose.
+**Uutiskirjeet → Arkisto ja vertailu** lists them, newest first, with how
+many of each one's links are on sites the system follows and how many it
+had collected, by the day the newsletter went out or later. One newsletter
+shows its links under the headings they stood under, each marked: picked in
+the dashboard, found in time, found later, a followed site but not found, or
+a site not followed; and what the system summarised in the 30 days before
+that the newsletter did not use.
+
+A newsletter made in the dashboard is matched with its copy in the archive
+by its subject line, or else by the day it was sent, within two days. Its
+page then says how many of the picks went out, and lists the ones that did
+not: a link in the email that no pick has was added by hand.
+
+An admin gives the archive's address once on that page: the "past
+newsletters" link in any of the newsletters. It is kept in `app_settings`
+(`newsletter_archive_url`), not in the repository. `n8n/workflows/archive.json`
+brings in the newsletters sent since every Monday, and "Tuo uudet nyt" does
+it at once; a newsletter already here stays as it is. `db/init/32-archive-import.sql`.
+
+From the command line, which reads every newsletter again:
 
 ```bash
 docker compose exec dashboard python -m app.cli.archive import "<archive address>"
 docker compose exec dashboard python -m app.cli.archive list
 ```
 
-`GET /api/archive` and `GET /api/archive/{id}` give the comparison. How it
+`GET /api/archive`, `GET /api/archive/{id}`, `GET`/`PUT /api/archive/source`,
+`POST /api/archive/import`, and `POST /api/archive/refresh` for n8n. How it
 works and the first results are in `docs/evaluation.md`. Jira: DM42-47.
 
 ## How the code is laid out

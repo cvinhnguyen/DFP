@@ -15,7 +15,8 @@ month's AI budget is used up: an editor pressed the button.
 
 Asking the articles a question works the same way: the dashboard finds the
 articles that fit (queries/ask.py), and the AI answers from their summaries
-only, saying which article each thing is from.
+only, saying which article each thing is from. A follow-up is first written
+out whole from the question before it, and the articles are found for that.
 """
 
 import json
@@ -32,6 +33,7 @@ SECTION_NAMES = {
     "events": "Tapahtumat",
     "member_news": "Jäsenkuulumisia",
     "highlights": "Nostoja kentältä",
+    "training": "Learning Factory: koulutukset",
 }
 SECTION_ORDER = list(SECTION_NAMES)
 
@@ -77,23 +79,46 @@ def trend(signal_id, attempt=1):
     return {"text": answer.get("text") or "", "signal": signal, **_usage(answer)}
 
 
-def ask(question, days, user_id=None):
+def ask(question, days, user_id=None, previous=None):
     """The answer to an editor's question from the articles that fit it, and
     those articles, as the list shows them, numbered as the answer cites
-    them. None as the answer when no article fits: then nothing is asked."""
+    them. None as the answer when no article fits: then nothing is asked.
+
+    previous is the question before in the conversation, with its answer and
+    the titles of its articles. A follow-up such as "Entä lukioissa?" has
+    few words to find articles by, so the AI first writes it out whole
+    ("Mitä on kerrottu oppimistulosten laskusta lukioissa?"), and that is
+    what the articles are found for and answered."""
     question = " ".join(str(question or "").split())
-    found = ask_queries.relevant(question, days, ASK_ARTICLES)
+    asked_as, spent = question, []
+    if previous and previous.question and previous.answer:
+        whole = _standalone(question, previous)
+        spent.append(whole)
+        asked_as = whole["text"] or question
+    found = ask_queries.relevant(asked_as, days, ASK_ARTICLES)
     sources = items.items_by_ids([f["id"] for f in found], user_id)
+    rewritten = asked_as if asked_as != question else None
     if not sources:
-        return {"answer": None, "sources": [], "tokens": None, "cost_eur": None, "truncated": False}
+        return {"answer": None, "sources": [], "asked_as": rewritten, **_usage_of(spent)}
     articles = [{
         "title": s.title_fi or s.title,
         "publisher": s.publisher,
         "date": _day(s.published_at or s.collected_at),
         "summary": _short(s.summary or s.excerpt, 700),
     } for s in sources]
-    answer = _ask({"task": "ask", "attempt": 1, "question": question, "articles": articles})
-    return {"answer": answer.get("text") or "", "sources": sources, **_usage(answer)}
+    answer = _ask({"task": "ask", "attempt": 1, "question": asked_as, "articles": articles})
+    return {"answer": answer.get("text") or "", "sources": sources, "asked_as": rewritten,
+            **_usage_of([*spent, answer])}
+
+
+def _standalone(question, previous):
+    """A follow-up written out whole from the conversation, one line of at
+    most 300 characters; its text is empty when the AI gave nothing usable."""
+    answer = _ask({"task": "standalone", "attempt": 1, "question": question,
+                   "previous_question": previous.question, "previous_answer": previous.answer,
+                   "previous_titles": previous.titles[:ASK_ARTICLES]})
+    text = " ".join(str(answer.get("text") or "").split())[:300]
+    return {**answer, "text": text if len(text) >= 3 else ""}
 
 
 def _day(value):
@@ -135,6 +160,17 @@ def _short(text, limit):
 
 def _usage(answer):
     return {"tokens": answer.get("tokens"), "cost_eur": answer.get("cost_eur"), "truncated": bool(answer.get("truncated"))}
+
+
+def _usage_of(answers):
+    """What several calls spent together; none when nothing was asked."""
+    if not answers:
+        return {"tokens": None, "cost_eur": None, "truncated": False}
+    # n8n gives the cost as text, "0.0000", which the answer's schema reads as a number.
+    tokens = [int(a["tokens"]) for a in answers if a.get("tokens") is not None]
+    costs = [float(a["cost_eur"]) for a in answers if a.get("cost_eur") is not None]
+    return {"tokens": sum(tokens) if tokens else None, "cost_eur": sum(costs) if costs else None,
+            "truncated": any(bool(a.get("truncated")) for a in answers)}
 
 
 # ---------- asking n8n ----------

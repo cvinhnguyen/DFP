@@ -4,7 +4,7 @@
 
 import {
   findBlock, findSection, NETWORKS, NETWORK_NAMES, LAYOUTS, setLayout, FOOTER_HTML,
-  removeSection, duplicateSection, moveBlock, ARTICLE_SECTIONS, isArticleSection, articlePicture,
+  removeSection, duplicateSection, moveBlock, PICK_SECTIONS, holdsPicks, articlePicture,
 } from '../newsletter/model.js';
 import { blockPadding } from '../newsletter/render.js';
 import { FONTS } from '../newsletter/fonts.js';
@@ -390,7 +390,7 @@ export function createSettings({ store, root, actions, context }) {
             sourcePicture(b),
             altField(b.image && b.image.alt, (v) => setBlock(b.id, 'imageAlt', (blk) => { blk.image = { ...(blk.image || {}), alt: v }; })),
             h('p', { class: 'cf-hint' }, t('settings.imageRights'))) : null,
-          field(t('settings.moveTo'), select(ARTICLE_SECTIONS.map((s) => ({ value: s, label: SECTION_NAMES[s] })), b.section, (v) => {
+          field(t('settings.moveTo'), select(PICK_SECTIONS.map((s) => ({ value: s, label: SECTION_NAMES[s] })), b.section, (v) => {
             store.change((d) => {
               const target = ensureArticleSection(d, v);
               moveBlock(d, b.id, target.id, target.blocks.filter((x) => x.id !== b.id).length);
@@ -453,7 +453,7 @@ export function createSettings({ store, root, actions, context }) {
       accordion(t('settings.contentBackground'), () => h('div', {},
         field(null, colourInput(s.contentBackground || '', set('contentBackground'), { allowNone: true, noneLabel: t('settings.sameEmail') })),
         field(t('settings.radius'), numberInput(s.radius || 0, set('radius'), { min: 0, max: 40 })))),
-      isArticleSection(sec) ? accordion(t('settings.articleLook'), () => {
+      holdsPicks(sec) ? accordion(t('settings.articleLook'), () => {
         const look = s.articleLook || 'plain';
         return h('div', {},
           field(null, segmented([

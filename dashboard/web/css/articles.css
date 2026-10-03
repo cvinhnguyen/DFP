@@ -280,7 +280,20 @@ button.chip:hover { border-color: var(--link); }
 }
 .rd-where { margin: 0; font-size: 13.5px; color: var(--soft); }
 .rd-where strong { color: var(--ink); font-size: 15px; font-weight: 650; margin-right: 4px; }
-.rd-secs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+/* The five sections by the panel's width: two by two with Learning Factory
+   across under them, three above two, or all five in a row. */
+.rd-decide { container-type: inline-size; }
+.rd-secs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rd-secs > .rd-sec:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@container (min-width: 560px) {
+  .rd-secs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .rd-secs > .rd-sec { grid-column: span 2; }
+  .rd-secs > .rd-sec:nth-child(n+4), .rd-secs > .rd-sec:last-child:nth-child(odd) { grid-column: span 3; }
+}
+@container (min-width: 900px) {
+  .rd-secs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .rd-secs > .rd-sec, .rd-secs > .rd-sec:nth-child(n+4), .rd-secs > .rd-sec:last-child:nth-child(odd) { grid-column: auto; }
+}
 /* A section is a button that says what goes in it; its key sits in the corner. */
 .rd-sec {
   appearance: none; font: inherit; font-size: 14px; font-weight: 600; text-align: left; color: var(--ink);
@@ -392,7 +405,6 @@ ul.copies { margin: 0; padding-left: 20px; }
   }
   .ar.side-open::before { content: ""; position: absolute; inset: 0; z-index: 19; background: rgba(0, 0, 0, .28); }
   .side-close { display: inline-block; }
-  .rd-secs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ar-places {
     display: flex; gap: 6px; padding: 8px 10px; overflow-x: auto; scrollbar-width: none;
     background: var(--surface); border-bottom: 1px solid var(--rule);
@@ -459,7 +471,6 @@ ul.copies { margin: 0; padding-left: 20px; }
    with the question box under it; the article an answer cites opens on
    the right. */
 .side-item.ask .side-name { font-weight: 600; }
-.ar.asking .rd-secs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ar.asking { grid-template-columns: 250px minmax(0, 1.15fr) minmax(0, 1fr); }
 .ask-new { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 5px; }
 .chat { display: grid; gap: 22px; padding: 18px 18px 10px; }
@@ -482,6 +493,7 @@ ul.copies { margin: 0; padding-left: 20px; }
   color: var(--button-ink); background: var(--button); border-radius: 16px 16px 4px 16px;
 }
 .chat-q small { font-size: 12px; color: var(--soft); }
+.chat-q small.chat-asked { max-width: 100%; text-align: right; font-style: italic; overflow-wrap: anywhere; }
 .chat-a {
   display: grid; gap: 12px; padding: 14px 16px; background: var(--surface);
   border: 1px solid var(--rule); border-radius: 4px 16px 16px 16px;

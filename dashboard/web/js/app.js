@@ -11,6 +11,7 @@ import { showArticles } from './pages/articles.js';
 import { showNewsletters } from './pages/newsletters.js';
 import { showNewsletter } from './pages/newsletter.js';
 import { showSettings } from './pages/settings.js';
+import { showArchive } from './pages/archive.js';
 
 // The pages, by the part of the address between # and ?. Each one keeps its
 // own settings after the ?, so a reload or a copied link opens the same view.
@@ -20,6 +21,7 @@ const PAGES = {
   newsletters: { path: '/newsletters', show: showNewsletters, nav: 'newsletters' },
   newsletter: { path: '/newsletter', show: showNewsletter, nav: 'newsletters' },
   settings: { path: '/settings', show: showSettings, nav: 'settings' },
+  archive: { path: '/archive', show: showArchive, nav: 'newsletters' },
 };
 
 // A login link from the bot: http://…/#/link/<token>
@@ -139,7 +141,8 @@ async function start() {
 
   // A page handles changes to its own settings after the ?. Moving to another
   // page is handled here.
-  // One newsletter's page shows another when the address names another.
+  // One newsletter's page shows another when the address names another, and
+  // so does the archive's.
   window.addEventListener('hashchange', () => {
     if (takeLink()) {
       render();
@@ -151,7 +154,8 @@ async function start() {
       return;
     }
     if (!user || !current) return;
-    if (pageFromAddress() !== current.name || (current.name === 'newsletter' && location.hash !== current.hash)) render();
+    if (pageFromAddress() !== current.name
+      || (['newsletter', 'archive'].includes(current.name) && location.hash !== current.hash)) render();
   });
 
   window.addEventListener('auth-lost', () => {

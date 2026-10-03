@@ -16,6 +16,7 @@ import { retentionCard } from '../components/retention.js';
 import { brandCard } from '../components/brand.js';
 import { membersCard } from '../components/members.js';
 import { suggestionsCard } from '../components/suggestions.js';
+import { sourcePicturesCard } from '../components/sourcePictures.js';
 
 export function showSettings(root, { user }) {
   let state = null;
@@ -25,9 +26,11 @@ export function showSettings(root, { user }) {
   let brandBusy = null;   // the banner or logo being uploaded
   let members = null;
   let sugg = null;
+  let pics = null;
+  let picsBusy = null;    // the source whose pictures are being saved
   let gone = false;
   let busy = false;
-  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '' };
+  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '', pics: '' };
 
   function status() {
     if (!state) return '';
@@ -52,6 +55,7 @@ export function showSettings(root, { user }) {
       ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
       ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}
       ${problems.members ? `<p class="problem">${esc(problems.members)}</p>` : (members ? membersCard(members) : '')}
+      ${problems.pics ? `<p class="problem">${esc(problems.pics)}</p>` : (pics ? sourcePicturesCard(pics, picsBusy) : '')}
       ${problems.sugg ? `<p class="problem">${esc(problems.sugg)}</p>` : (sugg ? suggestionsCard(sugg) : '')}`;
   }
 
@@ -117,6 +121,36 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.keep = e.message;
     }
+    if (!gone) render();
+  }
+
+  async function loadPictures() {
+    try {
+      pics = await api.get('/api/sources/pictures');
+      problems.pics = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.pics = e.message;
+    }
+    if (!gone) render();
+  }
+
+  // What a source's pictures are, saved as soon as it is chosen.
+  async function savePictures(select) {
+    const id = Number(select.dataset.source);
+    const rights = select.value;
+    picsBusy = id;
+    render();
+    try {
+      const done = await api.put(`/api/sources/${id}/pictures`, { rights });
+      pics.sources = pics.sources.map((x) => (x.id === id ? done.source : x));
+      toast([t('pics.saved', { source: done.source.name, rights: t(`pics.rights.${rights}`) }),
+        done.changed ? tn('pics.changed', done.changed) : '', done.removed ? tn('pics.removed', done.removed) : '']
+        .filter(Boolean).join(' '), 'good');
+    } catch (e) {
+      toast(e.message, 'warn');
+    }
+    picsBusy = null;
     if (!gone) render();
   }
 
@@ -242,6 +276,10 @@ export function showSettings(root, { user }) {
     toast(state && state.connected ? t('admin.testOk') : t('admin.testBad'), state && state.connected ? 'good' : 'warn');
   });
 
+  root.addEventListener('change', (event) => {
+    if (event.target.classList.contains('pics-select')) savePictures(event.target);
+  });
+
   root.addEventListener('submit', async (event) => {
     const days = event.target.closest('[data-form="retention"]');
     if (days) {
@@ -290,6 +328,7 @@ export function showSettings(root, { user }) {
   loadCosts();
   loadRetention();
   loadMembers();
+  loadPictures();
   loadSuggestions();
   return { leave() { gone = true; } };
 }

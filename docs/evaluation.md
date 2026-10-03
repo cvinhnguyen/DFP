@@ -28,15 +28,19 @@ newsletter went out that the newsletter did not use.
 
 ## Running it
 
+In the dashboard: **Uutiskirjeet → Arkisto ja vertailu**. An admin gives the
+archive's address there once: the "past newsletters" link in any of the
+association's newsletters, https://us11.campaign-archive.com/home/?u=...&id=...
+New newsletters are brought in every Monday (`n8n/workflows/archive.json`),
+or at once with "Tuo uudet nyt". A newsletter made in the dashboard is
+matched with its copy in the archive, and its page says which picks went out.
+
+From the command line, which reads every newsletter again:
+
 ```bash
 docker compose exec dashboard python -m app.cli.archive import "<archive address>"
 docker compose exec dashboard python -m app.cli.archive list
 ```
-
-The archive address is the "past newsletters" link in any of the
-association's newsletters, https://us11.campaign-archive.com/home/?u=...&id=...
-Importing again replaces what was there, so it can be run after every
-newsletter.
 `GET /api/archive` lists the newsletters with their numbers, and
 `GET /api/archive/{id}` gives one newsletter entry by entry, with the
 articles the system surfaced that it did not use.

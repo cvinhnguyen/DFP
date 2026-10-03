@@ -66,6 +66,7 @@ private.include_router(writing.router)
 private.include_router(brand.router)
 private.include_router(members.router)
 private.include_router(suggestions.router)
+private.include_router(pictures.admin_router)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(private)
@@ -73,6 +74,7 @@ app.include_router(private)
 # finds on the articles' pages.
 app.include_router(telegram.router, prefix="/api")
 app.include_router(pictures.router, prefix="/api")
+app.include_router(archive.token_router, prefix="/api")
 # Open to anyone with the address: newsletter images, for the readers.
 app.include_router(images.public)
 app.middleware("http")(middleware.guard)

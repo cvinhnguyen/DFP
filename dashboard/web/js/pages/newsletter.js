@@ -17,7 +17,7 @@ import { mailchimpLine } from './newsletters.js';
 import { suggestionsBox } from '../newsletter/writing.js';
 import { saveTarget } from './articles.js';
 
-const SECTION_ORDER = ['own_news', 'events', 'member_news', 'highlights'];
+const SECTION_ORDER = ['own_news', 'events', 'member_news', 'highlights', 'training'];
 
 export function showNewsletter(root) {
   const params = new URLSearchParams(location.hash.split('?')[1] || '');

@@ -1,5 +1,7 @@
 """The pictures from the articles' own pages."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -25,3 +27,30 @@ class PictureOut(BaseModel):
     src: str | None = None
     width: int | None = None
     height: int | None = None
+
+
+Rights = Literal["own", "open", "check", "none"]
+
+
+class SourcePictures(BaseModel):
+    id: int
+    name: str
+    type: str | None
+    active: bool
+    rights: Rights = Field(description="own: the association's own; open: an open licence, credited; check: an "
+                           "editor ticks \"Saa käyttää\" before export; none: no pictures are fetched")
+    pictures: int = Field(description="Pictures kept from its articles' pages")
+
+
+class SourcesPictures(BaseModel):
+    sources: list[SourcePictures]
+
+
+class RightsIn(BaseModel):
+    rights: Rights
+
+
+class RightsOut(BaseModel):
+    source: SourcePictures
+    changed: int = Field(description="Pictures already kept that now say what the source's pictures are")
+    removed: int = Field(description="With none: the pictures nobody used, taken away")

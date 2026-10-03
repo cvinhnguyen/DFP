@@ -14,7 +14,7 @@
 import {
   emptyDesign, section, textBlock, headingBlock, dividerBlock, imageBlock, footerBlock, buttonBlock,
   columnsBlock, articleBlock, socialBlock, logoBlock, articleIds, withoutArticles, withNewIds,
-  ARTICLE_SECTIONS, FOOTER_HTML, BLOCK_PADDING, COLUMN_SIDE_PADDING, readDesign,
+  ARTICLE_SECTIONS, PICK_SECTIONS, FOOTER_HTML, BLOCK_PADDING, COLUMN_SIDE_PADDING, readDesign,
 } from './model.js';
 import { escapeAttr, escapeText, fromText } from './richtext.js';
 import { brand } from './brand.js';
@@ -24,6 +24,7 @@ export const SECTION_NAMES = {
   events: 'Tapahtumat',
   member_news: 'Jäsenkuulumisia',
   highlights: 'Nostoja kentältä',
+  training: 'Learning Factory',
 };
 
 // Text meant to be replaced. A block holding it is marked placeholder, which
@@ -291,7 +292,7 @@ function learningFactorySection() {
     picture({ naturalWidth: 1136, naturalHeight: 568, style: { radius: 4, ...sides(22) } }),
     sample(`<p><em>${escapeText(PLACEHOLDERS.learningFactory)}</em></p>`, { style: { ...sides(22) } }),
     textBlock(`<p><a href="${LINKS.shop}">Tutustu Learning Factoryn koko koulutustarjontaan</a></p>`, { style: { paddingBottom: 20, ...sides(22) } }),
-  ])], { contentBackground: BLUE, ...BOXED });
+  ])], { contentBackground: BLUE, ...BOXED, paddingBottom: 8, articleLook: 'card' });
 }
 
 // The way to join the association, at the end of every newsletter: a white
@@ -371,19 +372,21 @@ function sectionBar(text, colour, ink = '#ffffff', align = 'center') {
 // ---------- article sections, as each family of templates shows them ----------
 
 // Where the member letter's list of contents jumps to.
-const ANCHORS = { own_news: 'ajankohtaista', events: 'tapahtumat', member_news: 'jasenkuulumisia', highlights: 'nostoja' };
+const ANCHORS = { own_news: 'ajankohtaista', events: 'tapahtumat', member_news: 'jasenkuulumisia', highlights: 'nostoja', training: 'learning-factory' };
 
 const FAMILIES = {
   // The newsletter: its own news with large titles and a picture on the
   // right, everything else as white cards in pink boxes.
   eok: (key, name) => (key === 'own_news'
     ? section(name, key, [], { articleLook: 'large', articleLayout: 'image-right', paddingTop: 8, paddingBottom: 8 })
-    : section(name, key, [h2(name, { style: { paddingTop: 20, paddingBottom: 6 } })], {
-      contentBackground: PINK, ...BOXED, paddingBottom: 8, articleLook: 'card', ...(key === 'events' ? { articleLayout: 'image-top' } : {}),
+    : section(name, key, [h2(key === 'training' ? 'Learning Factory – Kehitä osaamistasi' : name, { style: { paddingTop: 20, paddingBottom: 6 } })], {
+      contentBackground: key === 'training' ? BLUE : PINK, ...BOXED, paddingBottom: 8, articleLook: 'card',
+      ...(key === 'events' ? { articleLayout: 'image-top' } : {}),
     })),
   // The member letter: a magenta bar for each section, each headline in a
   // green bar, black for the highlights from the field.
-  jasenkirje: (key, name) => section(name, key, [sectionBar(name, MAGENTA)], {
+  jasenkirje: (key, name) => section(name, key, [key === 'training'
+    ? sectionBar('Poimintoja Learning Factorysta', BLUE, BLACK) : sectionBar(name, MAGENTA)], {
     anchor: ANCHORS[key], spaceAbove: 12, paddingBottom: 8, articleLook: 'bar', articleColour: key === 'highlights' ? BLACK : BAR_GREEN,
   }),
   simple: (key, name) => section(name, key, [
@@ -462,7 +465,7 @@ const BUILT_IN = [
           sectionBar('Poimintoja Learning Factorysta', BLUE, BLACK),
           placeholder(PLACEHOLDERS.learningFactory, { style: { paddingTop: 18 } }),
           buttonBlock('Tutustu koulutustarjontaan', LINKS.shop, { style: { paddingBottom: 20 } }),
-        ], { anchor: 'learning-factory', spaceAbove: 12 }),
+        ], { anchor: 'learning-factory', spaceAbove: 12, paddingBottom: 8, articleLook: 'bar', articleColour: BAR_GREEN }),
         section('Arkisto', 'archive', [
           sectionBar('Arkisto', BLACK, '#ffffff', 'left'),
           sample(SAMPLES.archive, { style: { paddingTop: 16, paddingBottom: 16 } }),
@@ -929,6 +932,11 @@ export function buildTemplate(key, issue) {
 const AFTER_ARTICLES = ['tips', 'calendar', 'training', 'join', 'subscribe', 'about', 'signature', 'archive', 'social', 'footer'];
 
 function insertAt(design, key) {
+  if (key === 'training') {
+    const after = AFTER_ARTICLES.slice(AFTER_ARTICLES.indexOf('training') + 1);
+    const at = design.sections.findIndex((s) => after.includes(s.role));
+    return at < 0 ? design.sections.length : at;
+  }
   const later = ARTICLE_SECTIONS.slice(ARTICLE_SECTIONS.indexOf(key) + 1);
   const anchor = design.sections.findIndex((s) => later.includes(s.role) || AFTER_ARTICLES.includes(s.role));
   return anchor < 0 ? design.sections.length : anchor;
@@ -953,7 +961,7 @@ export function placeArticles(design, articles) {
   const added = [];
   for (const article of articles) {
     if (present.has(Number(article.id))) continue;
-    const key = ARTICLE_SECTIONS.includes(article.section) ? article.section : 'highlights';
+    const key = PICK_SECTIONS.includes(article.section) ? article.section : 'highlights';
     const target = design.sections.find((s) => s.role === key)
       || design.sections.find((s) => s.role === 'body')
       || ensureArticleSection(design, key);

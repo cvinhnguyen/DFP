@@ -21,7 +21,7 @@ View = Literal["inbox", "review", "picked", "later", "dismissed", "used", "waiti
                "open", "all"]
 Sort = Literal["collected", "published", "relevance"]
 # The newsletter sections an article can be picked into.
-Section = Literal["highlights", "events", "own_news", "member_news"]
+Section = Literal["highlights", "events", "own_news", "member_news", "training"]
 
 
 class Summary(BaseModel):
@@ -105,7 +105,8 @@ class Item(BaseModel):
     seen: bool = Field(default=False, description="The editor asking has opened it")
     can_request_summary: bool = Field(description="Whether POST /api/items/{id}/summarise would accept it")
     decision: str | None = Field(description="picked, later or dismissed, or null if nobody has decided")
-    pick_section: str | None = Field(description="For a picked article: own_news, events, member_news or highlights")
+    pick_section: str | None = Field(description="For a picked article: own_news, events, member_news, highlights "
+                                       "or training")
     pick_issue_id: int | None
     pick_issue_name: str | None
     pick_issue_status: str | None = Field(description="draft, or sent once that newsletter has gone out")

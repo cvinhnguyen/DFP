@@ -13,7 +13,7 @@ import { icon } from '../ui/icons.js';
 const AI_DID_NOT_ANSWER = 'waiting for the AI to answer again';
 
 // The newsletter sections, in the order of the keys 1 to 4.
-export const SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
+export const SECTIONS = ['own_news', 'events', 'member_news', 'highlights', 'training'];
 
 function requester(reason) {
   const name = reason.slice('requested by '.length);

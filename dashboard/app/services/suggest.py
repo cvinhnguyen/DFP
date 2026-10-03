@@ -13,13 +13,14 @@ The first rule that fits decides:
      "call for" in the title or summary, when the AI found no date  ->  Tapahtumat
   4. the association's "Mitä kuuluu jäsenille" posts  ->  Jäsenkuulumisia
   5. a section the editors chose for the source  ->  that section
-  6. anything else on the association's own site  ->  Ajankohtaista yhdistykseltä
-  7. a member organisation's own website, or a member as the publisher  ->
+  6. Learning Factory's own sites, its courses  ->  Learning Factory
+  7. anything else on the association's own site  ->  Ajankohtaista yhdistykseltä
+  8. a member organisation's own website, or a member as the publisher  ->
      Jäsenkuulumisia. The members are the association's community members,
      read from its members page every week (29-members.sql)
-  8. the association named in the title or summary  ->  Ajankohtaista yhdistykseltä
-  9. a member named in the title  ->  Jäsenkuulumisia
- 10. anything else  ->  Nostoja kentältä
+  9. the association named in the title or summary  ->  Ajankohtaista yhdistykseltä
+ 10. a member named in the title  ->  Jäsenkuulumisia
+ 11. anything else  ->  Nostoja kentältä
 
 An event that has been is news, not something to go to, so a past date
 falls through to the other rules: the association's report of its own
@@ -41,13 +42,16 @@ from urllib.parse import urlparse
 from ..queries import suggest as queries
 from .collection import HELSINKI
 
-SECTIONS = ("own_news", "events", "member_news", "highlights")
+SECTIONS = ("own_news", "events", "member_news", "highlights", "training")
 # The reasons a section chosen for the source takes the place of, None
 # being Nostoja kentältä when nothing else fits. Only the picks with one of
 # these count towards asking for a source's section.
-SOURCE_DECIDES = (None, "source_section", "own_site", "member_site", "association_named", "member_named")
+SOURCE_DECIDES = (None, "source_section", "learning_factory", "own_site", "member_site", "association_named",
+                  "member_named")
 
 ASSOCIATION_SITE = "eoppimiskeskus.fi"
+# Learning Factory, the association's trainings: its site and its course hub.
+LEARNING_FACTORY = ("learningfactory.fi", "learningfactory.hub.howspace.com")
 # The association's blog series of its members' news.
 MEMBER_POSTS = re.compile(r"^/mita-kuuluu-jasen", re.IGNORECASE)
 ASSOCIATION_NAMED = re.compile(r"eoppimiskeskus", re.IGNORECASE)
@@ -174,6 +178,8 @@ def suggest(found, today=None):
         return "member_news", "member_post", None
     if found.get("source_section") in SECTIONS:
         return found["source_section"], "source_section", None
+    if any(_on(host, site) for site in LEARNING_FACTORY):
+        return "training", "learning_factory", None
     if own:
         return "own_news", "own_site", None
 

@@ -36,7 +36,7 @@ ENTRIES = """
           FROM sources s, unnest(ARRAY[s.url, s.homepage]) u
          WHERE s.active AND u ~* '^https?://'
     )
-    SELECT e.id, e.issue_id, e.position, e.heading, e.link_text, e.url,
+    SELECT e.id, e.issue_id, e.position, e.heading, e.link_text, e.url, e.canonical_url,
            substring(e.canonical_url FROM '^https://([^/]+)') AS host,
            EXISTS (SELECT 1 FROM followed f
                     WHERE substring(e.canonical_url FROM '^https://([^/]+)') = f.host
@@ -51,6 +51,20 @@ ENTRIES = """
 """
 
 
+# The newsletter made in the dashboard that a past one is: sent with the
+# same subject line, or else within two days of it. a is the archive issue.
+MADE_HERE = """
+    SELECT s.id, s.name, coalesce(s.mailchimp_send_time, s.sent_at) AS sent_at
+      FROM issues s
+     WHERE s.status = 'sent'
+       AND (lower(btrim(coalesce(s.subject, ''))) = lower(btrim(a.subject))
+            OR abs(coalesce(s.mailchimp_send_time, s.sent_at)::date - a.sent_on) <= 2)
+     ORDER BY lower(btrim(coalesce(s.subject, ''))) = lower(btrim(a.subject)) DESC,
+              abs(coalesce(s.mailchimp_send_time, s.sent_at)::date - a.sent_on)
+     LIMIT 1
+"""
+
+
 def issues():
     return database.rows(
         f"""WITH e AS ({ENTRIES})
@@ -58,11 +72,37 @@ def issues():
                    count(e.id)                        AS entries,
                    count(e.id) FILTER (WHERE e.followed) AS followed,
                    count(e.item_id)                   AS collected,
-                   count(e.id) FILTER (WHERE e.in_time) AS in_time
+                   count(e.id) FILTER (WHERE e.in_time) AS in_time,
+                   (SELECT h.id FROM ({MADE_HERE}) h) AS made_here
               FROM archive_issues a
               LEFT JOIN e ON e.issue_id = a.id
              GROUP BY a.id
              ORDER BY a.sent_on DESC NULLS LAST, a.id DESC""")
+
+
+def imported():
+    """The addresses of the newsletters brought in so far, and when last."""
+    return database.row("SELECT coalesce(array_agg(url), '{}') AS urls, max(imported_at) AS last FROM archive_issues")
+
+
+def made_here(issue_id):
+    """The newsletter made in the dashboard that this past one is, if any."""
+    return database.row(f"SELECT h.* FROM archive_issues a, LATERAL ({MADE_HERE}) h WHERE a.id = %s", (issue_id,))
+
+
+def picks(issue_id):
+    """The articles picked for a newsletter made in the dashboard, with the
+    address they are matched by."""
+    return database.rows(
+        """SELECT i.id, coalesce(nullif(btrim(sm.title), ''), i.title) AS title, p.section, s.name AS source,
+                  coalesce(i.canonical_url, canonicalise_url(i.source_url)) AS canonical_url
+             FROM item_picks p
+             JOIN items i ON i.id = p.item_id
+             LEFT JOIN sources s ON s.id = i.source_id
+             LEFT JOIN summaries sm ON sm.item_id = i.id AND sm.language = 'fi'
+            WHERE p.issue_id = %s AND p.decision = 'picked'
+            ORDER BY p.section, i.id""",
+        (issue_id,))
 
 
 def entries(issue_id):

@@ -37,6 +37,9 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("32-archive-import.sql", "SELECT EXISTS (SELECT 1 FROM app_settings WHERE key = 'newsletter_archive_read_at') AS ok"),
+    ("31-learning-factory.sql", """SELECT pg_get_constraintdef(oid) LIKE '%training%' AS ok
+                                  FROM pg_constraint WHERE conname = 'item_picks_section_check'"""),
     ("30-section-suggestions.sql", """SELECT EXISTS (SELECT 1 FROM information_schema.columns
                                     WHERE table_name = 'item_picks' AND column_name = 'suggested_section') AS ok"""),
     ("29-members.sql", "SELECT to_regclass('public.members') IS NOT NULL AS ok"),

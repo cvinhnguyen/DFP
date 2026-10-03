@@ -18,6 +18,10 @@ export const WIDTH = 660;
 // no article left in it is not sent: the editors asked for empty sections to
 // be dropped rather than shown.
 export const ARTICLE_SECTIONS = ['own_news', 'events', 'member_news', 'highlights'];
+// Where a picked article can go: those, and the Learning Factory block, which
+// goes out whenever it has anything in it, as the editors also write it by
+// hand (db/init/31-learning-factory.sql).
+export const PICK_SECTIONS = [...ARTICLE_SECTIONS, 'training'];
 
 // The layouts that show an article's picture; in 'text' it stays out.
 export const PICTURE_LAYOUTS = ['image-left', 'image-right', 'image-top'];
@@ -213,13 +217,14 @@ export function setLayout(block, layout) {
 // How a picked article is written depends on its section, the way the
 // editors already do it: news from the field and from members ends with
 // "Publisher: original title", an event gets a sign-up button, the
-// association's own news a link to read on.
-export const VARIANT_OF = { highlights: 'highlight', events: 'event', own_news: 'own', member_news: 'highlight' };
+// association's own news a link to read on, a training a link to the course.
+export const VARIANT_OF = { highlights: 'highlight', events: 'event', own_news: 'own', member_news: 'highlight', training: 'training' };
 
 function sourceLine(article, variant) {
   const url = escapeAttrSafe(article.url);
   if (!url) return '';
   if (variant === 'own') return `<p><a href="${url}">Lue koko juttu</a></p>`;
+  if (variant === 'training') return `<p><a href="${url}">Tutustu koulutukseen</a></p>`;
   if (variant === 'event') return '';
   const who = article.publisher ? `${escapeText(article.publisher)}: ` : '';
   return `<p>${who}<a href="${url}">${escapeText(article.title || '')}</a></p>`;
@@ -479,6 +484,11 @@ export function withoutArticles(thing) {
 
 export function isArticleSection(sec) {
   return ARTICLE_SECTIONS.includes(sec.role);
+}
+
+// A section picked articles can be placed in, Learning Factory included.
+export function holdsPicks(sec) {
+  return PICK_SECTIONS.includes(sec.role);
 }
 
 export function hasArticles(sec) {

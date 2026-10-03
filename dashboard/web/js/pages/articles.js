@@ -149,7 +149,7 @@ function layout() {
               <button type="submit" class="btn small chat-send" id="ask-go" disabled>${icon('send', 16)}<span>${esc(t('ask.submit'))}</span></button>
             </div>
           </div>
-          <p class="chat-alone">${esc(t('ask.alone'))}</p>
+          <p class="chat-alone">${esc(t('ask.memory'))}</p>
         </form>
       </section>
       <article class="ar-read" id="read" tabindex="-1"></article>
@@ -539,8 +539,9 @@ export function showArticles(root) {
 
   // A conversation: each question with its answer, and under the answer the
   // articles it cites, numbered as it cites them. An article opens beside
-  // the conversation, to read and to pick. Each question is answered on its
-  // own: the AI does not remember the ones before, and the box says so.
+  // the conversation, to read and to pick. A question goes with the one
+  // answered before it, so a follow-up such as "Entä lukioissa?" works: the
+  // AI writes it out whole, and the conversation shows how.
   function loadAsked() {
     try {
       const saved = JSON.parse(sessionStorage.getItem(ASK_KEY) || '[]');
@@ -600,9 +601,20 @@ export function showArticles(root) {
     else rowsEl.scrollTop += last.getBoundingClientRect().top - rowsEl.getBoundingClientRect().top - 12;
   }
 
-  async function askQuestion(question, days = Number($('ask-days').value) || 90) {
+  // The question before, for a follow-up: the last one that was answered.
+  function previousTurn() {
+    const last = [...asked.list].reverse().find((a) => !a.error && typeof a.answer === 'string' && a.answer);
+    return last ? {
+      question: last.asked_as || last.question,
+      answer: last.answer.slice(0, 3000),
+      titles: last.sources.slice(0, 8).map((s) => (s.title_fi || s.title || '').slice(0, 300)),
+    } : null;
+  }
+
+  async function askQuestion(question, days = Number($('ask-days').value) || 90, { alone = false } = {}) {
     const text = String(question || '').replace(/\s+/g, ' ').trim();
     if (text.length < 3 || asked.busy) return;
+    const previous = alone ? null : previousTurn();
     asked.busy = true;
     asked.pending = { question: text, days };
     $('ask-q').value = '';
@@ -612,7 +624,7 @@ export function showArticles(root) {
     toLatest();
     let turn;
     try {
-      turn = { question: text, days, ...(await api.post('/api/ask', { question: text, days })) };
+      turn = { question: text, days, ...(await api.post('/api/ask', { question: text, days, ...(previous ? { previous } : {}) })) };
     } catch (e) {
       turn = { question: text, days, answer: null, sources: [], error: e.message };
     }
@@ -637,7 +649,8 @@ export function showArticles(root) {
   }
 
   function questionHtml(a) {
-    return `<div class="chat-q"><p>${esc(a.question)}</p><small>${esc(t(`ask.days.${a.days}`))}</small></div>`;
+    const whole = a.asked_as ? `<small class="chat-asked">${esc(t('ask.askedAs', { q: a.asked_as }))}</small>` : '';
+    return `<div class="chat-q"><p>${esc(a.question)}</p>${whole}<small>${esc(t(`ask.days.${a.days}`))}</small></div>`;
   }
 
   function sourceHtml(s, n) {
@@ -737,7 +750,9 @@ export function showArticles(root) {
     if (!days) return;
     if (!wider) asked.list = asked.list.filter((_, i) => i !== n);
     $('ask-days').value = String(days);
-    askQuestion(a.question, days);
+    // A longer time asks the question as it was searched, on its own.
+    if (wider) askQuestion(a.asked_as || a.question, days, { alone: true });
+    else askQuestion(a.question, days);
   }
 
   // ---------- editing topics ----------
@@ -1424,7 +1439,7 @@ export function showArticles(root) {
     if (key === 'j') move(-1);
     else if (key === 'k') move(1);
     else if (!current()) return;
-    else if (['1', '2', '3', '4'].includes(key)) decide('picked', SECTIONS[Number(key) - 1]);
+    else if (/^[1-9]$/.test(key) && SECTIONS[Number(key) - 1]) decide('picked', SECTIONS[Number(key) - 1]);
     else if (key === 'l') decide('later');
     else if (key === 'x') decide('dismissed');
     else return;

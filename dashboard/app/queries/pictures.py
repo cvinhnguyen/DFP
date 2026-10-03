@@ -65,3 +65,61 @@ def store(item_id, mime, data, width, height, credit, rights, url, alt, sha256):
         RETURNING kept.key""",
         {"id": item_id, "name": f"artikkeli-{item_id}", "mime": mime, "data": data, "width": width,
          "height": height, "credit": credit, "rights": rights, "url": url, "alt": alt, "sha": sha256})["key"]
+
+
+# ---------- what each source's pictures are, chosen on Asetukset ----------
+
+def sources():
+    """Every source with what its pictures are, and how many it has kept."""
+    return database.rows(
+        """SELECT s.id, s.name, s.type, s.active, s.picture_rights AS rights,
+                  count(img.id)::int AS pictures
+             FROM sources s
+             LEFT JOIN items i    ON i.source_id = s.id
+             LEFT JOIN images img ON img.item_id = i.id
+            GROUP BY s.id
+            ORDER BY s.active DESC, lower(s.name)""")
+
+
+def source(source_id):
+    return next((s for s in sources() if s["id"] == source_id), None)
+
+
+def set_rights(source_id, rights):
+    """The source's pictures are now this. Those kept already say so too, for
+    the next newsletter they go into; an email they are in keeps what it has.
+    With none, the ones nobody uses go: no picked or kept article, no email
+    and no template has them. Their articles are looked at again if the
+    source is ever given pictures back. Returns how many pictures changed and
+    how many went."""
+    return database.row(
+        """WITH source AS (
+               UPDATE sources SET picture_rights = %(rights)s WHERE id = %(id)s RETURNING id
+           ),
+           unused AS (
+               DELETE FROM images img USING items i
+                WHERE %(rights)s = 'none' AND img.item_id = i.id AND i.source_id = %(id)s
+                  AND NOT EXISTS (SELECT 1 FROM item_picks p
+                                   WHERE p.item_id = i.id AND p.decision IN ('picked', 'later'))
+                  AND NOT EXISTS (SELECT 1 FROM issues s
+                                   WHERE s.design::text LIKE '%%' || img.key::text || '%%'
+                                      OR s.html LIKE '%%' || img.key::text || '%%')
+                  AND NOT EXISTS (SELECT 1 FROM newsletter_templates t
+                                   WHERE t.design::text LIKE '%%' || img.key::text || '%%')
+               RETURNING img.item_id
+           ),
+           cleared AS (
+               UPDATE items SET picture_status = NULL, picture_url = NULL, picture_alt = NULL, picture_sha256 = NULL
+                WHERE id IN (SELECT item_id FROM unused)
+               RETURNING id
+           ),
+           relabelled AS (
+               UPDATE images img SET rights = %(rights)s FROM items i
+                WHERE %(rights)s <> 'none' AND img.item_id = i.id AND i.source_id = %(id)s
+                  AND img.rights IS DISTINCT FROM %(rights)s
+               RETURNING img.id
+           )
+           SELECT (SELECT count(*) FROM source)::int AS found,
+                  (SELECT count(*) FROM relabelled)::int AS changed,
+                  (SELECT count(*) FROM cleared)::int AS removed""",
+        {"id": source_id, "rights": rights})

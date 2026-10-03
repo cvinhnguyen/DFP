@@ -165,10 +165,10 @@ def save_design(issue_id, design, html, user_id, based_on, force):
 
 def _placed(design):
     """Where the email has each article: {item id: section}, for the
-    articles in the four sections of picked articles."""
+    articles in the sections a pick can be in."""
     placed = {}
     for section in (design or {}).get("sections") or []:
-        if section.get("role") not in ARTICLE_SECTIONS:
+        if section.get("role") not in PICK_SECTIONS:
             continue
         for block in _blocks(section.get("blocks")):
             if block.get("type") != "article":
@@ -194,6 +194,10 @@ def mark_sent(issue_id, user_id):
 # or a file; this is the same rule for a request that comes some other way.
 # The four sections of picked articles go out only with an article in them.
 ARTICLE_SECTIONS = ("own_news", "events", "member_news", "highlights")
+# Where a picked article can be: those, and the Learning Factory block, which
+# goes out whenever it has anything in it, as the editors also write it by
+# hand (31-learning-factory.sql).
+PICK_SECTIONS = (*ARTICLE_SECTIONS, "training")
 # The layouts that show an article's picture; in "text" it stays out.
 PICTURE_LAYOUTS = ("image-left", "image-right", "image-top")
 

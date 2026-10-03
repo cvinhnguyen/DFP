@@ -82,7 +82,10 @@ export function showNewsletters(root) {
           <h2>${esc(t('list.title'))}</h2>
           <p>${esc(t('list.lead'))}</p>
         </div>
-        <button type="button" class="btn" data-act="create">${icon('plus', 16)} ${esc(t('list.create'))}</button>
+        <div class="nl-listhead-acts">
+          <a class="btn ghost" href="#/archive">${icon('folder', 16)} ${esc(t('list.archive'))}</a>
+          <button type="button" class="btn" data-act="create">${icon('plus', 16)} ${esc(t('list.create'))}</button>
+        </div>
       </div>
       <div class="nl-filters">
         <input type="search" class="cf-input nl-search" value="${esc(query)}" placeholder="${esc(t('list.search'))}" aria-label="${esc(t('list.search'))}">

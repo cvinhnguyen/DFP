@@ -71,3 +71,16 @@ def receive(item_id, url, alt, data):
 def _shared(found, digest):
     """Whether another article of the same source came with this picture."""
     return bool(found["source_id"]) and bool(queries.same_picture(found["source_id"], digest, found["id"]))
+
+
+def sources():
+    return {"sources": queries.sources()}
+
+
+def set_rights(source_id, rights):
+    """What a source's pictures are, chosen by an admin on Asetukset. The
+    picture workflow follows it on its next run: none stops it looking."""
+    done = queries.set_rights(source_id, rights)
+    if not done["found"]:
+        raise NotFound()
+    return {"source": queries.source(source_id), "changed": done["changed"], "removed": done["removed"]}
