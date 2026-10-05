@@ -30,7 +30,7 @@ const LINK = /^#\/link\/([A-Za-z0-9_-]{20,100})$/;
 // http://…/#/password/<token>
 const PASSWORD = /^#\/password\/([A-Za-z0-9_-]{20,100})$/;
 
-const view = document.getElementById('view');
+let view = document.getElementById('view');
 const who = document.getElementById('who');
 const nav = document.getElementById('mainnav');
 let user = null;
@@ -80,9 +80,19 @@ function loggedIn(next) {
   render();
 }
 
+// Every page listens for clicks on the element it draws into. Each page gets
+// a new one, so the listeners of the pages shown before go with the old
+// element: without this, coming back to a page made one click count twice.
+function freshView() {
+  const next = view.cloneNode(false);
+  view.replaceWith(next);
+  view = next;
+}
+
 function render() {
   current?.page?.leave();
   current = null;
+  freshView();
   // Whether or not someone is logged in: the page checks whose link it is.
   if (passwordToken) {
     nav.querySelectorAll('[data-page]').forEach((a) => a.removeAttribute('aria-current'));
