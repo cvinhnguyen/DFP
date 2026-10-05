@@ -21,12 +21,21 @@ def _set_cookie(response, token, hours):
                         httponly=True, samesite="strict", secure=config.COOKIE_SECURE)
 
 
+def _address(request):
+    """Where the request came from, for the count of wrong passwords per
+    address. On this computer that is Docker's own address, the same for
+    every browser here. Behind a proxy it is the proxy's, shared by everyone,
+    until uvicorn is told to trust it: FORWARDED_ALLOW_IPS set to the proxy's
+    address makes this the visitor's own, from X-Forwarded-For."""
+    return request.client.host if request.client else None
+
+
 @router.post("/login", response_model=User, summary="Log in with a password",
              responses={401: {"description": "Wrong email or password"},
-                        429: {"description": "Too many wrong passwords for this email"}})
-def login(body: Credentials, response: Response):
+                        429: {"description": "Too many wrong passwords for this email, or from this address"}})
+def login(body: Credentials, request: Request, response: Response):
     try:
-        found, token, hours = auth.log_in(body.email, body.password)
+        found, token, hours = auth.log_in(body.email, body.password, _address(request))
     except auth.LockedOut:
         raise ApiError(429, "locked_out", "Too many wrong passwords. Wait 15 minutes and try again.")
     except auth.WrongPassword:

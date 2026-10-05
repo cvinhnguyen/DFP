@@ -19,7 +19,7 @@ export function brandCard(state, busy = null) {
       <div class="brand-row">
         <div class="brand-pic${which === 'logo' ? ' logo' : ''}"><img src="${esc(pic.src)}" alt="${esc(t(`brand.${which}`))}" width="${which === 'logo' ? 152 : 282}"></div>
         <div class="brand-info">
-          <h4>${esc(t(`brand.${which}`))}</h4>
+          <h3>${esc(t(`brand.${which}`))}</h3>
           <p class="cf-hint">${esc(t(uploaded ? 'brand.uploaded' : 'brand.own', { w: pic.width, h: pic.height }))}</p>
           <div class="brand-actions">
             <button type="button" class="btn ghost small" data-act="brand-upload" data-which="${which}"${working ? ' disabled' : ''}>${esc(t(working ? 'brand.uploading' : 'brand.upload'))}</button>
@@ -30,7 +30,7 @@ export function brandCard(state, busy = null) {
   };
   return `
     <section class="card set-card brand-card">
-      <div class="set-head"><h3>${esc(t('brand.title'))}</h3></div>
+      <div class="set-head"><h2>${esc(t('brand.title'))}</h2></div>
       <p class="keep-lead">${esc(t('brand.lead'))}</p>
       <div class="brand-list">${ROWS.map(row).join('')}</div>
       <p class="cf-hint">${esc(t('brand.hint'))}</p>

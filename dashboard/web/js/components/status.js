@@ -3,7 +3,7 @@
 // low, and the "check now" button.
 // It only turns the overview into HTML; the page handles the button.
 
-import { t, tn } from '../texts.js';
+import { currentLanguage, t, tn } from '../texts.js';
 import { date, esc, euros, when } from '../format.js';
 
 // overview: GET /api/overview. checking: a check started from this page is
@@ -29,10 +29,14 @@ export function statusLines(overview, { checking = false, done = '', view = '' }
   }
   if (done) lines.push(`<p class="line good">${esc(done)}</p>`);
   if (o.failed_sources.length) {
-    const names = o.failed_sources.map((f) => f.source).join(', ');
+    // Each name in quotes, as a name can have a comma of its own:
+    // "Työterveyslaitos, ajankohtaista". A phone shows only how many.
+    const n = o.failed_sources.length;
+    const names = new Intl.ListFormat(currentLanguage(), { type: 'conjunction' })
+      .format(o.failed_sources.map((f) => t('status.sourceName', { name: f.source })));
     lines.push(`
       <div class="line warn">
-        <p>${esc(tn('status.failed', o.failed_sources.length, { names }))}</p>
+        <p><span class="line-long">${esc(tn('status.failed', n, { names }))}</span><span class="line-short">${esc(tn('status.failedShort', n))}</span></p>
         <details><summary>${esc(t('status.failedDetails'))}</summary>
           <ul>${o.failed_sources.map((f) => `<li><strong>${esc(f.source)}</strong>, ${esc(when(f.at))}: ${esc(f.error)}</li>`).join('')}</ul>
         </details>

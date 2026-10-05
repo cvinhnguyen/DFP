@@ -91,10 +91,25 @@ class InUse(Exception):
         self.names = names
 
 
+class ArticlePicture(Exception):
+    def __init__(self):
+        super().__init__("This is an article's own picture. It goes with the article, so it stays; "
+                         "remove it from the email instead.")
+
+
 def remove(key):
     """Deletes an image no newsletter or saved template uses, and that is
     not the banner or logo new emails start with. One that is used stays:
-    deleting it would leave a hole in an email already sent."""
+    deleting it would leave a hole in an email already sent. The picture
+    from an article's own page is never deleted here: Kuvapankki does not
+    list those, and the article shows it and takes it into the newsletter.
+    They go with their article's text (retention) or their source's
+    "Ei kuvia" (services/pictures.py)."""
+    found = queries.owner(key)
+    if not found:
+        return False
+    if found["item_id"] is not None:
+        raise ArticlePicture()
     names = queries.used_in(key) + queries.used_in_templates(key) + brand.used_for(key)
     if names:
         raise InUse(names)

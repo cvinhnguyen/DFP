@@ -7,7 +7,7 @@
 // Jira: DM42-80, DM42-31, DM42-40
 
 import { api } from '../api.js';
-import { t, tn } from '../texts.js';
+import { pageTitle, t, tn } from '../texts.js';
 import { aiUsage, date, esc, number, finnishDay } from '../format.js';
 import { articleRow, articleReader, dayHeading, offerBox, termOptions, SECTIONS } from '../components/article.js';
 import { colourOf, sideHtml } from '../components/side.js';
@@ -117,7 +117,7 @@ export function saveTarget(id) {
 
 function layout() {
   return `
-    <h2 class="sr-only">${esc(t('page.articles'))}</h2>
+    <h1 class="sr-only">${esc(t('page.articles'))}</h1>
     <section class="status" id="status" aria-live="polite"></section>
     <div class="ar" id="ar">
       <nav class="ar-side" id="side" aria-label="${esc(t('side.label'))}"></nav>
@@ -125,7 +125,7 @@ function layout() {
         <nav class="ar-places" id="places" aria-label="${esc(t('places.label'))}"></nav>
         <div class="ar-head">
           <div class="ar-title">
-            <h3 id="place-name"></h3>
+            <h2 id="place-name"></h2>
             <span class="ar-count" id="place-count"></span>
             <button type="button" class="btn ghost small ask-new" id="ask-new" data-act="ask-new" hidden>${icon('plus', 16)}<span>${esc(t('ask.new'))}</span></button>
           </div>
@@ -321,6 +321,7 @@ export function showArticles(root) {
 
   function renderHead() {
     $('place-name').textContent = placeName();
+    pageTitle(placeName(), t('page.articles'));
     const counted = place.kind !== 'topics' && place.kind !== 'ask';
     $('place-count').textContent = counted ? tn('count', total, { n: number(total) }) : '';
     $('place-note').textContent = placeNote();
@@ -367,7 +368,7 @@ export function showArticles(root) {
       if (state.sort !== 'relevance') {
         const day = dayOf(item);
         if (day !== last) {
-          out += `<h4 class="ar-day">${esc(dayHeading(day))}</h4>`;
+          out += `<h3 class="ar-day">${esc(dayHeading(day))}</h3>`;
           last = day;
         }
       }
@@ -693,7 +694,7 @@ export function showArticles(root) {
     if (!asked.list.length && !asked.pending) {
       out += `<div class="chat-empty">
         <span class="chat-mark" aria-hidden="true">${icon('comment', 26)}</span>
-        <h4>${esc(t('ask.emptyTitle'))}</h4>
+        <h3>${esc(t('ask.emptyTitle'))}</h3>
         <p>${esc(t('ask.intro'))}</p>
         <div class="chat-try" role="group" aria-label="${esc(t('ask.try'))}">${['ask.example1', 'ask.example2', 'ask.example3']
           .map((k) => `<button type="button" class="chat-chip" data-act="ask-example" data-q="${esc(t(k))}">${esc(t(k))}</button>`).join('')}</div>
@@ -759,9 +760,13 @@ export function showArticles(root) {
 
   async function loadTopics() {
     tv.creating = false;
+    // A list still loading for the place before is not shown over the topics.
+    ++latest;
+    rowsEl.setAttribute('aria-busy', 'true');
     await loadSide().catch(() => {});
     renderHead();
     renderRows();
+    rowsEl.removeAttribute('aria-busy');
     const wanted = side.topics.find((x) => String(x.id) === state.item) || (!NARROW.matches && side.topics[0]);
     if (wanted) selectTopic(wanted.id, { open: false });
     else renderReader();

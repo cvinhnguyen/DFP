@@ -71,6 +71,8 @@ const fi = {
   'error.login_ended': 'Kirjautumisesi on päättynyt. Kirjaudu uudelleen.',
   'error.admin_only': 'Vain ylläpitäjä voi tehdä tämän.',
   'error.demo_login': 'Jaettu demotunnus ei voi tehdä tätä. Kaikki muu toimii tavalliseen tapaan.',
+  'error.invalid_request': 'Pyynnössä oli jotain, mitä ei voitu käyttää. Tarkista kentät ja yritä uudelleen.',
+  'error.bad_request': 'Pyyntöä ei voitu käsitellä. Lataa sivu uudelleen ja yritä uudestaan.',
   'error.not_ready': 'Kirje viedään Mailchimpiin vasta, kun Tarkistuksessa ei ole virheitä. Korjattavaa: {count}.',
   'error.locked_out': 'Liian monta väärää salasanaa. Odota 15 minuuttia ja yritä uudelleen.',
   'error.wrong_password': 'Väärä sähköposti tai salasana.',
@@ -140,6 +142,9 @@ const fi = {
   'status.failed.one': 'Yhden lähteen viimeisin tarkistus epäonnistui: {names}.',
   'status.failed.other': '{n} lähteen viimeisin tarkistus epäonnistui: {names}.',
   'status.failedDetails': 'Mikä meni vikaan',
+  'status.failedShort.one': 'Yhden lähteen tarkistus epäonnistui.',
+  'status.failedShort.other': '{n} lähteen tarkistus epäonnistui.',
+  'status.sourceName': '”{name}”',
   'status.aiDown': 'Tekoäly ei vastaa. Uudet artikkelit odottavat ja tiivistetään, kun se palaa.',
   'status.budgetWarn': 'Tekoälyn kuukausibudjetista on käytetty {pct} % ({spent} / {budget}).',
   'status.budgetOver': 'Tekoälyn tämän kuun budjetti ({budget}) on käytetty. Lähteiden uusia artikkeleita tiivistetään taas {date} tai kun ylläpitäjä nostaa budjettia Asetuksissa. Telegram-botille lähetetyt linkit ja pyydetyt tiivistelmät tehdään silti.',
@@ -307,6 +312,8 @@ const en = {
   'error.login_ended': 'Your login has ended. Log in again.',
   'error.admin_only': 'Only an admin can do this.',
   'error.demo_login': 'The shared demo login cannot do this. Everything else works as usual.',
+  'error.invalid_request': 'Something in the request could not be used. Check the fields and try again.',
+  'error.bad_request': 'The request could not be handled. Reload the page and try again.',
   'error.not_ready': 'The email goes to Mailchimp only once Check lists no errors. Left to fix: {count}.',
   'error.locked_out': 'Too many wrong passwords. Wait 15 minutes and try again.',
   'error.wrong_password': 'Wrong email or password.',
@@ -376,6 +383,9 @@ const en = {
   'status.failed.one': '1 source failed on its last check: {names}.',
   'status.failed.other': '{n} sources failed on their last check: {names}.',
   'status.failedDetails': 'What went wrong',
+  'status.failedShort.one': '1 source failed its check.',
+  'status.failedShort.other': '{n} sources failed their check.',
+  'status.sourceName': '“{name}”',
   'status.aiDown': "The AI isn't answering. New articles wait and are summarised when it's back.",
   'status.budgetWarn': "{pct} % of this month's AI budget is used ({spent} of {budget}).",
   'status.budgetOver': "This month's AI budget ({budget}) is used up. New articles from the sources are summarised again on {date}, or when an admin raises the budget in Settings. Links sent to the bot and summaries editors ask for are still made.",
@@ -552,4 +562,10 @@ export function applyTexts(root) {
   });
   document.documentElement.lang = language;
   document.title = t('app.title');
+}
+
+// The browser tab's title: what is on screen first, then the app's name, so
+// tabs, history and screen readers tell the pages apart.
+export function pageTitle(...parts) {
+  document.title = [...parts.filter(Boolean), t('app.title')].join(' · ');
 }

@@ -60,8 +60,8 @@ function monthsTable(months) {
     </tr>`).join('');
   const theses = months.reduce((sum, m) => sum + m.on_request, 0);
   return `
-    <h4 class="cost-h">${esc(t('cost.months'))}</h4>
-    <div class="cost-scroll"><table class="cost-table">
+    <h3 class="cost-h">${esc(t('cost.months'))}</h3>
+    <div class="cost-scroll" tabindex="0" role="region" aria-label="${esc(t('cost.months'))}"><table class="cost-table">
       <thead><tr><th>${esc(t('cost.month'))}</th><th>${esc(t('cost.calls'))}</th><th>${esc(t('cost.tokens'))}</th>
         <th>${esc(t('cost.eur'))}</th><th>${esc(t('cost.filter'))}</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -79,8 +79,8 @@ function issuesTable(issues) {
       <td class="num">${number(i.period_tokens)}<small>${esc(euros(i.period_eur))}</small></td>
     </tr>`).join('');
   return `
-    <h4 class="cost-h">${esc(t('cost.issues'))}</h4>
-    ${issues.length ? `<div class="cost-scroll"><table class="cost-table">
+    <h3 class="cost-h">${esc(t('cost.issues'))}</h3>
+    ${issues.length ? `<div class="cost-scroll" tabindex="0" role="region" aria-label="${esc(t('cost.issues'))}"><table class="cost-table">
       <thead><tr><th>${esc(t('cost.issue'))}</th><th>${esc(t('cost.articles'))}</th>
         <th>${esc(t('cost.own'))}</th><th>${esc(t('cost.period'))}</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -91,7 +91,7 @@ function issuesTable(issues) {
 export function costsCard(costs) {
   return `
     <section class="card set-card cost-card">
-      <div class="set-head"><h3>${esc(t('cost.title'))}</h3></div>
+      <div class="set-head"><h2>${esc(t('cost.title'))}</h2></div>
       ${now(costs)}
       ${budgetForm(costs)}
       ${monthsTable(costs.months)}

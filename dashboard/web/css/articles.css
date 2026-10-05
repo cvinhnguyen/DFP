@@ -43,6 +43,7 @@
 .status details { margin-top: 4px; color: var(--ink); font-size: 13.5px; }
 .status summary { cursor: pointer; color: var(--amber); width: fit-content; }
 .status ul { margin: 6px 0 2px; padding-left: 20px; }
+.status .line-short { display: none; }
 .spinner {
   width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
   border: 2px solid var(--rule); border-top-color: var(--brand); animation: spin .9s linear infinite;
@@ -130,7 +131,7 @@
 .ar-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--rule); }
 .ar-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--rule); display: grid; gap: 6px; }
 .ar-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
-.ar-title h3 { margin: 0; font-size: 18px; font-weight: 650; }
+.ar-title h2 { margin: 0; font-size: 18px; font-weight: 650; }
 .ar-count { color: var(--soft); font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .ar-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--soft); }
 .ar-note:empty { display: none; }
@@ -220,13 +221,14 @@
 button.chip { cursor: pointer; }
 button.chip:hover { border-color: var(--link); }
 .chip.none { background: var(--slate-soft); color: var(--soft); padding-left: 10px; }
-.tagchip { display: inline-flex; align-items: center; border-radius: 999px; background: var(--slate-soft); font-size: 13px; line-height: 1.6; }
+/* At least 24 px high, and the × 24 px wide, so a finger finds it (WCAG 2.5.8). */
+.tagchip { display: inline-flex; align-items: stretch; min-height: 24px; border-radius: 999px; background: var(--slate-soft); font-size: 13px; line-height: 1.6; }
 .tagchip button {
   appearance: none; border: 0; background: none; font: inherit; color: var(--ink);
-  cursor: pointer; padding: 0 3px 0 10px; border-radius: 999px;
+  cursor: pointer; padding: 0 3px 0 10px; border-radius: 999px; display: inline-flex; align-items: center;
 }
 .tagchip button:hover { text-decoration: underline; text-underline-offset: 2px; }
-.tagchip button.x { padding: 0 9px 0 4px; color: var(--soft); font-size: 15px; line-height: 1; }
+.tagchip button.x { min-width: 24px; justify-content: center; padding: 0 7px 0 3px; color: var(--soft); font-size: 15px; line-height: 1; }
 .tagchip button.x:hover { color: var(--ink); text-decoration: none; }
 .tagchip.sig { background: var(--amber-soft); }
 .tagchip.sig button:first-child { color: var(--amber); font-weight: 600; }
@@ -426,6 +428,11 @@ ul.copies { margin: 0; padding-left: 20px; }
   .status { padding: 2px 12px; }
   .status .line { font-size: 13.5px; gap: 4px 10px; }
   .status .line-more { display: none; }
+  .status div.line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+  .status .line-long { display: none; }
+  .status .line-short { display: inline; }
+  .status details { margin-top: 0; }
+  .status details[open] { flex-basis: 100%; }
   .ar-read { display: none; overflow: visible; padding: 14px 14px 20px; }
   .ar.reading .ar-list { display: none; }
   .ar.reading .ar-read { display: flex; }
@@ -477,7 +484,7 @@ ul.copies { margin: 0; padding-left: 20px; }
 
 .chat-empty { display: grid; justify-items: center; gap: 10px; max-width: 480px; margin: 0 auto; padding: 32px 8px 8px; text-align: center; }
 .chat-mark { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--brand-soft); color: var(--link); }
-.chat-empty h4 { margin: 4px 0 0; font-size: 19px; font-weight: 650; text-wrap: balance; }
+.chat-empty h3 { margin: 4px 0 0; font-size: 19px; font-weight: 650; text-wrap: balance; }
 .chat-empty p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--soft); text-wrap: pretty; }
 .chat-try { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
 .chat-chip {

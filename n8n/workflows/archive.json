@@ -5,7 +5,7 @@
   "nodes": [
     {
       "id": "8d2e3f40-5b6c-4d7e-9f00-1b2c3d4e5001",
-      "name": "Every Monday",
+      "name": "Every hour",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -16,14 +16,32 @@
         "rule": {
           "interval": [
             {
-              "field": "weeks",
-              "triggerAtDay": [
-                1
-              ],
-              "triggerAtHour": 6,
+              "field": "hours",
+              "hoursInterval": 1,
               "triggerAtMinute": 15
             }
           ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Every Monday at 6.15. The computer n8n runs on may be asleep then, so\n-- the trigger fires every hour, and this lets a run through only when the\n-- latest Monday 6.15 has passed since the archive was last read\n-- (newsletter_archive_read_at, which the dashboard's \"Tuo uudet nyt\" sets\n-- too), and only once an admin has given the archive's address. Otherwise\n-- nothing comes out and the run ends here. A read that fails is tried again\n-- the next hour.\nWITH here AS (\n    SELECT now() AT TIME ZONE 'Europe/Helsinki' AS now\n),\nslot AS (\n    SELECT CASE WHEN planned <= now THEN planned ELSE planned - interval '7 days' END AS at\n      FROM (SELECT now, date_trunc('week', now) + time '06:15' AS planned FROM here) x\n),\nlast_run AS (\n    SELECT (SELECT nullif(value, '')::timestamptz FROM app_settings WHERE key = 'newsletter_archive_read_at') AT TIME ZONE 'Europe/Helsinki' AS at\n)\nSELECT to_char(slot.at, 'YYYY-MM-DD HH24:MI') AS due_since\n  FROM slot, last_run\n WHERE coalesce(last_run.at, '-infinity') < slot.at\n   AND EXISTS (SELECT 1 FROM app_settings WHERE key = 'newsletter_archive_url' AND value <> '');",
+        "options": {}
+      },
+      "id": "da43416a-e015-4930-80ce-3a5365bb7941",
+      "name": "Due",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
         }
       }
     },
@@ -44,7 +62,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        260,
+        480,
         100
       ],
       "notes": "The association's newsletters sent since last week, from its public archive in Mailchimp, so the dashboard can compare each with what the system found (Uutiskirjeet → Arkisto). The dashboard reads the archive; this only asks it to. Until an admin gives the archive's address there is nothing to do. dashboard/app/services/archive.py, db/init/32-archive-import.sql.",
@@ -66,7 +84,7 @@
     }
   ],
   "connections": {
-    "Every Monday": {
+    "Run now": {
       "main": [
         [
           {
@@ -77,7 +95,18 @@
         ]
       ]
     },
-    "Run now": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due": {
       "main": [
         [
           {

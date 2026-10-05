@@ -29,7 +29,7 @@ export function sourcePicturesCard(state, busy = null) {
       <tbody>${list.map((s) => row(s, busy)).join('')}</tbody></table></div>`;
   return `
     <section class="card set-card pics-card">
-      <div class="set-head"><h3>${esc(t('pics.title'))}</h3></div>
+      <div class="set-head"><h2>${esc(t('pics.title'))}</h2></div>
       <p class="keep-lead">${esc(t('pics.lead'))}</p>
       <dl class="pics-meanings">${RIGHTS.map((r) => `<dt>${esc(t(`pics.rights.${r}`))}</dt><dd>${esc(t(`pics.means.${r}`))}</dd>`).join('')}</dl>
       ${table(active)}

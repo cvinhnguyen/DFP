@@ -389,6 +389,20 @@
   .ed-saved { display: none; }
   .editor-page { --panel-w: 260px; --rail-w: 64px; }
 }
+/* A phone is too narrow to build an email on, so it shows the email itself,
+   full width, with the preview and the comments; building is for a computer,
+   as in Mailchimp. The top bar keeps its buttons, the test one as an icon. */
+.ed-narrow, .ed-phone-note { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 640px) {
+  .ed-top { gap: 8px; padding: 0 10px; }
+  #ed-test [data-t], .ed-wide, .ed-rail, .ed-panel, .ed-devices { display: none; }
+  .ed-narrow { display: inline; }
+  .ed-phone-note { display: block; margin: 0; padding: 8px 14px; font-size: 13.5px; line-height: 1.4; background: var(--sel-soft); color: var(--ink); }
+  .ed-canvas-bar { justify-content: flex-end; }
+  .ed-canvas-tools { position: static; }
+  .ed-stage[data-device="mobile"] .ed-frame { width: 100%; margin: 0; height: 100%; border-radius: 0; box-shadow: none; }
+}
 
 /* The AI's draft of the greeting or of a trend's why it matters, above the
    block's styles. */

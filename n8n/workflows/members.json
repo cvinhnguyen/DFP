@@ -5,7 +5,7 @@
   "nodes": [
     {
       "id": "7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4001",
-      "name": "Every Monday",
+      "name": "Every hour",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -16,14 +16,32 @@
         "rule": {
           "interval": [
             {
-              "field": "weeks",
-              "triggerAtDay": [
-                1
-              ],
-              "triggerAtHour": 5,
+              "field": "hours",
+              "hoursInterval": 1,
               "triggerAtMinute": 30
             }
           ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Every Monday at 5.30. The computer n8n runs on may be asleep then, so\n-- the trigger fires every hour, and this lets a run through only when the\n-- latest Monday 5.30 has passed since the members were last read\n-- (members.last_seen, which Run now sets too). Otherwise nothing comes out\n-- and the run ends here. A read that fails is tried again the next hour.\nWITH here AS (\n    SELECT now() AT TIME ZONE 'Europe/Helsinki' AS now\n),\nslot AS (\n    SELECT CASE WHEN planned <= now THEN planned ELSE planned - interval '7 days' END AS at\n      FROM (SELECT now, date_trunc('week', now) + time '05:30' AS planned FROM here) x\n),\nlast_run AS (\n    SELECT (SELECT max(last_seen) FROM members) AT TIME ZONE 'Europe/Helsinki' AS at\n)\nSELECT to_char(slot.at, 'YYYY-MM-DD HH24:MI') AS due_since\n  FROM slot, last_run\n WHERE coalesce(last_run.at, '-infinity') < slot.at;",
+        "options": {}
+      },
+      "id": "5c17d8cc-522d-4c6c-aec0-ea7864d6ae17",
+      "name": "Due",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
         }
       }
     },
@@ -44,7 +62,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        240,
+        460,
         100
       ],
       "credentials": {
@@ -65,7 +83,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        480,
+        700,
         100
       ],
       "parameters": {
@@ -79,7 +97,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        720,
+        940,
         100
       ],
       "credentials": {
@@ -98,17 +116,6 @@
     }
   ],
   "connections": {
-    "Every Monday": {
-      "main": [
-        [
-          {
-            "node": "Members page",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Run now": {
       "main": [
         [
@@ -136,6 +143,28 @@
         [
           {
             "node": "Save",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due": {
+      "main": [
+        [
+          {
+            "node": "Members page",
             "type": "main",
             "index": 0
           }

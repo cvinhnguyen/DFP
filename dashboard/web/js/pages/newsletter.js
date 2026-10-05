@@ -5,7 +5,7 @@
 // Jira: DM42-37
 
 import { api } from '../api.js';
-import { t, tn } from '../texts.js';
+import { pageTitle, t, tn } from '../texts.js';
 import { esc, safeUrl, when, date, number } from '../format.js';
 import { readDesign } from '../newsletter/model.js';
 import { checkDesign } from '../newsletter/checks.js';
@@ -42,7 +42,7 @@ export function showNewsletter(root) {
         <div class="nl-line-mark" aria-hidden="true">${mark}</div>
         <div class="nl-line-main">
           <div class="nl-line-head">
-            <h3>${esc(title)}</h3>
+            <h2>${esc(title)}</h2>
             <div class="nl-line-action">${action}</div>
           </div>
           <div class="nl-line-summary">${summary}</div>
@@ -60,7 +60,7 @@ export function showNewsletter(root) {
     const list = !open.articles ? '' : `<div class="nl-line-body">${SECTION_ORDER.map((key) => {
       const items = by(key);
       if (!items.length) return '';
-      return `<h4>${esc(t(`section.${key}`))}</h4><ul class="nl-articles">${items.map((a) => {
+      return `<h3>${esc(t(`section.${key}`))}</h3><ul class="nl-articles">${items.map((a) => {
         const url = safeUrl(a.url);
         return `<li>
           <span class="nl-article-title">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>` : esc(a.title)}</span>
@@ -146,11 +146,12 @@ export function showNewsletter(root) {
       !!design && checks.errors.filter((e) => e.code !== 'subject').length === 0,
       sent || (!!issue.mailchimp_exported_at && !issue.mailchimp_changed),
     ].filter(Boolean).length;
+    pageTitle(issue.name);
     root.innerHTML = `
       <a class="nl-back" href="#/newsletters">${icon('arrowLeft', 16)} ${esc(t('issue.toList'))}</a>
       <div class="nl-head">
         <div class="nl-title">
-          <h2>${esc(issue.name)}</h2>
+          <h1>${esc(issue.name)}</h1>
           ${sent ? '' : `<button type="button" class="st-icon-btn" data-act="rename" title="${esc(t('issue.rename'))}" aria-label="${esc(t('issue.rename'))}">${icon('pencil', 18)}</button>`}
           <span class="nl-status ${issue.status}">${esc(t(`list.status.${issue.status}`))}</span>
           ${issue.current && !sent ? `<span class="nl-current">${esc(t('list.current'))}</span>` : ''}
@@ -174,7 +175,7 @@ export function showNewsletter(root) {
         </div>
         <aside class="card nl-side">
           <div class="nl-side-head">
-            <h3>${esc(t('issue.preview'))}</h3>
+            <h2>${esc(t('issue.preview'))}</h2>
             ${issue.html ? `<a class="linkish" href="/api/issues/${issue.id}/preview" target="_blank" rel="noopener">${esc(t('issue.openPreview'))}</a>` : ''}
           </div>
           ${issue.html

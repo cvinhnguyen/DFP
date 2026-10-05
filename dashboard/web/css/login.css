@@ -5,7 +5,7 @@
   max-width: 400px; margin: 40px auto; padding: 28px 28px 22px;
   background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: var(--shadow);
 }
-.login h2 { font-size: 23px; font-weight: 650; margin: 0 0 16px; }
+.login h1 { font-size: 23px; font-weight: 650; margin: 0 0 16px; }
 .login .lead { margin: 0 0 18px; color: var(--soft); }
 .login label { display: block; font-size: 14px; margin: 14px 0 4px; }
 .login input {

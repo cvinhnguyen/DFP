@@ -7,7 +7,7 @@
 // Jira: DM42-37
 
 import { api } from '../api.js';
-import { t, tn } from '../texts.js';
+import { pageTitle, t, tn } from '../texts.js';
 import { esc, when, date } from '../format.js';
 import { icon } from '../ui/icons.js';
 import { h } from '../ui/dom.js';
@@ -76,10 +76,11 @@ export function showNewsletters(root) {
   function render() {
     const shown = issues;
     const drafts = issues.filter((i) => i.status === 'draft').length;
+    pageTitle(t('list.title'));
     root.innerHTML = `
       <div class="pagehead nl-listhead">
         <div>
-          <h2>${esc(t('list.title'))}</h2>
+          <h1>${esc(t('list.title'))}</h1>
           <p>${esc(t('list.lead'))}</p>
         </div>
         <div class="nl-listhead-acts">
@@ -98,9 +99,9 @@ export function showNewsletters(root) {
         <table class="nl-table">
           <thead><tr>
             <th scope="col">${esc(t('list.col.name'))}</th>
-            <th scope="col">${esc(t('list.col.edited'))}</th>
+            <th scope="col" class="nl-cell-edited">${esc(t('list.col.edited'))}</th>
             <th scope="col">${esc(t('list.col.status'))}</th>
-            <th scope="col">${esc(t('list.col.mailchimp'))}</th>
+            <th scope="col" class="nl-cell-mc">${esc(t('list.col.mailchimp'))}</th>
             <th scope="col"><span class="sr-only">${esc(t('list.col.actions'))}</span></th>
           </tr></thead>
           <tbody>${shown.map(row).join('')}<tr class="nl-none-row" hidden><td colspan="5" class="nl-none">${esc(t('list.nothing'))}</td></tr></tbody>
@@ -108,7 +109,7 @@ export function showNewsletters(root) {
       </div>` : `
       <div class="card nl-empty">
         ${icon('template', 40)}
-        <h3>${esc(t('list.emptyTitle'))}</h3>
+        <h2>${esc(t('list.emptyTitle'))}</h2>
         <p>${esc(t('list.emptyLead'))}</p>
         <button type="button" class="btn" data-act="create">${esc(t('list.create'))}</button>
       </div>`}

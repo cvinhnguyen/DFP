@@ -25,10 +25,10 @@
 .arc-summary, .arc-links, .arc-surfaced { padding: 16px 20px; margin-bottom: 16px; max-width: 860px; }
 .arc-summary p { margin: 0 0 6px; }
 .arc-here-line .arc-here { margin: 0 6px 0 0; }
-.arc-notsent h4, .arc-group h4 { margin: 12px 0 6px; font-size: 14px; }
+.arc-notsent h2, .arc-group h3 { margin: 12px 0 6px; font-size: 14px; }
 .arc-notsent ul, .arc-surfaced ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; }
 .arc-notsent small, .arc-surfaced small { color: var(--soft); }
-.arc-links h3 { margin: 0; font-size: 17px; }
+.arc-links h2 { margin: 0; font-size: 17px; }
 .arc-entries { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .arc-entry { display: grid; grid-template-columns: 11.5em minmax(0, 1fr); gap: 4px 12px; align-items: baseline; font-size: 14px; }
 .arc-link { min-width: 0; overflow-wrap: anywhere; }
@@ -39,9 +39,13 @@
 .arc-state.late { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
 .arc-state.missed { color: var(--slate); background: var(--slate-soft); border-color: transparent; }
 .arc-surfaced summary { cursor: pointer; font-weight: 600; }
+/* A phone: the numbers go under each newsletter's name instead of in
+   columns of their own, which do not fit beside it. */
+.arc-nums { display: none; }
 @media (max-width: 640px) {
   .arc-entry { grid-template-columns: minmax(0, 1fr); }
-  .arc-table th:nth-child(4), .arc-table td:nth-child(4) { display: none; }
+  .arc-table th.num, .arc-table td.num { display: none; }
+  .arc-nums { display: block; margin-top: 3px; color: var(--soft); font-size: 12.5px; line-height: 1.4; }
 }
 .nl-filters { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 0 0 14px; }
 .nl-search { max-width: 320px; }
@@ -59,7 +63,7 @@
 .nl-name:hover { color: var(--link); text-decoration: underline; }
 .nl-sub { font-size: 13.5px; color: var(--ink); }
 .nl-sub em { color: var(--soft); }
-.nl-current { align-self: flex-start; display: inline-block; font-size: 12px; font-weight: 600; color: var(--sel); background: var(--sel-soft); border-radius: 999px; padding: 1px 9px; margin-top: 2px; }
+.nl-current { align-self: flex-start; display: inline-block; font-size: 12px; font-weight: 600; color: var(--link); background: var(--sel-soft); border-radius: 999px; padding: 1px 9px; margin-top: 2px; }
 .nl-cell-edited { white-space: nowrap; }
 .nl-status { display: inline-block; font-size: 12.5px; font-weight: 650; border-radius: 999px; padding: 2px 10px; }
 .nl-status.draft { background: var(--amber-soft); color: var(--amber); }
@@ -69,7 +73,7 @@
 .nl-cell-actions .btn { text-decoration: none; display: inline-block; vertical-align: middle; }
 .nl-none { color: var(--soft); text-align: center; }
 .nl-empty { text-align: center; padding: 48px 20px; color: var(--soft); }
-.nl-empty h3 { color: var(--ink); margin: 12px 0 4px; }
+.nl-empty h2 { color: var(--ink); margin: 12px 0 4px; font-size: 1.17em; }
 .nl-hint { font-size: 13.5px; color: var(--soft); margin-top: 12px; }
 
 /* ---------- one newsletter ---------- */
@@ -77,7 +81,7 @@
 .nl-back { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; text-decoration: none; margin-bottom: 10px; }
 .nl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 18px; }
 .nl-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.nl-title h2 { font-size: 26px; margin: 0; }
+.nl-title h1 { font-size: 26px; margin: 0; }
 .nl-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .nl-head-actions a.btn { text-decoration: none; }
 .nl-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 18px; align-items: start; }
@@ -95,14 +99,14 @@
 .nl-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--rule); display: inline-block; margin-top: 1px; }
 .nl-line-main { flex: 1; min-width: 0; }
 .nl-line-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.nl-line-head h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.nl-line-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
 .nl-line-action { display: flex; gap: 8px; flex-wrap: wrap; }
 .nl-line-action a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .nl-line-summary { margin-top: 4px; font-size: 14.5px; }
 .nl-line-summary p { margin: 2px 0; }
 .nl-subject-text { font-weight: 600; }
 .nl-line-body { margin-top: 12px; }
-.nl-line-body h4 { margin: 12px 0 4px; font-size: 14px; color: var(--soft); }
+.nl-line-body h3 { margin: 12px 0 4px; font-size: 14px; color: var(--soft); }
 .nl-articles { list-style: none; margin: 0; padding: 0; }
 .nl-articles li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px dashed var(--rule); font-size: 14px; }
 .nl-articles .linkish { align-self: flex-start; font-size: 13px; }
@@ -117,7 +121,7 @@
 .nl-checks li.warning { color: var(--amber); }
 .nl-side { padding: 14px 16px; position: sticky; top: 12px; }
 .nl-side-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.nl-side-head h3 { margin: 0 0 10px; font-size: 16px; }
+.nl-side-head h2 { margin: 0 0 10px; font-size: 16px; }
 .nl-side-head a { font-size: 13px; }
 .nl-side-frame { height: 62vh; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: #f3f4f4; }
 .nl-frame { width: 100%; height: 100%; border: 0; }
@@ -157,7 +161,7 @@
 
 .set-card { padding: 18px 20px; max-width: 720px; }
 .set-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.set-head h3 { margin: 0; font-size: 18px; }
+.set-head h2 { margin: 0; font-size: 18px; }
 .set-status { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin: 12px 0 16px; padding: 10px 12px; border-radius: 8px; font-weight: 600; }
 .set-status .nl-meta { flex-basis: 100%; font-weight: 400; margin-left: 26px; }
 .set-status.ok { background: var(--green-soft); color: var(--green); }
@@ -201,12 +205,11 @@
   .nl-layout { grid-template-columns: minmax(0, 1fr); }
   .nl-side { position: static; }
   .nl-cell-mc, .nl-cell-edited { display: none; }
-  .nl-table th:nth-child(2), .nl-table th:nth-child(4) { display: none; }
 }
 
 /* Asetukset: the banners and logo new emails start with */
 .members-all summary { cursor: pointer; color: var(--link); width: fit-content; }
-.members-all h4 { margin: 12px 0 6px; font-size: 14px; }
+.members-all h3 { margin: 12px 0 6px; font-size: 14px; }
 .members-list { margin: 0; padding-left: 20px; columns: 2 220px; column-gap: 24px; font-size: 14px; }
 .members-list li { break-inside: avoid; margin: 0 0 3px; }
 /* Asetukset: what the pictures on each source's pages are */
@@ -220,7 +223,7 @@
 .pics-off summary { cursor: pointer; color: var(--link); width: fit-content; font-size: 14px; }
 @media (max-width: 640px) { .pics-meanings { grid-template-columns: minmax(0, 1fr); } .pics-meanings dd { margin-bottom: 6px; } }
 /* Asetukset: how often the suggested sections were right */
-.sugg-card h4 { margin: 14px 0 4px; font-size: 14px; }
+.sugg-card h3 { margin: 14px 0 4px; font-size: 14px; }
 .sugg-table th:nth-child(n+4) { text-align: left; }
 .sugg-table .linkish { font-size: 13px; }
 .brand-list { display: grid; gap: 14px; margin: 12px 0 10px; }
@@ -229,7 +232,7 @@
 .brand-pic.logo { background: #ffffff; justify-self: start; }
 .brand-pic img { display: block; max-width: 100%; height: auto; }
 .brand-info { min-width: 0; }
-.brand-info h4 { margin: 0; font-size: 15px; }
+.brand-info h3 { margin: 0; font-size: 15px; }
 .brand-info .cf-hint { margin: 2px 0 8px; }
 .brand-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (max-width: 640px) { .brand-row { grid-template-columns: 1fr; } }

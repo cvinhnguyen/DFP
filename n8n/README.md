@@ -26,16 +26,16 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `summarisation.json` | runs the filter every 15 minutes, then summarises what passed. When the month's AI budget is used up, only what editors asked for |
 | `llm-call.json` | the only workflow that talks to an AI model |
 | `mailchimp.json` | the only workflow that talks to Mailchimp: creates and updates the dashboard's draft campaigns, and never sends |
-| `signal-detection.json` | finds topics that keep coming up in the news, every Monday at 6.00, or now from the dashboard's "Hae signaalit nyt" (`POST /webhook/signals`). Paused when the month's AI budget is used up |
+| `signal-detection.json` | finds topics that keep coming up in the news, every Monday at 6.00 (see Missed times below), or now from the dashboard's "Hae signaalit nyt" (`POST /webhook/signals`). Paused when the month's AI budget is used up |
 | `writing-help.json` | writes for the editors when they ask, through the LLM call: subject lines and preview texts, the greeting, why a trend matters, and answers to questions about the articles, a follow-up first written out whole (`POST /webhook/writing`) |
 | `tagging.json` | gives every article subject tags from YSO, every 15 minutes: Finto AI reads each summary, and the theses' own terms and the signal words are matched to YSO |
-| `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule, /reschedule and /help, and passes /login, /password, /adduser, /people, /remove and /alerts to the dashboard |
-| `bot-commands.json` | the list Telegram suggests when someone types / to the bot, as BotFather's /setcommands would set it: the everyday commands for everyone, and the admin commands too in each admin's own chat. Every morning, or Run now after a change |
+| `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule, /reschedule and /help, and passes /login, /password, /adduser, /people, /remove and /alerts to the dashboard. It answers in Finnish when the person's Telegram is in Finnish, and in English otherwise |
+| `bot-commands.json` | the list Telegram suggests when someone types / to the bot, as BotFather's /setcommands would set it: the everyday commands for everyone, and the admin commands too in each admin's own chat. Every morning at 5.00, or Run now after a change |
 | `alerts.json` | tells the team on Telegram when something breaks: a source whose last two checks failed or found nothing, or a workflow that stopped with an error. Once when it breaks, and once when a source works again; also 80 % of the AI budget, and a budget used up. /alerts in the bot says where. The workflows that run on their own name it as their error workflow |
-| `retention.json` | every night at 3.30, takes away the text of articles collected longer ago than `raw_text_retention_days` (90), and the pictures from their pages, except what a newsletter or an editor still has, and old answers from the AI's cache |
+| `retention.json` | every night at 3.30 (see Missed times below), takes away the text of articles collected longer ago than `raw_text_retention_days` (90), and the pictures from their pages, except what a newsletter or an editor still has, and old answers from the AI's cache |
 | `article-pictures.json` | every 15 minutes, finds the picture on ten summarised articles' pages, downloads it and hands it to the dashboard (`POST /api/items/{id}/picture`) |
-| `members.json` | every Monday at 5.30, reads the association's members page for its member organisations and their websites, so their articles are suggested for Jäsenkuulumisia |
-| `archive.json` | every Monday at 6.15, asks the dashboard to bring in the newsletters sent since from the association's public archive in Mailchimp, to compare with what the system found (`POST /api/archive/refresh`) |
+| `members.json` | every Monday at 5.30 (see Missed times below), reads the association's members page for its member organisations and their websites, so their articles are suggested for Jäsenkuulumisia |
+| `archive.json` | every Monday at 6.15 (see Missed times below), asks the dashboard to bring in the newsletters sent since from the association's public archive in Mailchimp, to compare with what the system found (`POST /api/archive/refresh`) |
 
 `ingest-api.json` is the write path for collected items: `POST
 /webhook/ingest` with a batch, and it answers accepted or rejected for each
@@ -64,12 +64,18 @@ model server keeps to JSON, which is how the summarisation gets its fields.
 `telegram-capture.json` lets an editor send a link to @DFP_Mazhar4_bot and
 have it join the same pipeline as crawled content. It asks Telegram for new
 messages every 20 seconds rather than Telegram calling us, so no tunnel and no
-public address are needed; a poll with nothing in it leaves about a kilobyte
-in n8n's history. Only Telegram ids listed in `users.telegram_user_id` are
+public address are needed. A poll that works is not kept in n8n's history,
+only one that fails (see Run history below). Only Telegram ids listed in `users.telegram_user_id` are
 accepted; anyone else is refused and told their own id, which is how they
 get on the list (`python -m app.cli.users telegram`). Where the page cannot be read,
 and LinkedIn almost never can, the bot uses the words the editor typed as the
 title. Set `TELEGRAM_BOT_TOKEN` in `.env`.
+
+The bot writes in the person's Telegram language: Finnish when their
+Telegram is in Finnish, English otherwise. That covers its answers, the
+/check result, a summary it sends later and the command menus. n8n
+remembers each team member's language in `telegram_languages` in
+`app_settings`. Alerts to the team stay in English.
 
 Accounts live in the dashboard, so the bot only passes the account commands
 on: /login, /password, /adduser, /people, /remove and /alerts. The dashboard
@@ -234,11 +240,43 @@ copy.
 
 The n8n image is pinned to 2.38.1, the version this setup was tested against.
 
+### Missed times
+
+n8n runs on the computer it is installed on, and a sleeping laptop runs
+nothing. A schedule that passes while it sleeps is not made up by n8n itself,
+so the workflows that run at a set time (members, signal detection and the
+archive on Monday mornings, retention at night, the bot's command list in
+the morning) fire every hour instead, and their first node, Due, lets a run
+through only when the planned time has passed since the last run that the
+database remembers: `members.last_seen`, `signals_run_at`,
+`newsletter_archive_read_at`, `retention_runs` and `bot_commands_set_at`. A
+run from the dashboard ("Hae signaalit nyt", "Tuo uudet nyt") or Run now
+counts as a run. So a Monday spent asleep until ten gets its signals within
+the hour after the computer wakes, and only once. A members, archive or
+retention run that fails is tried again the next hour, and Alerts tells the
+team; signal detection and the menus count from when a run starts, so one
+that fails waits for the next planned time. `signals_run_at` and
+`bot_commands_set_at` are made in `app_settings` by their first run. The
+collection and the 15-minute workflows catch up on their own: they look at
+what is waiting each time they run.
+
+### Run history
+
+n8n keeps 10,000 runs. The Telegram poll runs every 20 seconds, so it saves
+only the runs that fail (Settings, Save successful production executions: Do
+not save), as the article pictures workflow does. The other workflows save
+about 500 runs a day, the hourly checks above included, so a failure stays in
+n8n's list of runs for about three weeks rather than a few days.
+
+### Run data
+
 n8n stores the full payload of every run, including article text, and prunes
 it after 30 days (`N8N_EXECUTION_RETENTION_HOURS` in `.env`). That makes it a
 retention setting rather than only housekeeping: keep it no longer than
 `raw_text_retention_days`, or n8n would hold the text the nightly cleanup
 takes out of the database.
+
+### Errors
 
 A workflow that runs on its own, from a schedule, names Alerts as its error
 workflow (Settings, Error workflow), so its failures reach the team on

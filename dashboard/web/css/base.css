@@ -135,7 +135,7 @@ a { color: var(--link); }
 
 .page { padding-top: 26px; padding-bottom: 64px; }
 .pagehead { margin-bottom: 18px; }
-.pagehead h2 { font-size: 26px; font-weight: 650; margin: 0 0 4px; letter-spacing: -.01em; }
+.pagehead h1 { font-size: 26px; font-weight: 650; margin: 0 0 4px; letter-spacing: -.01em; }
 .pagehead p { margin: 0; color: var(--soft); max-width: 70ch; }
 .card {
   background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius);

@@ -33,18 +33,18 @@ export function suggestionsCard(state) {
   const head = (cells) => `<thead><tr>${cells.map((c) => `<th scope="col">${esc(t(c))}</th>`).join('')}</tr></thead>`;
   return `
     <section class="card set-card sugg-card">
-      <div class="set-head"><h3>${esc(t('sugg.title'))}</h3></div>
+      <div class="set-head"><h2>${esc(t('sugg.title'))}</h2></div>
       <p class="keep-lead">${esc(t('sugg.lead'))}</p>
       <p class="cf-hint">${esc(state.picks
         ? t('sugg.kept', { kept: number(state.kept), picks: number(state.picks), pct: percent(state.kept, state.picks) })
         : t('sugg.none'))}</p>
       ${state.reasons.length ? `
-        <h4>${esc(t('sugg.reasons'))}</h4>
+        <h3>${esc(t('sugg.reasons'))}</h3>
         <div class="cost-scroll"><table class="cost-table sugg-table">
           ${head(['sugg.reason', 'sugg.picks', 'sugg.hit', 'sugg.movedTo'])}
           <tbody>${state.reasons.map(reasonRow).join('')}</tbody></table></div>` : ''}
       ${state.sources.length ? `
-        <h4>${esc(t('sugg.sources'))}</h4>
+        <h3>${esc(t('sugg.sources'))}</h3>
         <div class="cost-scroll"><table class="cost-table sugg-table">
           ${head(['sugg.source', 'sugg.picks', 'sugg.hit', 'sugg.movedTo', 'sugg.chosen'])}
           <tbody>${state.sources.map(sourceRow).join('')}</tbody></table></div>` : ''}

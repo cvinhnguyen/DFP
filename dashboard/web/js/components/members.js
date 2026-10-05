@@ -11,7 +11,7 @@ export function membersCard(state) {
     const members = state.members.filter((m) => m.kind === kind);
     if (!members.length) return '';
     return `
-      <h4>${esc(tn(`members.${kind}`, members.length))}</h4>
+      <h3>${esc(tn(`members.${kind}`, members.length))}</h3>
       <ul class="members-list">${members.map((m) => {
         const url = safeUrl(m.website);
         return `<li>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(m.name)}</a>` : esc(m.name)}</li>`;
@@ -19,7 +19,7 @@ export function membersCard(state) {
   };
   return `
     <section class="card set-card members-card">
-      <div class="set-head"><h3>${esc(t('members.title'))}</h3></div>
+      <div class="set-head"><h2>${esc(t('members.title'))}</h2></div>
       <p class="keep-lead">${esc(t('members.lead'))}</p>
       ${state.members.length
         ? `<p class="cf-hint">${esc(t('members.read', { n: state.members.length, when: when(state.read_at) }))}</p>

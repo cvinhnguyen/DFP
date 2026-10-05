@@ -4,6 +4,7 @@ Jira: DM42-31, DM42-33, DM42-80
   /           the pages, plain HTML, CSS and JavaScript from web/
   /api/...    JSON for the pages, and for anything else that needs it
   /api/docs   every endpoint, documented from this code
+  /robots.txt keeps search engines and AI crawlers out
 
 This file only puts the parts together. A request goes through
 middleware.py, then a route in routes/, which calls services/, which run the
@@ -15,12 +16,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import database, errors, middleware
 from .dependencies import current_user
 from .routes import (archive, auth, brand, comments, costs, images, issues, items, mailchimp, members,
-                     overview, pictures, retention, signals, suggestions, telegram, templates, topics, writing)
+                     overview, pictures, retention, robots, signals, suggestions, telegram, templates, topics,
+                     writing)
 
 log = logging.getLogger("uvicorn.error")
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -77,6 +81,14 @@ app.include_router(pictures.router, prefix="/api")
 app.include_router(archive.token_router, prefix="/api")
 # Open to anyone with the address: newsletter images, for the readers.
 app.include_router(images.public)
+# Open to anyone: robots.txt, which keeps search engines and AI crawlers out.
+app.include_router(robots.router)
 app.middleware("http")(middleware.guard)
+# Every error answers in the same shape, {"detail", "code"}, whoever raised it
+# (errors.py).
 app.add_exception_handler(errors.ApiError, errors.handle)
+app.add_exception_handler(StarletteHTTPException, errors.handle_http)
+app.add_exception_handler(RequestValidationError, errors.handle_invalid)
+app.add_exception_handler(RecursionError, errors.handle_too_deep)
+app.add_exception_handler(Exception, errors.handle_unexpected)
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

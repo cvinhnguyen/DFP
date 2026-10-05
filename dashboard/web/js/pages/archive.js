@@ -8,7 +8,7 @@
 // Jira: DM42-47
 
 import { api } from '../api.js';
-import { t, tn } from '../texts.js';
+import { pageTitle, t, tn } from '../texts.js';
 import { date, esc, number, safeUrl, when } from '../format.js';
 import { icon } from '../ui/icons.js';
 import { toast } from '../ui/dialogs.js';
@@ -39,7 +39,7 @@ function entriesHtml(entries) {
     groups[groups.length - 1].list.push(e);
   }
   return groups.map((g) => `<div class="arc-group">
-      <h4>${esc(g.heading || t('archive.noHeading'))}</h4>
+      <h3>${esc(g.heading || t('archive.noHeading'))}</h3>
       <ul class="arc-entries">${g.list.map(entryHtml).join('')}</ul>
     </div>`).join('');
 }
@@ -90,7 +90,12 @@ export function showArchive(root, { user }) {
       <tbody>${issues.map((i) => `<tr>
         <td class="arc-day">${esc(i.sent_on ? date(i.sent_on) : '–')}</td>
         <td><a class="nl-name" href="#/archive?id=${i.id}">${esc(i.subject)}</a>
-          ${i.made_here ? `<span class="arc-here">${esc(t('archive.madeHere'))}</span>` : ''}</td>
+          ${i.made_here ? `<span class="arc-here">${esc(t('archive.madeHere'))}</span>` : ''}
+          <small class="arc-nums">${esc([
+            `${t('archive.col.links')} ${number(i.entries)}`,
+            `${t('archive.col.followed')} ${number(i.followed)}`,
+            `${t('archive.col.found')} ${t('archive.found', { n: number(i.collected), inTime: number(i.in_time) })}`,
+          ].join(' · '))}</small></td>
         <td class="num">${number(i.entries)}</td>
         <td class="num">${number(i.followed)}</td>
         <td class="num">${esc(t('archive.found', { n: number(i.collected), inTime: number(i.in_time) }))}</td>
@@ -104,7 +109,7 @@ export function showArchive(root, { user }) {
     const notSent = one.picked_not_sent || [];
     return `
       <a class="nl-back" href="#/archive">${icon('arrowLeft', 16)} ${esc(t('archive.back'))}</a>
-      <div class="pagehead"><h2>${esc(i.subject)}</h2>
+      <div class="pagehead"><h1>${esc(i.subject)}</h1>
         <p>${esc(i.sent_on ? t('archive.sentOn', { date: date(i.sent_on) }) : '')}
           ${url ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t('archive.open'))} ↗</a>` : ''}</p></div>
       <section class="card arc-summary">
@@ -112,11 +117,11 @@ export function showArchive(root, { user }) {
         ${here ? `<p class="arc-here-line"><span class="arc-here">${esc(t('archive.madeHere'))}</span>
           ${esc(t('archive.madeHereLine', { name: here.name, sent: number(here.sent), picked: number(here.picked) }))}
           <a href="#/newsletter?id=${here.id}">${esc(t('archive.openIssue'))} ›</a></p>` : ''}
-        ${notSent.length ? `<div class="arc-notsent"><h4>${esc(t('archive.notSent'))}</h4>
+        ${notSent.length ? `<div class="arc-notsent"><h2>${esc(t('archive.notSent'))}</h2>
           <ul>${notSent.map((p) => `<li>${esc(p.title)} <small>${esc([p.source, p.section ? t(`section.${p.section}`) : ''].filter(Boolean).join(' · '))}</small></li>`).join('')}</ul></div>` : ''}
       </section>
       <section class="card arc-links">
-        <h3>${esc(t('archive.links'))}</h3>
+        <h2>${esc(t('archive.links'))}</h2>
         ${one.entries.length ? entriesHtml(one.entries) : `<p class="nl-meta">${esc(t('archive.noLinks'))}</p>`}
       </section>
       ${one.surfaced.length ? `<details class="card arc-surfaced">
@@ -134,12 +139,14 @@ export function showArchive(root, { user }) {
       return;
     }
     if (id) {
+      if (one) pageTitle(one.issue.subject, t('archive.title'));
       root.innerHTML = one ? oneHtml() : '';
       return;
     }
+    pageTitle(t('archive.title'));
     root.innerHTML = `
       <a class="nl-back" href="#/newsletters">${icon('arrowLeft', 16)} ${esc(t('archive.toList'))}</a>
-      <div class="pagehead"><h2>${esc(t('archive.title'))}</h2><p>${esc(t('archive.lead'))}</p></div>
+      <div class="pagehead"><h1>${esc(t('archive.title'))}</h1><p>${esc(t('archive.lead'))}</p></div>
       ${sourceCard()}
       ${issues ? listHtml() : ''}`;
   }

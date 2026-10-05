@@ -134,13 +134,15 @@ function scheduleSave() {
 }
 
 function showConflict(params) {
+  // The other save can be the same person's, in another tab or on a phone.
+  const kind = context.me && params.name === context.me.name ? 'conflictMine' : 'conflict';
   modal({
-    title: t('editor.conflictTitle'),
-    body: h('p', {}, t('editor.conflictText', { name: params.name || '?', when: params.at ? when(params.at) : '' })),
+    title: t(`editor.${kind}Title`),
+    body: h('p', {}, t(`editor.${kind}Text`, { name: params.name || '?', when: params.at ? when(params.at) : '' })),
     closable: false,
     actions: [
-      { label: t('editor.conflictReload'), onClick: () => { store.saved(store.version); location.reload(); } },
-      { label: t('editor.conflictOverwrite'), primary: true, onClick: (close) => { close(); save({ force: true }); } },
+      { label: t(`editor.${kind}Reload`), onClick: () => { store.saved(store.version); location.reload(); } },
+      { label: t(`editor.${kind}Overwrite`), primary: true, onClick: (close) => { close(); save({ force: true }); } },
     ],
   });
 }
@@ -395,6 +397,7 @@ function renderName() {
   const button = $('ed-name');
   button.textContent = context.issue.name;
   button.title = t('editor.rename');
+  $('ed-title').textContent = context.issue.name;
   document.title = `${context.issue.name} · ${t('editor.title')}`;
 }
 

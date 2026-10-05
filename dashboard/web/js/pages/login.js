@@ -3,13 +3,14 @@
 // choose a new one, and an admin can send one too (pages/password.js).
 
 import { api } from '../api.js';
-import { t } from '../texts.js';
+import { pageTitle, t } from '../texts.js';
 import { esc } from '../format.js';
 
 export function showLogin(root, onLoggedIn) {
+  pageTitle(t('login.title'));
   root.innerHTML = `
     <section class="login">
-      <h2>${esc(t('login.title'))}</h2>
+      <h1>${esc(t('login.title'))}</h1>
       <form id="login-form" novalidate>
         <label for="login-email">${esc(t('login.email'))}</label>
         <input id="login-email" name="email" type="email" autocomplete="username" required>

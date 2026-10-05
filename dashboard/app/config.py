@@ -14,4 +14,14 @@ INGEST_TOKEN = os.environ.get("INGEST_TOKEN", "")
 
 # Only once the dashboard is served over https. A secure cookie is never sent
 # over plain http, so turning this on for localhost makes logging in impossible.
+# It also tells browsers to use https only (middleware.py).
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+
+# The names the dashboard answers to, comma separated. localhost and
+# 127.0.0.1 are the browser on this computer, and dashboard is how n8n
+# reaches it inside Docker. Add the public name once it is hosted, such as
+# uutiskirje.example.fi, or *.example.fi for every name under one. A request
+# for any other name is refused (middleware.py); * alone switches the check off.
+ALLOWED_HOSTS = tuple(name.strip().lower()
+                      for name in (os.environ.get("ALLOWED_HOSTS") or "localhost,127.0.0.1,dashboard").split(",")
+                      if name.strip())

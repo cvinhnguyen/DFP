@@ -7,7 +7,7 @@
 // Jira: DM42-37, DM42-74, DM42-39, DM42-45, DM42-32
 
 import { api } from '../api.js';
-import { t, tn } from '../texts.js';
+import { pageTitle, t, tn } from '../texts.js';
 import { esc, number } from '../format.js';
 import { icon } from '../ui/icons.js';
 import { toast } from '../ui/dialogs.js';
@@ -44,12 +44,13 @@ export function showSettings(root, { user }) {
   }
 
   function render() {
+    pageTitle(t('admin.title'));
     if (user.role !== 'admin') {
       root.innerHTML = `<p class="problem">${esc(t('error.admin_only'))}</p>`;
       return;
     }
     root.innerHTML = `
-      <div class="pagehead"><h2>${esc(t('admin.title'))}</h2><p>${esc(t('admin.lead'))}</p></div>
+      <div class="pagehead"><h1>${esc(t('admin.title'))}</h1><p>${esc(t('admin.lead'))}</p></div>
       ${problems.mailchimp ? `<p class="problem">${esc(problems.mailchimp)}</p>` : (state ? mailchimpCard() : '')}
       ${problems.brand ? `<p class="problem">${esc(problems.brand)}</p>` : (brand ? brandCard(brand, brandBusy) : '')}
       ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
@@ -64,7 +65,7 @@ export function showSettings(root, { user }) {
     return `
       <section class="card set-card">
         <div class="set-head">
-          <h3>${esc(t('admin.mailchimp'))}</h3>
+          <h2>${esc(t('admin.mailchimp'))}</h2>
           <button type="button" class="btn ghost small" data-act="test" ${busy ? 'disabled' : ''}>${esc(busy ? t('admin.testing') : t('admin.test'))}</button>
         </div>
         ${status()}

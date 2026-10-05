@@ -8,19 +8,42 @@
         "rule": {
           "interval": [
             {
-              "triggerAtHour": 5
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 0
             }
           ]
         }
       },
       "id": "dd316526-f0a5-5c5d-9e05-5125a5271fdd",
-      "name": "Every morning",
+      "name": "Every hour",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         0,
         0
       ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Every morning at 5.00. The computer n8n runs on may be asleep then, so\n-- the trigger fires every hour, and this lets a run through only when the\n-- latest 5.00 has passed since the menus were last set: bot_commands_set_at,\n-- which \"Bot users\" sets on every run, Run now's too. Otherwise nothing\n-- comes out and the run ends here.\nWITH here AS (\n    SELECT now() AT TIME ZONE 'Europe/Helsinki' AS now\n),\nslot AS (\n    SELECT CASE WHEN planned <= now THEN planned ELSE planned - interval '1 day' END AS at\n      FROM (SELECT now, date_trunc('day', now) + time '05:00' AS planned FROM here) x\n),\nlast_run AS (\n    SELECT (SELECT nullif(value, '')::timestamptz FROM app_settings WHERE key = 'bot_commands_set_at') AT TIME ZONE 'Europe/Helsinki' AS at\n)\nSELECT to_char(slot.at, 'YYYY-MM-DD HH24:MI') AS due_since\n  FROM slot, last_run\n WHERE coalesce(last_run.at, '-infinity') < slot.at;",
+        "options": {}
+      },
+      "id": "376b9ea6-c124-4885-adac-ffc0d45c4dce",
+      "name": "Due",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
       "parameters": {},
@@ -36,7 +59,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "-- Everyone who has used the bot, and whether they are an admin now. A\n-- removed admin counts as not one, so their chat goes back to the list\n-- everyone sees.\nSELECT telegram_user_id, (role = 'admin' AND removed_at IS NULL) AS admin\n  FROM users\n WHERE telegram_user_id IS NOT NULL\n ORDER BY id;",
+        "query": "-- Everyone who has used the bot, and whether they are an admin now. A\n-- removed admin counts as not one, so their chat goes back to the list\n-- everyone sees. It also notes when the menus were set, for \"Due\".\nWITH noted AS (\n    INSERT INTO app_settings (key, value, description)\n    VALUES ('bot_commands_set_at', now()::text,\n            'When the bot''s command menus were last set: every morning, or Run now. Set by n8n')\n    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()\n)\nSELECT telegram_user_id, (role = 'admin' AND removed_at IS NULL) AS admin\n  FROM users\n WHERE telegram_user_id IS NOT NULL\n ORDER BY id;",
         "options": {}
       },
       "id": "f88ceb8f-63ad-5a2f-a937-05c0ad807549",
@@ -44,7 +67,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        220,
+        440,
         100
       ],
       "credentials": {
@@ -57,30 +80,19 @@
     },
     {
       "parameters": {
-        "jsCode": "// The list Telegram suggests when someone types / in a chat with the bot.\n// It is what BotFather's /setcommands sets, kept here so it changes along\n// with the commands. Everyone gets the first list, a group the commands that\n// work there, and each admin the longer list in their own chat. Runs every\n// morning, so a new admin gets theirs the next day at the latest; Run now\n// does it straight away.\n// Jira: DM42-33, DM42-36\nconst EVERYONE = [\n  { command: 'login', description: 'Open the dashboard: a link that works once' },\n  { command: 'password', description: 'Choose a password, to log in without Telegram' },\n  { command: 'check', description: 'Check all sources now' },\n  { command: 'schedule', description: 'See or set when I check the sources' },\n  { command: 'reschedule', description: 'Change when I check the sources' },\n  { command: 'help', description: 'What I can do' },\n];\nconst ADMINS = [\n  ...EVERYONE,\n  { command: 'adduser', description: 'An account for the dashboard: /adduser email Name' },\n  { command: 'people', description: 'Who can use me and the dashboard' },\n  { command: 'remove', description: 'Take someone off the list: /remove Name' },\n  { command: 'alerts', description: 'Where I report problems' },\n];\n// /alerts in a group makes it the place for problem reports.\nconst GROUPS = [\n  { command: 'check', description: 'Check all sources now' },\n  { command: 'schedule', description: 'See or set when I check the sources' },\n  { command: 'reschedule', description: 'Change when I check the sources' },\n  { command: 'alerts', description: 'Report problems in this group (admins)' },\n  { command: 'help', description: 'What I can do' },\n];\n\nconst telegram = (method, body) => this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/${method}`,\n  body,\n  json: true,\n});\n\nawait telegram('setMyCommands', { commands: EVERYONE });\nawait telegram('setMyCommands', { commands: GROUPS, scope: { type: 'all_group_chats' } });\nlet admins = 0;\nlet others = 0;\nlet skipped = 0;\nfor (const { json: person } of $input.all()) {\n  if (!person.telegram_user_id) continue;\n  const scope = { type: 'chat', chat_id: Number(person.telegram_user_id) };\n  try {\n    if (person.admin) {\n      await telegram('setMyCommands', { commands: ADMINS, scope });\n      admins++;\n    } else {\n      await telegram('deleteMyCommands', { scope });\n      others++;\n    }\n  } catch (e) {\n    // Someone who has blocked the bot since. Their chat has no menu to set.\n    skipped++;\n  }\n}\nreturn [{ json: { everyone: EVERYONE.length, admin_chats: admins, other_chats: others, skipped } }];"
+        "jsCode": "// The list Telegram suggests when someone types / in a chat with the bot.\n// It is what BotFather's /setcommands sets, kept here so it changes along\n// with the commands. Everyone gets the first list, a group the commands that\n// work there, and each admin the longer list in their own chat. Each list is\n// set twice: in English for everyone, and in Finnish for whoever has their\n// Telegram in Finnish (language_code fi), as the bot's answers are. Runs\n// every morning, so a new admin gets theirs the next day at the latest; Run\n// now does it straight away.\n// Jira: DM42-33, DM42-36\nconst WORDS = {\n  en: {\n    login: 'Open the dashboard: a link that works once',\n    password: 'Choose a password, to log in without Telegram',\n    check: 'Check all sources now',\n    schedule: 'See or set when I check the sources',\n    reschedule: 'Change when I check the sources',\n    help: 'What I can do',\n    adduser: 'An account for the dashboard: /adduser email Name',\n    people: 'Who can use me and the dashboard',\n    remove: 'Take someone off the list: /remove Name',\n    alerts: 'Where I report problems',\n  },\n  fi: {\n    login: 'Avaa dashboard: linkki, joka toimii kerran',\n    password: 'Valitse salasana, niin voit kirjautua ilman Telegramia',\n    check: 'Tarkista kaikki lähteet nyt',\n    schedule: 'Katso tai aseta, milloin tarkistan lähteet',\n    reschedule: 'Muuta lähteiden tarkistusaikoja',\n    help: 'Mitä osaan',\n    adduser: 'Tili dashboardiin: /adduser sähköposti Nimi',\n    people: 'Kuka voi käyttää minua ja dashboardia',\n    remove: 'Poista henkilö listalta: /remove Nimi',\n    alerts: 'Minne ilmoitan ongelmista',\n  },\n};\n// /alerts in a group makes it the place for problem reports.\nconst IN_A_GROUP = {\n  en: { alerts: 'Report problems in this group (admins)' },\n  fi: { alerts: 'Ilmoita ongelmista tässä ryhmässä (ylläpitäjät)' },\n};\nconst EVERYONE = ['login', 'password', 'check', 'schedule', 'reschedule', 'help'];\nconst ADMINS = [...EVERYONE, 'adduser', 'people', 'remove', 'alerts'];\nconst GROUPS = ['check', 'schedule', 'reschedule', 'alerts', 'help'];\nconst menu = (names, lang, group = false) => names.map((command) => ({\n  command, description: (group && IN_A_GROUP[lang][command]) || WORDS[lang][command],\n}));\n// Finnish is set with language_code fi; English is the list for everyone else.\nconst LANGS = [['en', {}], ['fi', { language_code: 'fi' }]];\n\nconst telegram = (method, body) => this.helpers.httpRequest({\n  method: 'POST',\n  url: `https://api.telegram.org/bot${$env.TELEGRAM_BOT_TOKEN}/${method}`,\n  body,\n  json: true,\n});\n\nfor (const [lang, code] of LANGS) {\n  await telegram('setMyCommands', { commands: menu(EVERYONE, lang), ...code });\n  await telegram('setMyCommands', { commands: menu(GROUPS, lang, true), scope: { type: 'all_group_chats' }, ...code });\n}\nlet admins = 0;\nlet others = 0;\nlet skipped = 0;\nfor (const { json: person } of $input.all()) {\n  if (!person.telegram_user_id) continue;\n  const scope = { type: 'chat', chat_id: Number(person.telegram_user_id) };\n  try {\n    for (const [lang, code] of LANGS) {\n      if (person.admin) await telegram('setMyCommands', { commands: menu(ADMINS, lang), scope, ...code });\n      else await telegram('deleteMyCommands', { scope, ...code });\n    }\n    if (person.admin) admins++;\n    else others++;\n  } catch (e) {\n    // Someone who has blocked the bot since. Their chat has no menu to set.\n    skipped++;\n  }\n}\nreturn [{ json: { everyone: EVERYONE.length, admin_chats: admins, other_chats: others, skipped } }];\n"
       },
       "id": "18680129-0f83-5d92-91cf-160385111cfa",
       "name": "Set the menus",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        440,
+        660,
         100
       ]
     }
   ],
   "connections": {
-    "Every morning": {
-      "main": [
-        [
-          {
-            "node": "Bot users",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Run now": {
       "main": [
         [
@@ -97,6 +109,28 @@
         [
           {
             "node": "Set the menus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due": {
+      "main": [
+        [
+          {
+            "node": "Bot users",
             "type": "main",
             "index": 0
           }

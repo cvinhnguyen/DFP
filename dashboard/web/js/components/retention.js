@@ -14,7 +14,7 @@ export function retentionCard(state) {
     : t('keep.notRunYet');
   return `
     <section class="card set-card keep-card">
-      <div class="set-head"><h3>${esc(t('keep.title'))}</h3></div>
+      <div class="set-head"><h2>${esc(t('keep.title'))}</h2></div>
       <p class="keep-lead">${esc(t('keep.lead', { days: number(state.keep_days) }))}</p>
       <form class="set-form" data-form="retention">
         <label for="set-keep">${esc(t('keep.days'))}</label>

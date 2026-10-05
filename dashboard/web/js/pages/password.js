@@ -9,7 +9,7 @@
 // Jira: DM42-33
 
 import { api } from '../api.js';
-import { t } from '../texts.js';
+import { pageTitle, t } from '../texts.js';
 import { esc } from '../format.js';
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -18,9 +18,10 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // someone else is not offered to them, so an admin who opens the link before
 // passing it on cannot use it up by accident.
 export function showPassword(root, token, { user, onLoggedIn, onDone }) {
+  pageTitle(t('password.title'));
   root.innerHTML = `
     <section class="login">
-      <h2>${esc(t('password.title'))}</h2>
+      <h1>${esc(t('password.title'))}</h1>
       <p class="lead" id="pw-lead">${esc(t('password.checking'))}</p>
       <form id="pw-form" novalidate hidden>
         <label for="pw-email">${esc(t('login.email'))}</label>

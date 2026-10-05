@@ -22,9 +22,9 @@
   <div class="ed-name-wrap"><button type="button" class="ed-name" id="ed-name"></button></div>
   <span class="ed-saved" id="ed-saved" aria-live="polite"></span>
   <div class="ed-top-actions">
-    <button type="button" class="btn ghost" id="ed-test" hidden><span data-icon="send" data-icon-size="18"></span> <span data-t="editor.sendTest"></span></button>
+    <button type="button" class="btn ghost" id="ed-test" data-t-label="editor.sendTest" hidden><span data-icon="send" data-icon-size="18"></span> <span data-t="editor.sendTest"></span></button>
     <div class="ed-split">
-      <button type="button" class="btn" id="ed-exit" data-t="editor.saveExit"></button>
+      <button type="button" class="btn" id="ed-exit"><span class="ed-wide" data-t="editor.saveExit"></span><span class="ed-narrow" data-t="editor.done"></span></button>
       <button type="button" class="btn ed-split-caret" id="ed-exit-menu" data-popover-anchor data-t-label="editor.moreSaving" data-icon="chevronDown" data-icon-size="18"></button>
     </div>
   </div>
@@ -49,6 +49,8 @@
   </aside>
 
   <main class="ed-canvas">
+    <h1 class="sr-only" id="ed-title"></h1>
+    <p class="ed-phone-note" data-t="editor.phoneNote"></p>
     <div class="ed-canvas-bar">
       <div class="ed-devices" role="group" data-t-label="editor.view">
         <button type="button" class="ed-device" id="ed-desktop" aria-pressed="true" data-t-label="editor.desktop" data-icon="desktop"></button>

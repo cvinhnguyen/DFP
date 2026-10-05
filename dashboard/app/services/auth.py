@@ -73,24 +73,30 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # guesses for the few days it works.
 _MAX_FAILURES = 5
 _DEMO_FAILURES = 20
+# One address that gets fifty wrong in a quarter of an hour, whatever the
+# emails, waits too: someone trying a few passwords on many emails is never
+# slowed down by the count per email. Fifty leaves room for a whole class on
+# one network sharing the demo login, with its twenty, and their own typos.
+_ADDRESS_FAILURES = 50
 _WINDOW_SECONDS = 15 * 60
 _failures = {}
 _lock = threading.Lock()
 
 
-def _recent(email, now):
-    return [t for t in _failures.get(email, []) if now - t < _WINDOW_SECONDS]
+def _recent(key, now):
+    return [t for t in _failures.get(key, []) if now - t < _WINDOW_SECONDS]
 
 
-def _locked_out(email, limit):
+def _locked_out(key, limit):
     with _lock:
-        return len(_recent(email, time.monotonic())) >= limit
+        return len(_recent(key, time.monotonic())) >= limit
 
 
-def _count_failure(email):
+def _count_failure(*keys):
     now = time.monotonic()
     with _lock:
-        _failures[email] = _recent(email, now) + [now]
+        for key in keys:
+            _failures[key] = _recent(key, now) + [now]
         for stale in [k for k in _failures if not _recent(k, now)]:
             del _failures[stale]
 
@@ -103,12 +109,15 @@ def hash_password(password):
     return hasher.hash(password)
 
 
-def log_in(email, password):
+def log_in(email, password, address=None):
     """Checks the password and starts a session. Returns the user's row, the
-    token for the cookie, and how many hours the login lasts."""
+    token for the cookie, and how many hours the login lasts. address is
+    where the request came from (routes/auth.py), for the count per address."""
     email = email.strip().lower()
     demo = email == (settings.get("demo_email") or "").strip().lower()
-    if _locked_out(email, _DEMO_FAILURES if demo else _MAX_FAILURES):
+    by_email, by_address = ("email", email), ("address", address or "unknown")
+    if (_locked_out(by_email, _DEMO_FAILURES if demo else _MAX_FAILURES)
+            or _locked_out(by_address, _ADDRESS_FAILURES)):
         raise LockedOut()
 
     found = users.by_email(email)
@@ -119,7 +128,7 @@ def log_in(email, password):
     except (VerificationError, InvalidHashError):
         ok = False
     if not ok:
-        _count_failure(email)
+        _count_failure(by_email, by_address)
         raise WrongPassword()
 
     if hasher.check_needs_rehash(stored):

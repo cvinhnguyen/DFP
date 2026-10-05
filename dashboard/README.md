@@ -18,7 +18,9 @@ The editors' web app, in Finnish with an English switch for the team.
 - **The editor**: an editor for the email itself, laid out like Mailchimp's
   so the editors find their way in both. Blocks, sections, styles, a check
   of everything that needs a look, a phone view, a preview, comments, and
-  undo. It starts from a template with the picked articles in place.
+  undo. It starts from a template with the picked articles in place. On a
+  phone it shows the email itself, full width, with the preview and the
+  comments: building an email is for a computer, as in Mailchimp.
 - **Asetukset**, for admins: the Mailchimp connection, the banners and logo
   new emails start with, what the AI costs against its monthly budget, how
   long articles are kept, the member organisations, what each source's
@@ -55,6 +57,10 @@ own password. Nobody signs up.
 
 The links open a page in the dashboard where the person types the password,
 at least 10 characters. No password goes through Telegram or n8n.
+
+The bot answers in Finnish when the person's Telegram is in Finnish, and in
+English otherwise; n8n passes the language with each command
+(`language` in `POST /api/telegram/account`).
 
 The bot only answers people whose Telegram is on their account. Someone it
 does not know is told their Telegram ID, and the command line below puts it
@@ -261,7 +267,8 @@ bar at the top of the list takes its place: Valikko, which opens the column,
 then Uudet, Kysy, Valitut, Myöhemmin and Ei käytetä, then the followed
 topics, each one tap away. On a phone the bar stays at the top while the
 list scrolls, and the list comes first with less above it: a shorter status
-line and no description. An article opens over the list in the order an
+line, which says how many sources failed and names them under "Mikä meni
+vikaan", and no description. An article opens over the list in the order an
 editor reads: the title, the summary, the sections to add it to, and then
 its topics, tags and details. The phone's own Back returns to the list, as
 "Takaisin" does, and a link to an article, such as one from the bot, opens
@@ -624,7 +631,10 @@ for it.
 
 - Editors log in with one-time links from the bot, or with a password they
   chose themselves, stored as Argon2 hashes. Five wrong ones lock an email
-  for 15 minutes; the shared demo login takes twenty.
+  for 15 minutes; the shared demo login takes twenty. Fifty wrong ones from
+  one address, whatever the emails, stop that address for 15 minutes too.
+  Behind a proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address, or every
+  visitor counts as the proxy.
 - The login is a cookie the page's scripts cannot read and the browser sends
   only to this site. The database keeps a hash of it, and of every login
   link and link to choose a password. It lasts `session_hours` from
@@ -641,7 +651,19 @@ for it.
   dashboard opens it as a picture and saves it again before keeping it, so a
   file that is not a picture never goes further.
 - A request that changes something is refused when it comes from another
-  website.
+  website. The dashboard answers only to the names in `ALLOWED_HOSTS`
+  (this computer, and `dashboard` for n8n), so a page that points its own
+  name at this computer gets nothing.
+- Every error answers `{detail, code}`, also the framework's own 404, 405
+  and 422, never repeats what was sent and never shows a stack trace. JSON
+  nested deeper than 64 levels is refused before it is read.
+- The shared demo login cannot delete pictures, and nobody can delete an
+  article's own picture through Kuvapankki's route: it goes with its
+  article.
+- Search engines and AI crawlers are kept out: `/robots.txt` disallows
+  everything and every answer, pictures included, says `noindex`. Browser
+  features the pages never use, such as the camera, microphone and
+  location, are switched off with a Permissions-Policy.
 - Titles and summaries come from other websites and from a language model.
   Every one is escaped before it goes on the page, only http and https
   addresses become links, and the Content-Security-Policy lets only the
@@ -659,4 +681,6 @@ for it.
   dashboard builds itself, so it cannot be made to fetch anything else. Only
   the words an editor types are sent. The term's Finnish name is read back
   from YSO, so a tag cannot be stored under a wrong name.
-- Once it is served over https, set `COOKIE_SECURE=true` in `.env`.
+- Once it is served over https, set `COOKIE_SECURE=true` in `.env`, which
+  also tells browsers to use https only (HSTS), and add its public name to
+  `ALLOWED_HOSTS`.

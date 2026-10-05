@@ -5,13 +5,14 @@
 // link preview opens links by itself, and would otherwise use it up first.
 
 import { api } from '../api.js';
-import { t } from '../texts.js';
+import { pageTitle, t } from '../texts.js';
 import { esc } from '../format.js';
 
 export function showLinkLogin(root, token, onLoggedIn, onPasswordInstead) {
+  pageTitle(t('linkLogin.title'));
   root.innerHTML = `
     <section class="login">
-      <h2>${esc(t('linkLogin.title'))}</h2>
+      <h1>${esc(t('linkLogin.title'))}</h1>
       <p class="lead">${esc(t('linkLogin.intro'))}</p>
       <p class="form-error" id="link-error" role="alert" hidden></p>
       <button class="btn" type="button" id="link-go">${esc(t('linkLogin.submit'))}</button>

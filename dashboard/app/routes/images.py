@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from ..dependencies import current_user
+from ..dependencies import current_user, not_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..services import images, videos
@@ -44,13 +44,20 @@ def list_images(q: str | None = Query(None, max_length=100), issue_id: int | Non
     return images.listed(q, issue_id, page, per_page)
 
 
-@router.delete("/images/{key}", status_code=204, summary="Delete an image no newsletter uses")
-def delete_image(key: UUID):
+@router.delete("/images/{key}", status_code=204, summary="Delete an image no newsletter uses",
+               responses={403: {"description": "The shared demo login"},
+                          409: {"description": "Used in a newsletter, or an article's own picture"}})
+def delete_image(key: UUID, user: User = Depends(not_demo)):
+    """Only what Kuvapankki lists: a picture an editor uploaded. The shared
+    demo login deletes nothing, and an article's own picture is the
+    article's, so neither goes through here."""
     try:
         if not images.remove(key):
             raise ApiError(404, "no_such_image", "There is no such image.")
     except images.InUse as e:
         raise ApiError(409, "image_in_use", str(e), names=", ".join(e.names[:5]))
+    except images.ArticlePicture as e:
+        raise ApiError(409, "article_picture", str(e))
     return Response(status_code=204)
 
 

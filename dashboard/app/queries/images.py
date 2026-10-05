@@ -58,6 +58,14 @@ def used_in_templates(key):
         (f"%/media/{key}%",))]
 
 
+def owner(key):
+    """Whether the image is there, and the article it belongs to if it is
+    the picture from an article's page."""
+    return database.row("SELECT id, item_id FROM images WHERE key = %s", (key,))
+
+
 def remove(key):
-    found = database.row("DELETE FROM images WHERE key = %s RETURNING id", (key,))
+    """Deletes an uploaded image. An article's own picture is left alone even
+    if asked for, so a mistake elsewhere cannot take it."""
+    found = database.row("DELETE FROM images WHERE key = %s AND item_id IS NULL RETURNING id", (key,))
     return found is not None

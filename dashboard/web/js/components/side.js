@@ -61,7 +61,7 @@ function signalsGroup(signals, latest, current) {
   const restOpen = rest.some((s) => `signal:${s.id}` === current);
   return `
     <div class="side-group">
-      <h3 class="side-h">${esc(t('side.signals'))}</h3>
+      <h2 class="side-h">${esc(t('side.signals'))}</h2>
       <p class="side-hint">${esc(latest ? t('side.signalsHint', { date: date(latest) }) : t('side.signalsNone'))}</p>
       ${main.map(row).join('')}
       ${rest.length ? `<details class="side-sub"${restOpen ? ' open' : ''}>
@@ -94,12 +94,12 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
       <p class="side-hint">${esc(t('side.askHint'))}</p>
     </div>
     <div class="side-group">
-      <h3 class="side-h">${esc(t('side.followed'))}</h3>
+      <h2 class="side-h">${esc(t('side.followed'))}</h2>
       <p class="side-hint">${esc(t('side.followedHint'))}</p>
       ${followed.map((x) => topicRow(x, current)).join('')}
     </div>
     <div class="side-group">
-      <h3 class="side-h">${esc(t('side.other'))}</h3>
+      <h2 class="side-h">${esc(t('side.other'))}</h2>
       ${other.map((x) => topicRow(x, current)).join('')}
       <div class="side-row">${entry('none', current, `<span class="dot" aria-hidden="true"></span><span class="side-name">${esc(t('side.none'))}</span>`,
         untopiced ? untopiced.new : null, { muted: true, extra: ' off' })}</div>

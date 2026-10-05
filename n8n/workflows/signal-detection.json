@@ -19,23 +19,42 @@
         "rule": {
           "interval": [
             {
-              "field": "weeks",
-              "triggerAtDay": [
-                1
-              ],
-              "triggerAtHour": 6
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 0
             }
           ]
         }
       },
       "id": "76149d82-59d7-5b6a-bb79-f3398a55a2bd",
-      "name": "Every Monday",
+      "name": "Every hour",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         0,
         -200
       ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Every Monday at 6.00. The computer n8n runs on may be asleep then, so\n-- the trigger fires every hour, and this lets a run through only when the\n-- latest Monday 6.00 has passed since detection last started: signals_run_at,\n-- which \"Get articles\" sets at the start of every run, from the dashboard's\n-- \"Hae signaalit nyt\" and Run now too (before the first such run, the newest\n-- signal stands in). Otherwise nothing comes out and the run ends here.\nWITH here AS (\n    SELECT now() AT TIME ZONE 'Europe/Helsinki' AS now\n),\nslot AS (\n    SELECT CASE WHEN planned <= now THEN planned ELSE planned - interval '7 days' END AS at\n      FROM (SELECT now, date_trunc('week', now) + time '06:00' AS planned FROM here) x\n),\nlast_run AS (\n    SELECT (SELECT coalesce((SELECT nullif(value, '')::timestamptz FROM app_settings WHERE key = 'signals_run_at'),\n                    (SELECT max(created_at) FROM signals))) AT TIME ZONE 'Europe/Helsinki' AS at\n)\nSELECT to_char(slot.at, 'YYYY-MM-DD HH24:MI') AS due_since\n  FROM slot, last_run\n WHERE coalesce(last_run.at, '-infinity') < slot.at;",
+        "options": {}
+      },
+      "id": "d535f081-f88a-4284-9806-4de3cc8aedf6",
+      "name": "Due",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        -200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
       "parameters": {
@@ -67,13 +86,13 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        200,
+        420,
         0
       ],
       "parameters": {
         "operation": "executeQuery",
         "options": {},
-        "query": "-- The articles of the last signal_window_days that have a summary in\n-- Finnish: the news that passed the filter, and the theses an editor asked\n-- for. The model reads the summary, so every article is read the same way\n-- whatever language it was written in, and the AI's cache answers for an\n-- article it has read before. Theses nobody asked for have no summary and are\n-- left out, and so is anything without a publication date, because frequency\n-- over time needs one. The window is configuration, not a number typed in\n-- here. When this month's AI budget is used up, nothing is read\n-- (db/init/24-ai-budget.sql).\nSELECT i.id AS item_id,\n       i.title,\n       i.published_at,\n       s.text AS body\n  FROM items i\n  JOIN summaries s ON s.item_id = i.id AND s.language = 'fi'\n WHERE i.status = 'summarised'\n   AND i.published_at IS NOT NULL\n   AND i.published_at >= now() - make_interval(days => (\n         SELECT value::int FROM app_settings WHERE key = 'signal_window_days'))\n   AND NOT (SELECT over FROM ai_budget)\n ORDER BY i.published_at DESC;"
+        "query": "-- The articles of the last signal_window_days that have a summary in\n-- Finnish: the news that passed the filter, and the theses an editor asked\n-- for. The model reads the summary, so every article is read the same way\n-- whatever language it was written in, and the AI's cache answers for an\n-- article it has read before. Theses nobody asked for have no summary and are\n-- left out, and so is anything without a publication date, because frequency\n-- over time needs one. The window is configuration, not a number typed in\n-- here. When this month's AI budget is used up, nothing is read\n-- (db/init/24-ai-budget.sql).\n--\n-- It also notes when this run started, signals_run_at, which the Monday\n-- schedule checks (see \"Due\"), so a run missed while the computer slept\n-- happens once, later.\nWITH started AS (\n    INSERT INTO app_settings (key, value, description)\n    VALUES ('signals_run_at', now()::text,\n            'When signal detection last started: on Mondays, from Run now or from the dashboard. Set by n8n')\n    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()\n)\nSELECT i.id AS item_id,\n       i.title,\n       i.published_at,\n       s.text AS body\n  FROM items i\n  JOIN summaries s ON s.item_id = i.id AND s.language = 'fi'\n WHERE i.status = 'summarised'\n   AND i.published_at IS NOT NULL\n   AND i.published_at >= now() - make_interval(days => (\n         SELECT value::int FROM app_settings WHERE key = 'signal_window_days'))\n   AND NOT (SELECT over FROM ai_budget)\n ORDER BY i.published_at DESC;"
       },
       "credentials": {
         "postgres": {
@@ -89,7 +108,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        420,
+        640,
         0
       ],
       "parameters": {
@@ -102,7 +121,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        640,
+        860,
         0
       ],
       "parameters": {
@@ -123,7 +142,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        860,
+        1080,
         0
       ],
       "parameters": {
@@ -136,7 +155,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1080,
+        1300,
         0
       ],
       "parameters": {
@@ -149,7 +168,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        1300,
+        1520,
         0
       ],
       "parameters": {
@@ -234,7 +253,7 @@
         ]
       ]
     },
-    "Every Monday": {
+    "POST /signals": {
       "main": [
         [
           {
@@ -245,7 +264,18 @@
         ]
       ]
     },
-    "POST /signals": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due": {
       "main": [
         [
           {

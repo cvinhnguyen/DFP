@@ -10,6 +10,9 @@ class AccountCommand(BaseModel):
     args: str = Field(default="", max_length=200, description="Whatever followed the command")
     chat_type: str | None = Field(default=None, max_length=20, description="private, group, supergroup or channel")
     chat_id: str | None = Field(default=None, max_length=40, description="The chat the command came from: a group's, for /alerts")
+    language: str | None = Field(default=None, max_length=35,
+                                 description="message.from.language_code: the answer is in Finnish for fi, "
+                                             "and in English for anything else or nothing")
 
 
 class Button(BaseModel):

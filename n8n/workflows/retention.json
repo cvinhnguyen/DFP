@@ -19,20 +19,42 @@
         "rule": {
           "interval": [
             {
-              "triggerAtHour": 3,
+              "field": "hours",
+              "hoursInterval": 1,
               "triggerAtMinute": 30
             }
           ]
         }
       },
       "id": "c16e372e-1328-5d5d-bf16-3c77a10031a5",
-      "name": "Every night",
+      "name": "Every hour",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
         0,
         0
       ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Every night at 3.30. The computer n8n runs on may be asleep then, so\n-- the trigger fires every hour, and this lets a run through only when the\n-- latest 3.30 has passed since the last cleanup in retention_runs, which Run\n-- now writes too. Otherwise nothing comes out and the run ends here.\nWITH here AS (\n    SELECT now() AT TIME ZONE 'Europe/Helsinki' AS now\n),\nslot AS (\n    SELECT CASE WHEN planned <= now THEN planned ELSE planned - interval '1 day' END AS at\n      FROM (SELECT now, date_trunc('day', now) + time '03:30' AS planned FROM here) x\n),\nlast_run AS (\n    SELECT (SELECT max(ran_at) FROM retention_runs) AT TIME ZONE 'Europe/Helsinki' AS at\n)\nSELECT to_char(slot.at, 'YYYY-MM-DD HH24:MI') AS due_since\n  FROM slot, last_run\n WHERE coalesce(last_run.at, '-infinity') < slot.at;",
+        "options": {}
+      },
+      "id": "e81cc3b6-e765-417f-8475-9e37ad9186d3",
+      "name": "Due",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "9iauudkzEoz4bDay",
+          "name": "DFP Postgres"
+        }
+      }
     },
     {
       "parameters": {
@@ -45,7 +67,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        240,
+        460,
         100
       ],
       "credentials": {
@@ -68,7 +90,18 @@
         ]
       ]
     },
-    "Every night": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Due": {
       "main": [
         [
           {
