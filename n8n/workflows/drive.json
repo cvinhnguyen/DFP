@@ -1,0 +1,94 @@
+{
+  "id": "gDrive2026guard1",
+  "name": "Google Drive",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtMinute": 40
+            }
+          ]
+        }
+      },
+      "id": "4d72a9e1-6c0b-4f3e-9a51-7d8e2f6a0001",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "4d72a9e1-6c0b-4f3e-9a51-7d8e2f6a0002",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://dashboard:8000/api/drive/refresh",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "4d72a9e1-6c0b-4f3e-9a51-7d8e2f6a0003",
+      "name": "Read the Drive folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        100
+      ],
+      "notes": "The association's one Drive folder for the newsletter: new and changed documents become articles of the source Google Drive, summarised by the summarisation workflow like any other. The dashboard holds the Google key and the guard that keeps the tool in that folder; this only asks it to read. While Drive is off or not set up there is nothing to do. dashboard/app/services/drive.py, docs/drive.md, db/init/33-drive.sql.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Read the Drive folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Read the Drive folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "a1ertsW0rkflow26",
+    "saveDataSuccessExecution": "none"
+  }
+}

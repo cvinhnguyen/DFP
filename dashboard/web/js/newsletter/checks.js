@@ -72,6 +72,8 @@ function hasPlaceholder(block) {
 
 // issue: { subject }, articles: the articles picked for the issue, size: the
 // finished email's size in bytes, if known.
+const DRIVE_LINK = /^https?:\/\/(?:drive|docs)\.google\.com\//i;
+
 export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}) {
   const sent = [];
   for (const sec of design.sections.filter(isSent)) {
@@ -101,6 +103,11 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
   }
   links.forEach((l) => (l.url.match(MERGE_TAG) || []).forEach((m) => mergeTags.add(m)));
 
+  // A link into the association's Drive: readers cannot open it, and one to
+  // a file shared with anyone who has the link would give the file away.
+  // The server refuses it too (services/issues.py).
+  add(errors, 'driveLink', links.filter((l) => DRIVE_LINK.test(l.url))
+    .map((l) => ({ blockId: l.blockId, sectionId: l.sectionId, snippet: l.text || l.url, type: 'link' })));
   if (!links.some((l) => l.url === '*|UNSUB|*')) add(errors, 'unsubscribe', true);
   if (!ADDRESS_TAGS.some((tag) => mergeTags.has(tag))) add(errors, 'address', true);
   if (!String(issue.subject || '').trim()) add(errors, 'subject', true);

@@ -242,3 +242,25 @@
   .nl-thumb { display: none; }
   .nl-table th, .nl-table td { padding-left: 10px; padding-right: 10px; }
 }
+
+/* Asetukset: Google Drive, the folder the tool may read and save in */
+.drive-card { margin-top: 18px; }
+.drive-label { margin: 14px 0 4px; font-weight: 600; font-size: 14.5px; }
+.drive-account { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drive-account code { font-size: 14px; padding: 4px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--rule); overflow-wrap: anywhere; }
+.drive-switch { margin-top: 14px; }
+.drive-check { list-style: none; margin: 16px 0 4px; padding: 0; display: grid; gap: 6px; font-size: 14.5px; }
+.drive-line { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border-radius: 8px; }
+.drive-line svg { flex: 0 0 auto; margin-top: 1px; }
+.drive-line.ok { background: var(--green-soft); color: var(--green); }
+.drive-line.warn { background: var(--amber-soft); color: var(--amber); }
+.drive-line.bad { background: var(--danger-soft); color: var(--danger); }
+.drive-sync { margin: 14px 0 0; display: grid; gap: 4px; justify-items: start; }
+.drive-sync p { margin: 0; font-size: 14.5px; }
+.drive-log td { vertical-align: top; }
+.drive-log .drive-when { white-space: nowrap; }
+.drive-log .drive-name { overflow-wrap: anywhere; max-width: 240px; }
+.drive-log tr.refused td:last-child { color: var(--danger); }
+.drive-log tr.failed td:last-child { color: var(--amber); }
+.drive-card .cost-row input { flex: 1 1 320px; min-width: 0; max-width: none; }
+.cost-table.drive-log th, .cost-table.drive-log td { text-align: left; }

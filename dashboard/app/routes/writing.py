@@ -5,7 +5,7 @@ Jira: DM42-25, DM42-37, DM42-40
 
 from fastapi import APIRouter, Depends
 
-from ..dependencies import current_user
+from ..dependencies import current_user, is_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.writing import AskAnswer, AskIn, Attempt, Draft, Subjects, TrendDraft
@@ -58,4 +58,4 @@ def ask(body: AskIn, user: User = Depends(current_user)):
     the answer is null and the AI is not asked. With the question before
     it, a follow-up is first written out whole, and the articles are found
     for that."""
-    return _run(writing.ask, body.question, body.days, user.id, body.previous)
+    return _run(writing.ask, body.question, body.days, user.id, body.previous, is_demo(user))

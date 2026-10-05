@@ -17,7 +17,8 @@ Each folder is one part of the system, with a README of its own.
 | `dashboard/` | the editors' web app: a Python API and the pages it serves |
 | `n8n/` | the workflows that collect, summarise, run the Telegram bot and make Mailchimp drafts, and the scripts that save and rebuild them |
 | `db/` | the database: every table, as numbered changes, and the client's source list |
-| `docs/` | documents for people: credentials, the ingest API, the AI cost comparison, the check against the association's own newsletters, the architecture diagram, the dashboard prototype |
+| `docs/` | documents for people: credentials, Google Drive and its guard, the ingest API, the AI cost comparison, the check against the association's own newsletters, the architecture diagram, the dashboard prototype |
+| `secrets/` | keys kept as files on the server, such as the Google Drive key; only its README is in git |
 
 The parts meet in the database. n8n collects articles and theses and writes
 them in through the ingest API, then summarises them and gives them subject
@@ -58,6 +59,11 @@ Mailchimp is optional. Put an API key in `MAILCHIMP_API_KEY` before running
 afterwards. Then, as an admin, open Asetukset in the dashboard and enter the
 data centre, the end of the key after the dash, like `us4`. Read
 `docs/credentials.md` before asking anyone for a real key.
+
+Google Drive is optional too. The association shares one folder with the
+tool's Google service account; its key goes in `secrets/google-drive.json`,
+and an admin chooses the folder on Asetukset. How the tool is kept to that
+one folder, and how to set it up, is in `docs/drive.md`.
 
 On Windows, run the scripts from Git Bash.
 

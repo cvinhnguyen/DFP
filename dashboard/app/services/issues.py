@@ -238,6 +238,9 @@ def not_ready(issue_id):
             if (block.get("type") == "article" and picture.get("src") and block.get("layout") in PICTURE_LAYOUTS
                     and picture.get("rights") == "check" and not picture.get("allowed")):
                 problems["pictureRights"] = problems.get("pictureRights", 0) + 1
+    drive_links = len(DRIVE_LINK.findall(found.get("html") or ""))
+    if drive_links:
+        problems["driveLink"] = drive_links
     if not (found.get("subject") or "").strip():
         problems["subject"] = 1
     return problems
@@ -248,6 +251,11 @@ def check_ready(issue_id):
     if problems:
         raise NotReady(problems)
 
+
+# A link into the association's Drive: readers cannot open it, and one
+# shared with anyone who has the link would give the file away
+# (web/js/newsletter/checks.js says the same in Tarkistus).
+DRIVE_LINK = re.compile(r'href="https?://(?:drive|docs)\.google\.com/', re.IGNORECASE)
 
 # The dashboard's own markers on the email, from the old editor: which
 # article an entry came from, whether an editor checked it. No use to a

@@ -201,11 +201,14 @@ def like_pattern(text):
 
 
 def filters(q=None, source=None, language=None, signal=None, section=None, date_from=None, date_to=None,
-            topic=None, tag=None, untopiced=False):
+            topic=None, tag=None, untopiced=False, hide_drive=False):
     """The WHERE conditions and their parameters for the chosen filters. Only
     fixed SQL goes into the conditions; everything the editor typed travels as
-    a parameter."""
+    a parameter. hide_drive leaves out the association's own Drive material,
+    for the shared demo login."""
     where, params = [], {}
+    if hide_drive:
+        where.append(f"({NOT_DRIVE})")
     if q:
         where.append(SEARCH)
         params.update(q=q, like=like_pattern(q))
@@ -241,6 +244,10 @@ def filters(q=None, source=None, language=None, signal=None, section=None, date_
         where.append(f"{ARTICLE_DATE} < ((%(date_to)s::date + 1)::timestamp AT TIME ZONE 'Europe/Helsinki')")
         params["date_to"] = date_to
     return where, params
+
+
+# Not from the association's Drive folder (33-drive.sql).
+NOT_DRIVE = "coalesce(s.type, '') <> 'drive'"
 
 
 def where_sql(conditions):

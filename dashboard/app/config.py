@@ -25,3 +25,12 @@ COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 ALLOWED_HOSTS = tuple(name.strip().lower()
                       for name in (os.environ.get("ALLOWED_HOSTS") or "localhost,127.0.0.1,dashboard").split(",")
                       if name.strip())
+
+# Google Drive (services/drive.py): the service account key the tool reads
+# the association's folder with. A file on the server, never in git; see
+# secrets/README.md. Without it, Drive stays off.
+DRIVE_KEY_FILE = os.environ.get("DRIVE_KEY_FILE", "/srv/secrets/google-drive.json")
+# For trying the pages with no Google account: the address of the stand-in
+# in tests/fake_drive.py. No key and no token are used with it. Never set it
+# for real use.
+DRIVE_TEST_SERVER = os.environ.get("DRIVE_TEST_SERVER", "").strip()

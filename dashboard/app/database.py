@@ -37,6 +37,7 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("33-drive.sql", "SELECT to_regclass('public.drive_log') IS NOT NULL AS ok"),
     ("32-archive-import.sql", "SELECT EXISTS (SELECT 1 FROM app_settings WHERE key = 'newsletter_archive_read_at') AS ok"),
     ("31-learning-factory.sql", """SELECT pg_get_constraintdef(oid) LIKE '%training%' AS ok
                                   FROM pg_constraint WHERE conname = 'item_picks_section_check'"""),

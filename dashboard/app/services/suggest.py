@@ -153,6 +153,9 @@ def suggest(found, today=None):
     reason names, a member or a day. The reason is None for Nostoja
     kentältä, which needs none."""
     if found.get("section") in SECTIONS:
+        if found.get("source_type") == "drive":
+            # From a folder named after the section in the Drive folder.
+            return found["section"], "drive_folder", (found.get("details") or {}).get("folder")
         return found["section"], "chosen", None
     today = today or datetime.now(HELSINKI).date()
 

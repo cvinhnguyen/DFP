@@ -30,14 +30,19 @@ def admin_only(user: User = Depends(current_user)) -> User:
     return user
 
 
-def not_demo(user: User = Depends(current_user)) -> User:
-    """What the shared demo login may not do: send anything to Mailchimp, which
-    leaves the dashboard, or delete things and mark a newsletter sent, which
-    cannot be undone. It is the account whose email is demo_email in
-    app_settings, made with /adduser like any other, and its password is
-    shown to a whole room."""
+def is_demo(user: User) -> bool:
+    """Whether this is the shared demo login: the account whose email is
+    demo_email in app_settings, made with /adduser like any other, whose
+    password is shown to a whole room."""
     demo = (settings.get("demo_email") or "").strip().lower()
-    if demo and (user.email or "").lower() == demo:
+    return bool(demo) and (user.email or "").lower() == demo
+
+
+def not_demo(user: User = Depends(current_user)) -> User:
+    """What the shared demo login may not do: send anything to Mailchimp or
+    Drive, which leaves the dashboard, or delete things and mark a newsletter
+    sent, which cannot be undone."""
+    if is_demo(user):
         raise ApiError(403, "demo_login", "The shared demo login cannot do this. Everything else works as usual.")
     return user
 

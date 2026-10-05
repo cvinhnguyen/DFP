@@ -19,7 +19,7 @@ secret lives, who can see it and how the client takes it back.
 | Dashboard logins | `sessions`, as hashes of the cookie's token only | staying logged in, 12 hours by default |
 | Login links and password links | `login_links` and `password_links`, as hashes only | the bot's /login, /adduser and /password; each works once and expires |
 | Mailchimp API key | the n8n credential "DFP Mailchimp", and `.env` as `MAILCHIMP_API_KEY` if you want `n8n/rebuild.sh` to create it | the Mailchimp workflow only, see below |
-| Google Drive access | not requested yet | |
+| Google Drive key | `secrets/google-drive.json` on the server, never in git, read only by the dashboard | the dashboard's Drive guard only, see below and `docs/drive.md` |
 
 No secret is typed into a node or a Code node. Workflows refer to credentials
 by name and id, and n8n keeps the values encrypted in its own database.
@@ -63,6 +63,28 @@ handled like the other live credentials here. A Mailchimp user made just for
 the tool, at Manager level, keeps the key apart from anyone's own login and
 can be removed in one step. It takes one of the plan's user seats, so the
 client decides.
+
+## Google Drive: one folder
+
+The association shares one Drive folder with the tool, for the newsletter's
+material and its finished newsletters (`docs/drive.md`). The tool reaches it
+as a Google service account, a Google identity made for the tool alone, with
+a JSON key.
+
+Unlike the Mailchimp key, this one is held by the dashboard rather than n8n:
+the guard that keeps the tool in that one folder has to sit next to the key,
+and the guard is the part that must be right, so it is Python with tests
+(`dashboard/app/services/drive.py`). n8n only asks it to read the folder
+every hour. The dashboard reads the key from `secrets/`, mounted read-only,
+and nothing else in the dashboard can reach it.
+
+What the key can do is decided by Google, not by us: the account sees only
+what the association shares with it. Shared as recommended, that is reading
+one folder and adding files to one folder inside it, so even a stolen key
+could not change or delete the association's own files. Never turn on
+domain-wide delegation for the account, which would let it act as people in
+the association. To take the access back, stop sharing the folder, or
+delete the key in Google Cloud.
 
 ## The exception: the Telegram token
 

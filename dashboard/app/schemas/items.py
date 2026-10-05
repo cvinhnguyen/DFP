@@ -115,8 +115,8 @@ class Item(BaseModel):
     suggested_section: str = Field(description="The section it most likely belongs in, as the default when picking "
                                    "(services/suggest.py)")
     suggestion_reason: str | None = Field(default=None, description="Why: chosen, event, deadline, invitation, "
-                                          "member_post, source_section, own_site, member_site, association_named or "
-                                          "member_named; none for Nostoja kentältä")
+                                          "member_post, source_section, own_site, member_site, association_named, "
+                                          "member_named or drive_folder; none for Nostoja kentältä")
     suggestion_detail: str | None = Field(default=None, description="What the reason names: the member, or the day "
                                           "of the event or of the deadline")
 

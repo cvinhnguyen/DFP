@@ -260,6 +260,36 @@ export function openHandoff({ issue, design, mailchimp, errors = [], onChanged }
         }
       } }, t('handoff.copyHtml'))));
 
+  // ---------- into the association's Drive ----------
+
+  // Shown when an admin has switched Drive on and the tool may save in the
+  // folder (GET /api/drive). The association's own copy: nothing is sent,
+  // and nothing already in the folder is changed (services/drive.py).
+  const driveSlot = h('div', {});
+  api.get('/api/drive').then((drive) => {
+    if (!drive.enabled || !drive.can_save) return;
+    const status = h('div', { class: 'ho-status', role: 'status' });
+    const button = h('button', { type: 'button', class: 'btn', disabled: !ready, html: `${icon('upload', 16)} ` }, t('handoff.driveSave'));
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      status.replaceChildren(h('p', {}, t('handoff.driveSaving')));
+      try {
+        const saved = await api.post(`/api/issues/${current.id}/drive`);
+        status.replaceChildren(
+          h('p', { class: 'ho-done', html: `${icon('check', 18)} ` }, t('handoff.driveSaved', { folder: saved.folder.name })),
+          saved.folder.link ? h('a', { class: 'btn ghost small', href: saved.folder.link, target: '_blank', rel: 'noopener noreferrer' },
+            t('handoff.driveOpen'), h('span', { html: ` ${icon('external', 14)}` })) : null);
+      } catch (e) {
+        status.replaceChildren(h('p', { class: 'st-warn' }, e.message));
+      } finally {
+        button.disabled = !ready;
+      }
+    });
+    driveSlot.replaceChildren(card('drive', t('handoff.driveTitle'), h('div', {},
+      h('p', {}, t('handoff.driveLead', { folder: drive.save_folder || drive.folder_name })),
+      h('div', { class: 'ho-actions' }, button), status)));
+  }).catch(() => {});
+
   // ---------- the window ----------
 
   const planLine = h('p', { class: 'ho-plan' }, t(`handoff.plan.${plan}`));
@@ -289,7 +319,7 @@ export function openHandoff({ issue, design, mailchimp, errors = [], onChanged }
   });
   const dialog = modal({
     title: t('handoff.title'),
-    body: h('div', { class: 'ho' }, blocked, h('p', { class: 'ho-lead' }, t('handoff.lead')), planLine, ...order.map((k) => cards[k]), markSent),
+    body: h('div', { class: 'ho' }, blocked, h('p', { class: 'ho-lead' }, t('handoff.lead')), planLine, ...order.map((k) => cards[k]), driveSlot, markSent),
     className: 'md-handoff',
   });
   return dialog;

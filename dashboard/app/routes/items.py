@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from ..dependencies import current_user
+from ..dependencies import current_user, is_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.issues import DecisionIn
@@ -41,15 +41,19 @@ def list_items(
 ):
     return items.list_items(view, sort, page, per_page, user.id, q=q, source=source, language=language,
                             signal=signal, section=section, date_from=date_from, date_to=date_to,
-                            topic=topic, tag=tag, untopiced=untopiced)
+                            topic=topic, tag=tag, untopiced=untopiced, hide_drive=is_demo(user))
 
 
 @router.get("/items/{item_id}", response_model=Item, summary="One article")
 def get_item(item_id: int, user: User = Depends(current_user)):
     try:
-        return items.get_item(item_id, user.id)
+        found = items.get_item(item_id, user.id)
     except items.NotFound:
         raise ApiError(404, "no_such_article", "There is no article with that number.")
+    # The association's Drive material is not for the room the demo login is shown to.
+    if is_demo(user) and found.source_type == "drive":
+        raise ApiError(404, "no_such_article", "There is no article with that number.")
+    return found
 
 
 @router.post("/items/{item_id}/summarise", response_model=Item, summary="Summarise a skipped article anyway",

@@ -22,7 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import database, errors, middleware
 from .dependencies import current_user
-from .routes import (archive, auth, brand, comments, costs, images, issues, items, mailchimp, members,
+from .routes import (archive, auth, brand, comments, costs, drive, images, issues, items, mailchimp, members,
                      overview, pictures, retention, robots, signals, suggestions, telegram, templates, topics,
                      writing)
 
@@ -71,14 +71,16 @@ private.include_router(brand.router)
 private.include_router(members.router)
 private.include_router(suggestions.router)
 private.include_router(pictures.admin_router)
+private.include_router(drive.router)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(private)
-# Only n8n, with its token: the bot's account commands, and the pictures it
-# finds on the articles' pages.
+# Only n8n, with its token: the bot's account commands, the pictures it
+# finds on the articles' pages, and the hourly read of the Drive folder.
 app.include_router(telegram.router, prefix="/api")
 app.include_router(pictures.router, prefix="/api")
 app.include_router(archive.token_router, prefix="/api")
+app.include_router(drive.token_router, prefix="/api")
 # Open to anyone with the address: newsletter images, for the readers.
 app.include_router(images.public)
 # Open to anyone: robots.txt, which keeps search engines and AI crawlers out.

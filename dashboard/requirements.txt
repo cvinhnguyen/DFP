@@ -7,3 +7,7 @@ argon2-cffi==25.1.0
 # picture, which also drops its location and other metadata.
 python-multipart==0.0.32
 pillow==12.3.0
+# Google Drive (services/drive_google.py): signing the service account's
+# token request, and reading the text of a PDF from the folder.
+google-auth==2.59.1
+pypdf==6.19.0

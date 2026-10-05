@@ -67,6 +67,7 @@ docker compose up -d
 | `ai_budget` (view) | this month's AI spending against `monthly_budget_eur`: warn at 80 %, over when used up | `24-ai-budget.sql` |
 | `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, the pictures from their pages that went with it, and the old ones kept because they are in use | `25-retention.sql`, `28` |
 | `members` | the association's member organisations from its members page, with their websites, so their articles are suggested for Jäsenkuulumisia; organisations only | `29-members.sql` |
+| `drive_files`, `drive_log` | what the Drive guard last listed in the association's one Drive folder and what it did with each file, and every action it took or refused; names, never contents (`docs/drive.md`) | `33-drive.sql` |
 | `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, brought in from their public archive (`newsletter_archive_url` in `app_settings`) to check the system against (`docs/evaluation.md`) | `26-archive.sql`, `32` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
 | `item_picks` | what the editors decided about each article: picked (for which issue and which section: the four, or Learning Factory), later, or not used, with the section the dashboard suggested at the time and why | `17-newsletter.sql`, `19`, `30`, `31` |

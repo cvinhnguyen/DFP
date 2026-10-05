@@ -17,9 +17,10 @@ FILLER = ["kirjoit%", "kerro%", "kerto%", "artikkel%", "juttu%", "jutu%", "uutis
           "viime%", "aihe%", "löyty%", "lähtei%"]
 
 
-def relevant(question, days, limit):
+def relevant(question, days, limit, hide_drive=False):
     """The ids of the best matching articles with a Finnish summary, from the
-    last days, best first."""
+    last days, best first. hide_drive leaves out the association's own Drive
+    material, for the shared demo login."""
     return database.rows(
         """WITH words AS (
                SELECT DISTINCT w.lexeme
@@ -43,10 +44,12 @@ def relevant(question, days, limit):
                  JOIN summaries sm ON sm.item_id = i.id AND sm.language = 'fi'
                 WHERE i.duplicate_of IS NULL
                   AND coalesce(i.published_at, i.created_at) >= now() - make_interval(days => %(days)s)
+                  AND NOT (%(hide_drive)s AND EXISTS (
+                        SELECT 1 FROM sources s WHERE s.id = i.source_id AND s.type = 'drive'))
            )
            SELECT d.id, ts_rank_cd(d.doc, q.q) AS rank
              FROM docs d, query q
             WHERE q.q IS NOT NULL AND d.doc @@ q.q
             ORDER BY rank DESC, d.day DESC
             LIMIT %(limit)s""",
-        {"question": question, "filler": FILLER, "days": days, "limit": limit})
+        {"question": question, "filler": FILLER, "days": days, "limit": limit, "hide_drive": hide_drive})

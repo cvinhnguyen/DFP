@@ -23,7 +23,7 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `feed-collector.json` | reads RSS feeds and Crossref for the other sources |
 | `archive-collector.json` | reads an archive through its DSpace API: Theseus, the theses of the universities of applied sciences |
 | `ingest-api.json` | the only way new articles enter the database |
-| `summarisation.json` | runs the filter every 15 minutes, then summarises what passed. When the month's AI budget is used up, only what editors asked for |
+| `summarisation.json` | runs the filter every 15 minutes, then summarises what passed. When the month's AI budget is used up, only what editors asked for. A document from the association's Drive gets the Drive guard's rules for the AI on top of the summary instruction (`docs/drive.md`) |
 | `llm-call.json` | the only workflow that talks to an AI model |
 | `mailchimp.json` | the only workflow that talks to Mailchimp: creates and updates the dashboard's draft campaigns, and never sends |
 | `signal-detection.json` | finds topics that keep coming up in the news, every Monday at 6.00 (see Missed times below), or now from the dashboard's "Hae signaalit nyt" (`POST /webhook/signals`). Paused when the month's AI budget is used up |
@@ -35,6 +35,7 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 | `retention.json` | every night at 3.30 (see Missed times below), takes away the text of articles collected longer ago than `raw_text_retention_days` (90), and the pictures from their pages, except what a newsletter or an editor still has, and old answers from the AI's cache |
 | `article-pictures.json` | every 15 minutes, finds the picture on ten summarised articles' pages, downloads it and hands it to the dashboard (`POST /api/items/{id}/picture`) |
 | `members.json` | every Monday at 5.30 (see Missed times below), reads the association's members page for its member organisations and their websites, so their articles are suggested for Jäsenkuulumisia |
+| `drive.json` | every hour, asks the dashboard to read the association's Drive folder: new and changed documents become articles of the source Google Drive (`POST /api/drive/refresh`). The dashboard holds the Google key and the guard that keeps the tool in that folder; nothing to do while Drive is off (`docs/drive.md`) |
 | `archive.json` | every Monday at 6.15 (see Missed times below), asks the dashboard to bring in the newsletters sent since from the association's public archive in Mailchimp, to compare with what the system found (`POST /api/archive/refresh`) |
 
 `ingest-api.json` is the write path for collected items: `POST

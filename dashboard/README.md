@@ -24,7 +24,8 @@ The editors' web app, in Finnish with an English switch for the team.
 - **Asetukset**, for admins: the Mailchimp connection, the banners and logo
   new emails start with, what the AI costs against its monthly budget, how
   long articles are kept, the member organisations, what each source's
-  pictures are, and how often the suggested sections were right.
+  pictures are, how often the suggested sections were right, and the
+  association's Google Drive folder.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
 DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
@@ -76,8 +77,9 @@ open on any phone.
 For showing the dashboard to people outside the team, everyone shares one
 account: the one whose email is `demo_email` in `app_settings`,
 demo@demo.com. It is made with `/adduser` like any other. It works as an
-editor, except that it cannot send anything to Mailchimp, delete anything or
-mark a newsletter sent, because its password is shown to the whole room.
+editor, except that it cannot send anything to Mailchimp or Drive, delete
+anything or mark a newsletter sent, because its password is shown to the
+whole room. Nor does it see the articles from the association's Drive folder.
 What it changes otherwise is real, so try things in a draft made for the
 demo. A room of people typing the same password makes typos, so it is only
 locked out after 20 wrong passwords in a quarter of an hour, not 5. Take it
@@ -551,6 +553,44 @@ docker compose exec dashboard python -m app.cli.archive list
 `POST /api/archive/import`, and `POST /api/archive/refresh` for n8n. How it
 works and the first results are in `docs/evaluation.md`. Jira: DM42-47.
 
+## Google Drive
+
+The association shares one Drive folder with the tool, a Google service
+account. Every hour the dashboard reads the folder: each new or changed
+document becomes an article of the source Google Drive, summarised like any
+other. A document in a folder named after a section, such as `Tapahtumat/`,
+is suggested for that section ("Drive-kansiosta Tapahtumat"). The export
+window's "Tallenna Driveen" saves a finished newsletter back into the
+tool's save folder: the email as HTML, as a Google Doc, and its articles as
+a Google Sheet.
+
+Everything goes through one guard, `services/drive.py`, with its rules in
+`services/drive_rules.py`. It is the only code that talks to Drive
+(`services/drive_google.py`, which has no request that deletes, moves,
+changes or shares anything):
+
+- every file comes from its own listing of the folder, and is checked again
+  just before it is read;
+- shortcuts are never followed;
+- a file whose name says it holds people's details is not opened;
+- a document with a personal identity code is kept out whole;
+- contact details and bank accounts are taken out of the text;
+- every hour it checks that the account sees nothing outside the folder,
+  and it refuses a folder open to anyone with its link;
+- every read, save and refusal is logged in `drive_log`.
+
+On Asetukset → Google Drive an admin sees the tool's Google address to
+share the folder with, chooses the folder, switches it on and off, checks
+what the tool can reach, and sees the log. A Drive article goes into the
+email without a link, and Tarkistus refuses any link into Drive, as the
+server does. Why it is safe, and how the association sets it up and takes
+it back, is in `../docs/drive.md`.
+
+`GET /api/drive`, `PUT /api/drive`, `POST /api/drive/check` and
+`POST /api/drive/sync` for admins, `POST /api/issues/{id}/drive` for
+editors, and `POST /api/drive/refresh` for n8n (`n8n/workflows/drive.json`).
+`db/init/33-drive.sql`. Jira: DM42-43.
+
 ## How the code is laid out
 
 Each folder holds one kind of work, so a change usually touches one place.
@@ -569,6 +609,11 @@ app/
   schemas/         the shapes the API takes and returns
   cli/users.py     accounts, from the command line
   cli/archive.py   imports the association's past newsletters, for docs/evaluation.md
+  services/drive*.py  the Google Drive folder and the guard around it
+
+tests/
+  test_drive_*.py  the Drive guard's rules and what it never touches
+  fake_drive.py    a stand-in for Drive, for the tests and for trying the pages
 
 web/
   index.html       the dashboard's pages
@@ -622,6 +667,7 @@ what email programs, Outlook above all, still need.
 - A page: edit the file in `web/` and reload the browser.
 - The Python code: `docker compose restart dashboard`.
 - `requirements.txt` or the `Dockerfile`: `docker compose up -d --build dashboard`.
+- The tests: `docker compose exec dashboard python -m unittest discover -s tests -v`.
 
 Words on the screen go in `web/js/texts.js` or a file in `web/js/texts/`, in
 both languages, never into a page directly. API errors carry a code, and the pages show their own words
@@ -660,6 +706,9 @@ for it.
 - The shared demo login cannot delete pictures, and nobody can delete an
   article's own picture through Kuvapankki's route: it goes with its
   article.
+- The Google Drive key is a file in `secrets/`, read only by the Drive guard.
+  The tool's Google account sees only the one folder the association shares
+  with it, and the guard checks every file again itself (`../docs/drive.md`).
 - Search engines and AI crawlers are kept out: `/robots.txt` disallows
   everything and every answer, pictures included, says `noindex`. Browser
   features the pages never use, such as the camera, microphone and

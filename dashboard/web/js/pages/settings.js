@@ -1,10 +1,11 @@
 // Asetukset, for admins: the Mailchimp connection and how drafts are set up
 // there, the banners and logo, what the AI costs against its monthly budget,
 // how long the text of collected articles is kept, the member organisations,
-// and how often the suggested sections were right. The Mailchimp key itself
+// how often the suggested sections were right, and the Google Drive folder.
+// The Mailchimp key itself
 // is never here: it lives in n8n's credential store, and this page only says
 // whether n8n can reach Mailchimp with it.
-// Jira: DM42-37, DM42-74, DM42-39, DM42-45, DM42-32
+// Jira: DM42-37, DM42-74, DM42-39, DM42-45, DM42-32, DM42-43
 
 import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
@@ -17,6 +18,7 @@ import { brandCard } from '../components/brand.js';
 import { membersCard } from '../components/members.js';
 import { suggestionsCard } from '../components/suggestions.js';
 import { sourcePicturesCard } from '../components/sourcePictures.js';
+import { driveCard } from '../components/drive.js';
 
 export function showSettings(root, { user }) {
   let state = null;
@@ -28,9 +30,11 @@ export function showSettings(root, { user }) {
   let sugg = null;
   let pics = null;
   let picsBusy = null;    // the source whose pictures are being saved
+  let drive = null;
+  let driveBusy = null;   // check or sync, while it runs
   let gone = false;
   let busy = false;
-  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '', pics: '' };
+  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '', pics: '', drive: '' };
 
   function status() {
     if (!state) return '';
@@ -52,6 +56,7 @@ export function showSettings(root, { user }) {
     root.innerHTML = `
       <div class="pagehead"><h1>${esc(t('admin.title'))}</h1><p>${esc(t('admin.lead'))}</p></div>
       ${problems.mailchimp ? `<p class="problem">${esc(problems.mailchimp)}</p>` : (state ? mailchimpCard() : '')}
+      ${problems.drive ? `<p class="problem">${esc(problems.drive)}</p>` : (drive ? driveCard(drive, driveBusy) : '')}
       ${problems.brand ? `<p class="problem">${esc(problems.brand)}</p>` : (brand ? brandCard(brand, brandBusy) : '')}
       ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
       ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}
@@ -111,6 +116,51 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.mailchimp = e.message;
     }
+    if (!gone) render();
+  }
+
+  async function loadDrive() {
+    try {
+      drive = await api.get('/api/drive');
+      problems.drive = '';
+    } catch (e) {
+      if (e.status === 401) return;
+      problems.drive = e.message;
+    }
+    if (!gone) render();
+  }
+
+  // Drive's check and the folder's reading take a moment: the button says so
+  // meanwhile, and the card shows the answer.
+  async function driveRun(kind) {
+    driveBusy = kind;
+    render();
+    try {
+      if (kind === 'check') {
+        drive = await api.post('/api/drive/check');
+      } else {
+        const done = await api.post('/api/drive/sync');
+        toast(t('drive.syncDone', { read: number(done.read || 0) }));
+        drive = await api.get('/api/drive');
+      }
+    } catch (e) {
+      toast(e.message, 'warn');
+      await loadDrive();
+    }
+    driveBusy = null;
+    if (!gone) render();
+  }
+
+  async function driveSave(body, message) {
+    driveBusy = 'save';
+    render();
+    try {
+      drive = await api.put('/api/drive', body);
+      toast(message);
+    } catch (e) {
+      toast(e.message, 'warn');
+    }
+    driveBusy = null;
     if (!gone) render();
   }
 
@@ -239,6 +289,21 @@ export function showSettings(root, { user }) {
   }
 
   root.addEventListener('click', async (event) => {
+    const driveAct = event.target.closest('[data-act="drive-check"], [data-act="drive-sync"], [data-act="drive-copy"]');
+    if (driveAct) {
+      if (driveAct.dataset.act === 'drive-copy') {
+        try {
+          await navigator.clipboard.writeText(driveAct.dataset.copy);
+          toast(t('drive.copied'));
+        } catch {
+          const code = driveAct.parentElement.querySelector('code');
+          if (code) window.getSelection().selectAllChildren(code);
+        }
+        return;
+      }
+      driveRun(driveAct.dataset.act === 'drive-check' ? 'check' : 'sync');
+      return;
+    }
     const brandAct = event.target.closest('[data-act="brand-upload"], [data-act="brand-reset"]');
     if (brandAct) {
       const which = brandAct.dataset.which;
@@ -279,9 +344,18 @@ export function showSettings(root, { user }) {
 
   root.addEventListener('change', (event) => {
     if (event.target.classList.contains('pics-select')) savePictures(event.target);
+    if (event.target.dataset.act === 'drive-switch') {
+      driveSave({ enabled: event.target.checked }, t(event.target.checked ? 'drive.on' : 'drive.off'));
+    }
   });
 
   root.addEventListener('submit', async (event) => {
+    const driveForm = event.target.closest('[data-form="drive"]');
+    if (driveForm) {
+      event.preventDefault();
+      driveSave({ folder: driveForm.folder.value.trim() }, t('drive.folderSaved'));
+      return;
+    }
     const days = event.target.closest('[data-form="retention"]');
     if (days) {
       event.preventDefault();
@@ -325,6 +399,7 @@ export function showSettings(root, { user }) {
   });
 
   load();
+  loadDrive();
   loadBrand();
   loadCosts();
   loadRetention();

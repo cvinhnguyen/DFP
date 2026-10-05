@@ -37,7 +37,9 @@ SELECT iss.id, iss.name, iss.status, iss.subject, iss.preheader, iss.template, i
 # the text to start from, the Finnish summary or else the publisher's own
 # description.
 ARTICLES = """
-SELECT i.id, p.section, i.title, i.source_url AS url,
+SELECT i.id, p.section, i.title,
+       -- a Drive document has no address readers could open (33-drive.sql)
+       CASE WHEN s.type = 'drive' THEN NULL ELSE i.source_url END AS url,
        coalesce(nullif(btrim(i.publisher), ''), s.publisher,
                 substring(coalesce(i.canonical_url, i.source_url) FROM '^https?://([^/?#]+)')) AS publisher,
        s.name AS source,

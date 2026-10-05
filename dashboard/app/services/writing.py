@@ -79,7 +79,7 @@ def trend(signal_id, attempt=1):
     return {"text": answer.get("text") or "", "signal": signal, **_usage(answer)}
 
 
-def ask(question, days, user_id=None, previous=None):
+def ask(question, days, user_id=None, previous=None, hide_drive=False):
     """The answer to an editor's question from the articles that fit it, and
     those articles, as the list shows them, numbered as the answer cites
     them. None as the answer when no article fits: then nothing is asked.
@@ -95,7 +95,7 @@ def ask(question, days, user_id=None, previous=None):
         whole = _standalone(question, previous)
         spent.append(whole)
         asked_as = whole["text"] or question
-    found = ask_queries.relevant(asked_as, days, ASK_ARTICLES)
+    found = ask_queries.relevant(asked_as, days, ASK_ARTICLES, hide_drive)
     sources = items.items_by_ids([f["id"] for f in found], user_id)
     rewritten = asked_as if asked_as != question else None
     if not sources:

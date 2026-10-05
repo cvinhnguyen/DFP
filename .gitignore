@@ -12,3 +12,8 @@ docs/Sprint-1-Test-Cases*.docx
 
 # The client's source list, kept out of the public repository
 db/client/
+
+# Keys for Google Drive and anything else kept as a file on the server.
+# Only the README explaining them is in git.
+secrets/*
+!secrets/README.md
