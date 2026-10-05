@@ -86,6 +86,7 @@ export function showArchive(root, { user }) {
         <th scope="col" class="num">${esc(t('archive.col.links'))}</th>
         <th scope="col" class="num">${esc(t('archive.col.followed'))}</th>
         <th scope="col" class="num">${esc(t('archive.col.found'))}</th>
+        <th scope="col" class="num">${esc(t('archive.col.inTime'))}</th>
       </tr></thead>
       <tbody>${issues.map((i) => `<tr>
         <td class="arc-day">${esc(i.sent_on ? date(i.sent_on) : '–')}</td>
@@ -98,7 +99,8 @@ export function showArchive(root, { user }) {
           ].join(' · '))}</small></td>
         <td class="num">${number(i.entries)}</td>
         <td class="num">${number(i.followed)}</td>
-        <td class="num">${esc(t('archive.found', { n: number(i.collected), inTime: number(i.in_time) }))}</td>
+        <td class="num">${number(i.collected)}</td>
+        <td class="num">${number(i.in_time)}</td>
       </tr>`).join('')}</tbody></table></div>`;
   }
 

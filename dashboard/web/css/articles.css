@@ -28,22 +28,54 @@
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* ---------- status line ---------- */
+/* ---------- status bar ---------- */
 
-.status {
-  background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--brand);
-  border-radius: var(--radius); box-shadow: var(--shadow); padding: 4px 14px; margin-bottom: 12px;
-}
+/* One quiet line above the columns: the facts on the left, problems as
+   chips and the check button on the right. A failed source's details open
+   under it, and the AI's budget gets a line of its own. */
+.status { display: grid; gap: 8px; margin-bottom: 10px; font-size: 13.5px; color: var(--soft); }
 .status:empty { display: none; }
-.status .line { margin: 4px 0; font-size: 14px; display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; }
-.status .line p { margin: 0; }
-.status div.line { display: block; }
-.status .warn { color: var(--amber); }
-.status .good { color: var(--green); }
-.status details { margin-top: 4px; color: var(--ink); font-size: 13.5px; }
-.status summary { cursor: pointer; color: var(--amber); width: fit-content; }
-.status ul { margin: 6px 0 2px; padding-left: 20px; }
-.status .line-short { display: none; }
+.sb-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; min-height: 32px; }
+/* A dot between facts, hanging in the gap before each; the one before the
+   first fact of a line falls outside and is cut off. */
+.sb-facts {
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 23px; margin: 0; padding: 0;
+  list-style: none; min-width: 0; overflow: hidden;
+}
+.sb-facts li { position: relative; }
+.sb-facts li::before {
+  content: ""; position: absolute; left: -13px; top: 50%; width: 3px; height: 3px; margin-top: -1.5px;
+  border-radius: 50%; background: var(--soft); opacity: .7;
+}
+.sb-facts .sb-new { color: var(--ink); font-weight: 600; }
+.sb-end { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.sb-chip {
+  appearance: none; font: inherit; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px;
+  min-height: 30px; padding: 3px 8px 3px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  color: var(--amber); background: var(--amber-soft); border: 1px solid transparent;
+}
+.sb-chip:hover { border-color: currentColor; }
+.sb-chip .icon-chevronDown, .sb-chip .icon-chevronRight { opacity: .75; transition: transform .15s; }
+.sb-chip[aria-expanded="true"] { border-color: currentColor; }
+.sb-chip[aria-expanded="true"] .icon-chevronDown { transform: rotate(180deg); }
+.sb-check { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; white-space: nowrap; }
+.sb-check[aria-disabled="true"] { color: var(--soft); cursor: default; }
+.sb-check[aria-disabled="true"]:hover { border-color: var(--rule); }
+.sb-panel {
+  display: grid; gap: 6px; padding: 10px 14px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-left: 3px solid var(--amber); border-radius: var(--radius);
+}
+.sb-panel ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.sb-panel li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.sb-at { font-size: 12.5px; color: var(--soft); }
+.sb-err { flex-basis: 100%; font-size: 13px; color: var(--soft); overflow-wrap: anywhere; }
+.sb-panel p { margin: 0; font-size: 12.5px; color: var(--soft); }
+.sb-note {
+  margin: 0; display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px; border-radius: var(--radius);
+  color: var(--amber); background: var(--amber-soft); line-height: 1.45;
+}
+.sb-note .icon { margin-top: 1px; }
+.sb-note.good { color: var(--green); background: var(--green-soft); }
 .spinner {
   width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
   border: 2px solid var(--rule); border-top-color: var(--brand); animation: spin .9s linear infinite;
@@ -85,7 +117,11 @@
 .side-item[aria-current="true"] { background: var(--row-on); font-weight: 650; }
 .side-item.off { color: var(--soft); }
 .side-item.big { font-size: 15px; }
-.side-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A long name takes a second line rather than losing its end. */
+.side-name {
+  min-width: 0; overflow: hidden; overflow-wrap: anywhere; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 .side-n { margin-left: auto; font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
 .side-n.zero { color: var(--soft); }
 .side-item.big .side-n { font-weight: 650; }
@@ -357,7 +393,6 @@ button.chip:hover { border-color: var(--link); }
 .rd-info strong { color: var(--ink); font-weight: 650; }
 .rd-why { color: var(--green); }
 .rd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-.rd-acts .btn kbd { margin-left: 6px; }
 .rd-acts .linkish { font-size: 13px; }
 .btn.on { background: var(--slate-soft); color: var(--ink); border-color: var(--soft); }
 .rd-by { color: var(--soft); }
@@ -463,14 +498,10 @@ ul.copies { margin: 0; padding-left: 20px; }
   .ar-places { position: sticky; top: 0; z-index: 6; }
   .ar-day { top: 53px; }
   .ar-note.of-view { display: none; }
-  .status { padding: 2px 12px; }
-  .status .line { font-size: 13.5px; gap: 4px 10px; }
-  .status .line-more { display: none; }
-  .status div.line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
-  .status .line-long { display: none; }
-  .status .line-short { display: inline; }
-  .status details { margin-top: 0; }
-  .status details[open] { flex-basis: 100%; }
+  /* Only when, and what is new; the chips and the button share a line. */
+  .status { font-size: 13px; }
+  .sb-facts .sb-more { display: none; }
+  .sb-end { margin-left: 0; }
   .ar-read { display: none; overflow: visible; padding: 14px 14px 20px; }
   .ar.reading .ar-list { display: none; }
   .ar.reading .ar-read { display: flex; }
@@ -593,10 +624,15 @@ ul.copies { margin: 0; padding-left: 20px; }
   font: inherit; font-size: 15px; line-height: 1.45; color: var(--ink); background: transparent; border: 0; outline: none;
 }
 .chat-box-row { display: flex; align-items: center; gap: 8px; }
+/* How far back the question looks: a quiet control inside the box, the
+   clock saying what it is. */
+.chat-range { position: relative; display: inline-flex; min-width: 0; }
+.chat-range .icon { position: absolute; left: 9px; top: 50%; margin-top: -8px; color: var(--soft); pointer-events: none; }
 .chat-box select {
-  min-width: 0; font: inherit; font-size: 13px; padding: 4px 8px; color: var(--ink); background: var(--bg);
-  border: 1px solid var(--rule); border-radius: 999px;
+  min-width: 0; font: inherit; font-size: 13px; padding-top: 5px; padding-bottom: 5px; padding-left: 31px; color: var(--soft);
+  background-color: transparent; border: 1px solid transparent; border-radius: 999px;
 }
+.chat-box select:hover, .chat-box select:focus-visible { color: var(--ink); background-color: var(--bg); border-color: var(--rule); }
 .chat-count { margin-left: auto; font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
 .chat-count:empty { display: none; }
 .chat-send { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; }
@@ -625,7 +661,8 @@ ul.copies { margin: 0; padding-left: 20px; }
 .ar-fresh strong { margin-left: 6px; text-decoration: underline; text-underline-offset: 2px; }
 .ar-fresh:hover strong { text-decoration-thickness: 2px; }
 .ar-list-drive svg { flex: 0 0 auto; }
-.ar-list-drive { display: inline-flex; align-items: center; gap: 4px; }
+.ar-list-drive { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; align-self: center; }
+@media (max-width: 760px) { .ar-list-drive { margin-left: 0; } }
 /* In the Drive folder's own place: how much of the folder became articles. */
 .ar-drive-line { margin: 0; font-size: 13px; line-height: 1.45; color: var(--soft); }
 .ar-drive-line .linkish { font-size: 13px; }

@@ -13,7 +13,8 @@
 .nl-listhead-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Arkisto: the past newsletters, and one compared with the system */
-.arc-source { display: grid; gap: 10px; padding: 14px 18px; margin-bottom: 16px; justify-items: start; max-width: 860px; }
+/* As wide as the table under it, so their edges line up. */
+.arc-source { display: grid; gap: 10px; padding: 14px 18px; margin-bottom: 16px; justify-items: start; }
 .arc-source p { margin: 0; }
 .arc-address summary { cursor: pointer; color: var(--link); width: fit-content; font-size: 14px; }
 .arc-address-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -82,8 +83,8 @@
 .nl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 18px; }
 .nl-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .nl-title h1 { font-size: 26px; margin: 0; }
-.nl-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.nl-head-actions a.btn { text-decoration: none; }
+/* Beside the state, the same size and on the same line. */
+.nl-title .nl-current { align-self: center; margin-top: 0; font-size: 12.5px; padding: 2px 10px; }
 .nl-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 18px; align-items: start; }
 .nl-checklist { padding: 0; overflow: hidden; }
 .nl-progress { padding: 14px 20px; border-bottom: 1px solid var(--rule); font-size: 13.5px; color: var(--soft); }
@@ -97,11 +98,12 @@
 .nl-line.done .nl-line-mark { color: var(--green); }
 .nl-line.error .nl-line-mark { color: var(--danger); }
 .nl-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--rule); display: inline-block; margin-top: 1px; }
+/* The step to do next. */
+.nl-line.next .nl-dot { border-color: var(--link); box-shadow: 0 0 0 3px var(--brand-soft); }
 .nl-line-main { flex: 1; min-width: 0; }
 .nl-line-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .nl-line-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
 .nl-line-action { display: flex; gap: 8px; flex-wrap: wrap; }
-.nl-line-action a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .nl-line-summary { margin-top: 4px; font-size: 14.5px; }
 .nl-line-summary p { margin: 2px 0; }
 .nl-subject-text { font-weight: 600; }
@@ -159,16 +161,44 @@
 
 /* ---------- settings ---------- */
 
-.set-card { padding: 18px 20px; max-width: 720px; }
+/* The sections in one column, evenly apart, and beside them a list of
+   them that stays in sight and marks the one in view. On a phone the list
+   is one row at the top that scrolls sideways. */
+.set-layout { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 32px; align-items: start; }
+.set-nav { position: sticky; top: 20px; display: grid; gap: 16px; font-size: 14px; }
+.set-nav-group { display: grid; gap: 2px; }
+.set-nav-h {
+  margin: 0 0 4px 10px; font-size: 11.5px; font-weight: 650; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--soft);
+}
+.set-nav-item {
+  appearance: none; border: 0; background: none; font: inherit; color: var(--soft); text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 6px 10px; border-radius: 7px;
+}
+.set-nav-item:hover { color: var(--ink); background: var(--surface); }
+.set-nav-item[aria-current="true"] { color: var(--ink); font-weight: 600; background: var(--surface); box-shadow: inset 3px 0 0 var(--link); }
+.set-flag { flex: 0 0 auto; width: 8px; height: 8px; margin-left: auto; border-radius: 50%; background: var(--amber); }
+.set-flag.bad { background: var(--danger); }
+.set-list { display: grid; gap: 20px; min-width: 0; }
+.set-sec { min-width: 0; scroll-margin-top: 20px; }
+.set-sec h2:focus { outline: none; }
+.set-card { padding: 20px 22px; }
+.set-card .loading { margin: 12px 0 0; }
 .set-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .set-head h2 { margin: 0; font-size: 18px; }
-.set-status { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; margin: 12px 0 16px; padding: 10px 12px; border-radius: 8px; font-weight: 600; }
-.set-status .nl-meta { flex-basis: 100%; font-weight: 400; margin-left: 26px; }
+/* The mark beside the text, and the line under it lined up with the text. */
+.set-status { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 2px 8px; margin: 12px 0 16px; padding: 10px 12px; border-radius: 8px; font-weight: 600; }
+.set-status .icon { margin-top: 2px; }
+.set-status .nl-meta { grid-column: 2; font-weight: 400; }
 .set-status.ok { background: var(--green-soft); color: var(--green); }
 .set-status.bad { background: var(--danger-soft); color: var(--danger); }
 .set-form { display: flex; flex-direction: column; gap: 4px; }
+/* A field as wide as what goes in it, not the card. */
+.set-form > .cf-input { max-width: 460px; }
+.set-form > .cf-input.short { max-width: 120px; }
+.set-form .nl-form-actions { justify-content: flex-start; }
 .set-form label { font-size: 13.5px; font-weight: 600; margin-top: 10px; }
-.set-plan { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px; margin: 12px 0 4px; }
+.set-plan { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px; margin: 12px 0 4px; max-width: 560px; }
 .set-plan legend { font-size: 13.5px; font-weight: 600; padding: 0 4px; }
 .set-plan .cf-check { margin: 6px 0; font-weight: 400; }
 .set-help { margin-top: 18px; font-size: 14px; }
@@ -176,7 +206,6 @@
 .set-help ol { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
 .set-status.warn { background: var(--amber-soft); color: var(--amber); }
 
-.cost-card { margin-top: 18px; }
 .cost-now { margin: 12px 0 6px; }
 .cost-big { margin: 0 0 8px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; color: var(--soft); }
 .cost-big strong { font-size: 26px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -197,11 +226,26 @@
 .cost-table td.num, .cost-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .cost-table small { display: block; color: var(--soft); font-size: 12.5px; }
 
-.keep-card { margin-top: 18px; }
 .keep-lead { margin: 10px 0 4px; color: var(--soft); font-size: 14.5px; }
 .keep-facts { margin: 14px 0 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 
 @media (max-width: 900px) {
+  .set-layout { display: block; }
+  .set-nav {
+    position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; margin: 0 -16px 16px; padding: 8px 16px;
+    overflow-x: auto; scrollbar-width: none; background: var(--bg); border-bottom: 1px solid var(--rule);
+  }
+  .set-nav::-webkit-scrollbar { display: none; }
+  .set-nav-group { display: contents; }
+  .set-nav-h { display: none; }
+  .set-nav-item {
+    flex: 0 0 auto; width: auto; white-space: nowrap; padding: 5px 12px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 999px;
+  }
+  .set-nav-item[aria-current="true"] { color: var(--button-ink); background: var(--button); border-color: var(--button); box-shadow: none; }
+  .set-flag { margin-left: 0; }
+  .set-sec { scroll-margin-top: 68px; }
+  .set-card { padding: 16px; }
   .nl-layout { grid-template-columns: minmax(0, 1fr); }
   .nl-side { position: static; }
   .nl-cell-mc, .nl-cell-edited { display: none; }
@@ -221,7 +265,17 @@
 .pics-select { min-width: 11em; padding: 4px 8px; font-size: 13.5px; }
 .pics-off { margin-top: 12px; }
 .pics-off summary { cursor: pointer; color: var(--link); width: fit-content; font-size: 14px; }
-@media (max-width: 640px) { .pics-meanings { grid-template-columns: minmax(0, 1fr); } .pics-meanings dd { margin-bottom: 6px; } }
+.pics-n { display: none; font-size: 12px; color: var(--soft); }
+/* A phone: the count goes under the source's name, so the choice keeps its
+   room and nothing needs a sideways scroll. */
+@media (max-width: 640px) {
+  .pics-meanings { grid-template-columns: minmax(0, 1fr); }
+  .pics-meanings dd { margin-bottom: 6px; }
+  .pics-table th:nth-child(2), .pics-table td:nth-child(2) { display: none; }
+  .pics-n { display: block; }
+  .pics-table td:last-child { width: 48%; }
+  .pics-select { min-width: 0; width: 100%; }
+}
 /* Asetukset: how often the suggested sections were right */
 .sugg-card h3 { margin: 14px 0 4px; font-size: 14px; }
 .sugg-table th:nth-child(n+4) { text-align: left; }
@@ -244,7 +298,6 @@
 }
 
 /* Asetukset: Google Drive, the folder the tool may read and save in */
-.drive-card { margin-top: 18px; }
 .drive-label { margin: 14px 0 4px; font-weight: 600; font-size: 14.5px; }
 .drive-account { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .drive-account code { font-size: 14px; padding: 4px 8px; border-radius: 6px; background: var(--bg); border: 1px solid var(--rule); overflow-wrap: anywhere; }
@@ -260,6 +313,8 @@
 .drive-log td { vertical-align: top; }
 .drive-log .drive-when { white-space: nowrap; }
 .drive-log .drive-name { overflow-wrap: anywhere; max-width: 240px; }
+.drive-log td:nth-child(2) { white-space: nowrap; }
+.drive-log-more { margin-top: 8px; font-size: 13.5px; }
 .drive-log tr.refused td:last-child { color: var(--danger); }
 .drive-log tr.failed td:last-child { color: var(--amber); }
 .drive-card .cost-row input { flex: 1 1 320px; min-width: 0; max-width: none; }

@@ -45,9 +45,14 @@ function reason(entry) {
   return has(key) ? t(key) : entry.reason;
 }
 
-function logTable(log) {
+// The latest few, and all of them on request: a busy folder logs dozens a
+// day, and the card is about the folder.
+const LOG_FIRST = 5;
+
+function logTable(log, all) {
   if (!log || !log.length) return `<p class="cf-hint">${esc(t('drive.logEmpty'))}</p>`;
-  const rows = log.map((e) => {
+  const shown = all ? log : log.slice(0, LOG_FIRST);
+  const rows = shown.map((e) => {
     const redacted = e.detail && e.detail.redacted
       ? Object.values(e.detail.redacted).reduce((a, b) => a + b, 0) : 0;
     const result = [t(`drive.outcome.${e.outcome}`), reason(e), redacted ? t('drive.redacted', { n: redacted }) : '']
@@ -65,10 +70,12 @@ function logTable(log) {
       <thead><tr><th>${esc(t('drive.col.when'))}</th><th>${esc(t('drive.col.what'))}</th><th>${esc(t('drive.col.file'))}</th>
         <th>${esc(t('drive.col.who'))}</th><th>${esc(t('drive.col.result'))}</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>`;
+    </table></div>
+    ${log.length > LOG_FIRST ? `<button type="button" class="linkish drive-log-more" data-act="drive-log-all" aria-expanded="${all}">${esc(all
+      ? t('drive.logFewer') : tn('drive.logAll', log.length))}</button>` : ''}`;
 }
 
-export function driveCard(s, busy) {
+export function driveCard(s, busy, { logAll = false } = {}) {
   if (!s.configured) {
     const key = s.problem && has(`drive.problem.${s.problem}`) ? `drive.problem.${s.problem}` : 'drive.noKeyHint';
     return `
@@ -124,7 +131,7 @@ export function driveCard(s, busy) {
       <p class="cf-hint">${esc(t('drive.autosaveHint'))}${s.can_save ? '' : ` ${esc(t('drive.autosaveNeedsSave'))}`}</p>
 
       <h3 class="cost-h">${esc(t('drive.logTitle'))}</h3>
-      ${logTable(s.log)}
+      ${logTable(s.log, logAll)}
 
       <div class="drive-withdraw">
         <button type="button" class="btn ghost small danger" data-act="drive-withdraw" ${busy ? 'disabled' : ''}>${esc(t('drive.withdrawAll'))}</button>

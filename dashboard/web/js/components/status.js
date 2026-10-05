@@ -1,60 +1,85 @@
-// The status line above the list: when the sources were last checked, what
-// is new today, problems with sources or the AI, the AI budget when it runs
-// low, and the "check now" button.
-// It only turns the overview into HTML; the page handles the button.
+// The status bar above the list: when the sources were last checked, what
+// is new today and when the next check is, in one quiet line with the
+// "check now" button. A problem is a short chip beside it: a source whose
+// check failed opens its details under the bar, and articles that need
+// attention open their view. The AI's budget and an AI that does not answer
+// get a line of their own, as they change what the list shows.
+// It only turns the overview into HTML; the page handles the buttons.
 
-import { currentLanguage, t, tn } from '../texts.js';
+import { t, tn } from '../texts.js';
 import { date, esc, euros, when } from '../format.js';
+import { icon } from '../ui/icons.js';
 
-// overview: GET /api/overview. checking: a check started from this page is
-// still running. done: a line to show once it has finished. view: the view
-// on screen, so "needs attention" does not offer to show what is shown.
-export function statusLines(overview, { checking = false, done = '', view = '' } = {}) {
+// overview: GET /api/overview, or null when it could not be read. checking:
+// a check started from this page is still running. view: the view on
+// screen, so "needs attention" does not offer to show what is shown.
+// failedOpen: the failed sources' details are open. note: { kind, text }, a
+// line under the bar, such as a finished check.
+export function statusLines(overview, { checking = false, view = '', failedOpen = false, note = null } = {}) {
   const o = overview;
-  const lines = [];
-  if (checking || o.checking_now) {
-    lines.push(`<p class="line busy"><span class="spinner" aria-hidden="true"></span><span>${esc(t('status.checking'))}</span></p>`);
-  } else {
-    // On a phone only the first part shows: when, and what is new today.
-    const first = [
-      o.last_check_at ? t('status.lastCheck', { when: when(o.last_check_at) }) : t('status.neverChecked'),
-      o.new_today ? tn('status.newToday', o.new_today) : t('status.nothingToday'),
-    ].join(' ');
-    const more = [
-      o.new_theses_today ? tn('status.thesesToday', o.new_theses_today) : '',
-      o.next_check_at ? t('status.next', { when: when(o.next_check_at) }) : t('status.off'),
-    ].filter(Boolean).join(' ');
-    lines.push(`<p class="line"><span>${esc(first)} <span class="line-more">${esc(more)}</span></span>
-      <button type="button" class="btn small" data-act="check">${esc(t('status.checkNow'))}</button></p>`);
-  }
-  if (done) lines.push(`<p class="line good">${esc(done)}</p>`);
-  if (o.failed_sources.length) {
-    // Each name in quotes, as a name can have a comma of its own:
-    // "Työterveyslaitos, ajankohtaista". A phone shows only how many.
-    const n = o.failed_sources.length;
-    const names = new Intl.ListFormat(currentLanguage(), { type: 'conjunction' })
-      .format(o.failed_sources.map((f) => t('status.sourceName', { name: f.source })));
-    lines.push(`
-      <div class="line warn">
-        <p><span class="line-long">${esc(tn('status.failed', n, { names }))}</span><span class="line-short">${esc(tn('status.failedShort', n))}</span></p>
-        <details><summary>${esc(t('status.failedDetails'))}</summary>
-          <ul>${o.failed_sources.map((f) => `<li><strong>${esc(f.source)}</strong>, ${esc(when(f.at))}: ${esc(f.error)}</li>`).join('')}</ul>
-        </details>
-      </div>`);
-  }
+  const notes = [];
+  if (note) notes.push(noteLine(note.kind, note.text));
+  if (!o) return notes.join('');
+
+  const busy = checking || o.checking_now;
+  // What came today first, then when the sources were checked.
+  const facts = [
+    newToday(o),
+    `<li>${esc(o.last_check_at ? t('status.checked', { when: when(o.last_check_at) }) : t('status.neverChecked'))}</li>`,
+  ];
   const b = o.budget;
-  if (b && b.state === 'over') {
-    lines.push(`<p class="line warn">${esc(t('status.budgetOver', { budget: euros(b.budget_eur), date: date(b.next_month) }))}${b.waiting
-      ? ` ${esc(tn('status.budgetWaiting', b.waiting))}` : ''}</p>`);
-  } else if (b && b.state === 'warn') {
-    lines.push(`<p class="line warn">${esc(t('status.budgetWarn', { pct: Math.floor(b.share * 100), spent: euros(b.spent_eur), budget: euros(b.budget_eur) }))}</p>`);
+  const aiNote = o.ai_answering === false || o.waiting_for_ai;
+  if (o.waiting && !aiNote && b?.state !== 'over') facts.push(`<li>${esc(tn('status.waitingShort', o.waiting))}</li>`);
+  facts.push(`<li class="sb-more">${esc(o.next_check_at ? t('status.nextShort', { when: when(o.next_check_at) }) : t('status.offShort'))}</li>`);
+
+  const chips = [];
+  const failed = o.failed_sources;
+  if (failed.length) {
+    chips.push(`<button type="button" class="sb-chip" data-act="failed" aria-expanded="${failedOpen}" aria-controls="sb-failed">
+      ${icon('warning', 16)}<span>${esc(tn('status.failedChip', failed.length))}</span>${icon('chevronDown', 16)}</button>`);
   }
-  if (o.ai_answering === false) lines.push(`<p class="line warn">${esc(t('status.aiDown'))}</p>`);
-  else if (o.waiting_for_ai) lines.push(`<p class="line warn">${esc(tn('status.aiRetry', o.waiting_for_ai))}</p>`);
-  else if (o.waiting) lines.push(`<p class="line">${esc(tn('status.waiting', o.waiting))}</p>`);
   if (o.needs_attention && view !== 'attention') {
-    lines.push(`<p class="line warn"><span>${esc(tn('status.attention', o.needs_attention))}</span>
-      <button type="button" class="linkish" data-act="view" data-view="attention">${esc(t('status.show'))}</button></p>`);
+    chips.push(`<button type="button" class="sb-chip" data-act="view" data-view="attention">
+      ${icon('info', 16)}<span>${esc(tn('status.attentionChip', o.needs_attention))}</span>${icon('chevronRight', 16)}</button>`);
   }
-  return lines.join('');
+  const check = busy
+    ? `<button type="button" class="btn ghost small sb-check" data-act="check" aria-disabled="true"><span class="spinner" aria-hidden="true"></span><span>${esc(t('status.checkingShort'))}</span></button>`
+    : `<button type="button" class="btn ghost small sb-check" data-act="check">${icon('refresh', 16)}<span>${esc(t('status.checkNow'))}</span></button>`;
+
+  const bar = `
+    <div class="sb-bar">
+      <ul class="sb-facts" role="list">${facts.join('')}</ul>
+      <div class="sb-end">${chips.join('')}${check}</div>
+    </div>`;
+  const panel = failed.length ? `
+    <div class="sb-panel" id="sb-failed"${failedOpen ? '' : ' hidden'}>
+      <ul>${failed.map((f) => `<li><strong>${esc(f.source)}</strong><span class="sb-at">${esc(when(f.at))}</span><span class="sb-err">${esc(f.error)}</span></li>`).join('')}</ul>
+      <p>${esc(tn('status.failedAgain', failed.length))}</p>
+    </div>` : '';
+
+  if (b && b.state === 'over') {
+    notes.push(noteLine('warn', `${t('status.budgetOver', { budget: euros(b.budget_eur), date: date(b.next_month) })}${b.waiting
+      ? ` ${tn('status.budgetWaiting', b.waiting)}` : ''}`));
+  } else if (b && b.state === 'warn') {
+    notes.push(noteLine('warn', t('status.budgetWarn', { pct: Math.floor(b.share * 100), spent: euros(b.spent_eur), budget: euros(b.budget_eur) })));
+  }
+  if (o.ai_answering === false) notes.push(noteLine('warn', t('status.aiDown')));
+  else if (o.waiting_for_ai) notes.push(noteLine('warn', tn('status.aiRetry', o.waiting_for_ai)));
+  return bar + panel + notes.join('');
+}
+
+// "12 new articles and 36 theses today": theses are counted on their own,
+// as some 45 a day would drown the news.
+function newToday(o) {
+  const parts = [
+    o.new_today ? tn('status.articles', o.new_today) : '',
+    o.new_theses_today ? tn('status.theses', o.new_theses_today) : '',
+  ].filter(Boolean);
+  if (!parts.length) return `<li>${esc(t('status.nothingNew'))}</li>`;
+  const what = parts.length === 2 ? t('status.both', { a: parts[0], b: parts[1] }) : parts[0];
+  return `<li class="${o.new_today ? 'sb-new' : ''}">${esc(t('status.today', { what }))}</li>`;
+}
+
+function noteLine(kind, text) {
+  return `<p class="sb-note ${kind}">${icon(kind === 'good' ? 'check' : 'warning', 16)}<span>${esc(text)}</span></p>`;
 }

@@ -120,7 +120,8 @@ export function saveTarget(id) {
 function layout() {
   return `
     <h1 class="sr-only">${esc(t('page.articles'))}</h1>
-    <section class="status" id="status" aria-live="polite"></section>
+    <div class="status" id="status"></div>
+    <p class="sr-only" id="status-said" role="status"></p>
     <div class="ar" id="ar">
       <nav class="ar-side" id="side" aria-label="${esc(t('side.label'))}"></nav>
       <section class="ar-list" aria-labelledby="place-name">
@@ -147,9 +148,9 @@ function layout() {
           <div class="chat-box">
             <textarea id="ask-q" rows="1" maxlength="300" placeholder="${esc(t('ask.placeholder'))}"></textarea>
             <div class="chat-box-row">
-              <select id="ask-days" aria-label="${esc(t('ask.days'))}">
+              <span class="chat-range">${icon('clock', 16)}<select id="ask-days" aria-label="${esc(t('ask.days'))}">
                 ${ASK_DAYS.map((d) => `<option value="${d}"${d === 90 ? ' selected' : ''}>${esc(t(`ask.days.${d}`))}</option>`).join('')}
-              </select>
+              </select></span>
               <span class="chat-count" id="ask-count" aria-live="polite"></span>
               <button type="submit" class="btn small chat-send" id="ask-go" disabled>${icon('send', 16)}<span>${esc(t('ask.submit'))}</span></button>
             </div>
@@ -175,6 +176,9 @@ export function showArticles(root) {
   let topicsById = new Map();
   let overview = null;
   let checking = null;      // a check started from this page
+  let failedOpen = false;   // the failed sources' details are open
+  let statusNote = null;    // { kind, text } under the bar until the next refresh
+  let statusHtml = '';
   let undo = null;
   let followTimer = null;
   let searchTimer = null;
@@ -206,6 +210,7 @@ export function showArticles(root) {
   const $ = (id) => root.querySelector(`#${id}`);
   const ar = $('ar');
   const status = $('status');
+  const statusSaid = $('status-said');
   const sideEl = $('side');
   const rowsEl = $('rows');
   const read = $('read');
@@ -342,7 +347,8 @@ export function showArticles(root) {
     $('ask-new').hidden = place.kind !== 'ask' || !asked.list.length;
     ar.classList.toggle('asking', place.kind === 'ask');
     $('place-note').classList.toggle('of-view', place.kind === 'view' || place.kind === 'ask');
-    $('list-drive').hidden = !(drive && drive.enabled && counted && total > 0);
+    // Not in the Drive folder's own place: its articles are in the folder.
+    $('list-drive').hidden = !(drive && drive.enabled && counted && total > 0) || isDrivePlace();
     renderDriveLine();
     renderPlaces();
   }
@@ -548,6 +554,7 @@ export function showArticles(root) {
     renderHead();
     rowsEl.innerHTML = '';
     read.innerHTML = '';
+    showStatus();
     show();
   }
 
@@ -1548,38 +1555,58 @@ export function showArticles(root) {
     else addTag(uri);
   }
 
-  // ---------- the status line ----------
+  // ---------- the status bar ----------
 
-  function showStatus(extra = {}) {
-    if (overview) status.innerHTML = statusLines(overview, { checking: Boolean(checking), view: placeKey(place), ...extra });
+  // Drawn again only when something in it changed, keeping the focus on
+  // the button that had it.
+  function showStatus() {
+    const html = statusLines(overview, { checking: Boolean(checking), view: placeKey(place), failedOpen, note: statusNote });
+    if (html === statusHtml) return;
+    const had = status.contains(document.activeElement) ? document.activeElement.dataset.act : null;
+    statusHtml = html;
+    status.innerHTML = html;
+    if (had) status.querySelector(`[data-act="${had}"]`)?.focus({ preventScroll: true });
+    fit();
   }
 
-  async function loadOverview(done = '') {
+  // What a screen reader hears of the bar: a check starting and finishing,
+  // and problems. The bar itself is drawn again quietly.
+  function say(text) {
+    statusSaid.textContent = text;
+  }
+
+  async function loadOverview() {
     try {
       overview = await api.get('/api/overview');
-      showStatus({ done });
-      fit();
+      showStatus();
       return overview;
     } catch (e) {
-      if (e.status !== 401) status.insertAdjacentHTML('beforeend', `<p class="line warn">${esc(e.message)}</p>`);
+      if (e.status !== 401) {
+        statusNote = { kind: 'warn', text: e.message };
+        showStatus();
+      }
       return null;
     }
   }
 
   async function startCheck(button) {
-    button.disabled = true;
+    if (checking || button.getAttribute('aria-disabled') === 'true') return;
+    checking = { started: Date.now(), seen: false, before: overview?.new_today ?? 0 };
+    statusNote = null;
+    showStatus();
+    say(t('status.checking'));
     try {
       await api.post('/api/collect');
     } catch (e) {
       // 409 means a check is already running, so this page follows that one.
       if (e.status !== 409) {
-        button.disabled = false;
-        status.insertAdjacentHTML('beforeend', `<p class="line warn">${esc(e.message)}</p>`);
+        checking = null;
+        statusNote = { kind: 'warn', text: e.message };
+        showStatus();
+        say(e.message);
         return;
       }
     }
-    checking = { started: Date.now(), seen: false, before: overview?.new_today ?? 0 };
-    showStatus();
     followCheck();
   }
 
@@ -1603,10 +1630,19 @@ export function showArticles(root) {
       }
       const added = Math.max(0, o.new_today - checking.before);
       checking = null;
-      showStatus({ done: added ? tn('status.checkDone', added) : t('status.checkDoneNothing') });
+      statusNote = { kind: 'good', text: added ? tn('status.checkDone', added) : t('status.checkDoneNothing') };
+      showStatus();
+      say(statusNote.text);
       loadSide({ sources: true }).catch(() => {});
       show({ keep: state.item });
     }, 3000);
+  }
+
+  // A failed source's details open under the bar and stay open while the
+  // bar refreshes.
+  function toggleFailed() {
+    failedOpen = !failedOpen;
+    showStatus();
   }
 
   // ---------- size ----------
@@ -1696,6 +1732,7 @@ export function showArticles(root) {
     } else if (act === 'offer-yes') answerOffer(true);
     else if (act === 'offer-no') answerOffer(false);
     else if (act === 'check') startCheck(target);
+    else if (act === 'failed') toggleFailed();
     else if (act === 'find-signals') findSignals(target);
     else if (act === 'view') goPlace(target.dataset.view);
     else if (act === 'cite') openItem(target.dataset.id);
@@ -1868,6 +1905,7 @@ export function showArticles(root) {
     q.value = state.q;
     fillSort();
     renderSide();
+    showStatus();
     show();
   }
   window.addEventListener('hashchange', onHash);
@@ -1878,6 +1916,7 @@ export function showArticles(root) {
   // moving the list under the editor's eyes.
   const refresh = setInterval(() => {
     if (checking || document.visibilityState !== 'visible') return;
+    statusNote = null;
     loadOverview();
     loadSide().catch(() => {});
   }, 2 * 60000);

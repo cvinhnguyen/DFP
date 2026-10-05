@@ -3,7 +3,9 @@
 
 import { api } from './api.js';
 import { startLive, stopLive } from './live.js';
-import { applyTexts, otherLanguage, setLanguage } from './texts.js';
+import { applyTexts, currentLanguage, otherLanguage, setLanguage, t } from './texts.js';
+import { currentTheme, setTheme, THEMES } from './appearance.js';
+import { menuButton } from './ui/menu.js';
 import { esc } from './format.js';
 import { showLogin } from './pages/login.js';
 import { showLinkLogin } from './pages/link.js';
@@ -32,7 +34,8 @@ const LINK = /^#\/link\/([A-Za-z0-9_-]{20,100})$/;
 const PASSWORD = /^#\/password\/([A-Za-z0-9_-]{20,100})$/;
 
 let view = document.getElementById('view');
-const who = document.getElementById('who');
+const usermenu = document.getElementById('usermenu');
+const langswitch = document.getElementById('langswitch');
 const nav = document.getElementById('mainnav');
 let user = null;
 let linkToken = null;
@@ -44,16 +47,61 @@ function pageFromAddress() {
   return Object.keys(PAGES).find((name) => PAGES[name].path === path) || 'articles';
 }
 
+// VN for Vinh Nguyen, UX for UX-testaaja.
+function initials(name) {
+  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '?';
+  return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : words[0].slice(0, 2)).toUpperCase();
+}
+
 function setUser(next) {
   user = next;
   // Changes reach the open pages as they happen while someone is logged in.
   if (user) startLive();
   else stopLive();
-  who.hidden = !user;
+  // Logged in, the language is in the user's menu; on the login page it is
+  // a button of its own.
+  usermenu.hidden = !user;
+  langswitch.hidden = Boolean(user);
   nav.hidden = !user;
   document.getElementById('who-name').textContent = user ? user.name : '';
+  document.getElementById('user-avatar').textContent = user ? initials(user.name) : '';
+  if (user) usermenu.setAttribute('aria-label', t('menu.user', { name: user.name }));
   nav.querySelectorAll('[data-admin]').forEach((a) => { a.hidden = !(user && user.role === 'admin'); });
 }
+
+function switchLanguage(next) {
+  setLanguage(next);
+  applyTexts(document);
+  if (user) usermenu.setAttribute('aria-label', t('menu.user', { name: user.name }));
+  render();
+}
+
+async function logOut() {
+  try {
+    await api.post('/api/logout');
+  } catch {
+    // Logged out on this side either way.
+  }
+  setUser(null);
+  render();
+}
+
+// Who is logged in, the look of the pages, the language, and logging out:
+// one menu under the name, instead of three things in the top bar.
+const THEME_ICONS = { system: 'monitor', light: 'sun', dark: 'moon' };
+menuButton(usermenu, () => [
+  { kind: 'head', title: user?.name || '', sub: user?.email || '' },
+  { kind: 'group', label: t('menu.appearance'), options: THEMES.map((theme) => ({
+    label: t(`theme.${theme}`), icon: THEME_ICONS[theme], checked: currentTheme() === theme,
+    onSelect: () => setTheme(theme),
+  })) },
+  { kind: 'group', label: t('menu.language'), options: [['fi', 'Suomi'], ['en', 'English']].map(([code, label]) => ({
+    label, lang: code, checked: currentLanguage() === code, onSelect: () => switchLanguage(code),
+  })) },
+  { kind: 'separator' },
+  { kind: 'item', label: t('header.logout'), icon: 'logout', onSelect: logOut },
+]);
 
 // A link from the bot opened in the address bar. The token leaves the
 // address straight away, so it is not kept in the browser's history or read
@@ -137,21 +185,7 @@ async function start() {
 
   takeLink();
 
-  document.getElementById('logout').addEventListener('click', async () => {
-    try {
-      await api.post('/api/logout');
-    } catch {
-      // Logged out on this side either way.
-    }
-    setUser(null);
-    render();
-  });
-
-  document.getElementById('langswitch').addEventListener('click', () => {
-    setLanguage(otherLanguage());
-    applyTexts(document);
-    render();
-  });
+  langswitch.addEventListener('click', () => switchLanguage(otherLanguage()));
 
   // A page handles changes to its own settings after the ?. Moving to another
   // page is handled here.

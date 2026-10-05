@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
 <title>Uutiskirje</title>
+<script src="js/theme.js"></script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/ui.css">
@@ -32,11 +34,12 @@
       <a href="#/settings" data-page="settings" data-t="nav.settings" data-admin hidden></a>
     </nav>
     <div class="topbar-end">
-      <span class="who" id="who" hidden>
-        <span class="who-name" id="who-name"></span>
-        <button type="button" class="topbar-link" id="logout" data-t="header.logout"></button>
-      </span>
       <button type="button" class="topbar-link langswitch" id="langswitch" data-t="lang.switch"></button>
+      <button type="button" class="user-btn" id="usermenu" hidden>
+        <span class="user-avatar" id="user-avatar" aria-hidden="true"></span>
+        <span class="user-name" id="who-name"></span>
+        <svg class="icon user-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 9.5l5.5 5.5 5.5-5.5"/></svg>
+      </button>
     </div>
   </div>
 </header>

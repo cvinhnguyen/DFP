@@ -32,6 +32,10 @@ export function showNewsletter(root) {
   let mailchimpReady = null;
   let gone = false;
   const open = { articles: false, subject: false };
+  // The first step not done yet is the one to do next: its button is the
+  // only filled one on the page, and its mark stands out.
+  let next = null;
+  const button = (key) => (key === next ? 'btn small' : 'btn ghost small');
   let suggestAttempt = 0;   // how many times the AI has suggested subject lines here
 
   // ---------- each line of the list ----------
@@ -39,7 +43,7 @@ export function showNewsletter(root) {
   function line(key, done, title, summary, action, body = '', state = done ? 'done' : 'todo') {
     const mark = state === 'done' ? icon('check', 22) : state === 'error' ? icon('error', 22) : '<span class="nl-dot"></span>';
     return `
-      <section class="nl-line ${state}" id="line-${key}">
+      <section class="nl-line ${state}${key === next ? ' next' : ''}" id="line-${key}">
         <div class="nl-line-mark" aria-hidden="true">${mark}</div>
         <div class="nl-line-main">
           <div class="nl-line-head">
@@ -71,7 +75,7 @@ export function showNewsletter(root) {
       }).join('')}</ul>`;
     }).join('')}</div>`;
     const action = `${issue.articles.length ? `<button type="button" class="btn ghost small" data-act="toggle" data-what="articles">${esc(open.articles ? t('issue.hide') : t('issue.show'))}</button>` : ''}
-      ${issue.status === 'draft' ? `<a class="btn ghost small" href="#/" data-act="pick-more">${esc(t('issue.pickMore'))}</a>` : ''}`;
+      ${issue.status === 'draft' ? `<a class="${button('articles')}" href="#/" data-act="pick-more">${esc(t('issue.pickMore'))}</a>` : ''}`;
     return line('articles', issue.articles.length > 0, t('issue.lineArticles'), summary, action, list);
   }
 
@@ -102,13 +106,13 @@ export function showNewsletter(root) {
       ? `<p class="nl-subject-text">${esc(issue.subject)}</p>${issue.preheader ? `<p class="nl-meta">${esc(t('issue.preheaderShown', { text: issue.preheader }))}</p>` : `<p class="nl-meta">${esc(t('issue.noPreheader'))}</p>`}`
       : `<p class="nl-meta">${esc(t('issue.subjectQuestion'))}</p>`;
     const action = issue.status === 'draft'
-      ? `<button type="button" class="btn ${done ? 'ghost ' : ''}small" data-act="toggle" data-what="subject">${esc(done ? t('issue.edit') : t('issue.addSubject'))}</button>` : '';
+      ? `<button type="button" class="${button('subject')}" data-act="toggle" data-what="subject">${esc(done ? t('issue.edit') : t('issue.addSubject'))}</button>` : '';
     return line('subject', done, t('issue.lineSubject'), summary, action);
   }
 
   function contentLine() {
     if (!design) {
-      const action = issue.status === 'draft' ? `<a class="btn small" href="editor.html?issue=${issue.id}">${esc(t('issue.design'))}</a>` : '';
+      const action = issue.status === 'draft' ? `<a class="${button('content')}" href="editor.html?issue=${issue.id}">${esc(t('issue.design'))}</a>` : '';
       return line('content', false, t('issue.lineContent'), `<p class="nl-meta">${esc(t('issue.notDesigned'))}</p>`, action);
     }
     const errors = checks.errors.filter((e) => e.code !== 'subject');
@@ -120,7 +124,7 @@ export function showNewsletter(root) {
     const summary = `
       <p class="nl-meta">${esc(t('issue.savedBy', { when: when(issue.design_saved_at), name: issue.design_saved_by || '?' }))}</p>
       ${list.length ? `<ul class="nl-checks">${list.join('')}</ul>` : `<p class="nl-ok">${icon('check', 16)} ${esc(t('check.allGood'))}</p>`}`;
-    const action = issue.status === 'draft' ? `<a class="btn ${errors.length ? '' : 'ghost '}small" href="editor.html?issue=${issue.id}">${esc(t('issue.editContent'))}</a>` : '';
+    const action = issue.status === 'draft' ? `<a class="${button('content')}" href="editor.html?issue=${issue.id}">${esc(t('issue.editContent'))}</a>` : '';
     return line('content', errors.length === 0, t('issue.lineContent'), summary, action, '', errors.length ? 'error' : 'done');
   }
 
@@ -133,7 +137,7 @@ export function showNewsletter(root) {
     if (exported && issue.mailchimp_changed && !sent) summary += `<p class="st-warn">${esc(t('handoff.changedSince'))}</p>`;
     if (!exported && !sent) summary += `<p class="nl-meta">${esc(t('issue.mailchimpHow'))}</p>`;
     const links = issue.mailchimp_url ? `<a class="btn ghost small" href="${esc(issue.mailchimp_url)}" target="_blank" rel="noopener noreferrer">${esc(t('handoff.openInMailchimp'))} ${icon('external', 14)}</a>` : '';
-    const action = sent ? links : `${links}<button type="button" class="btn small" data-act="handoff" ${design ? '' : 'disabled'}>${esc(t('issue.export'))}</button>`;
+    const action = sent ? links : `${links}<button type="button" class="${button('mailchimp')}" data-act="handoff" ${design ? '' : 'disabled'}>${esc(t('issue.export'))}</button>`;
     return line('mailchimp', done, t('issue.lineMailchimp'), summary, action);
   }
 
@@ -141,12 +145,14 @@ export function showNewsletter(root) {
 
   function render() {
     const sent = issue.status === 'sent';
-    const done = [
-      issue.articles.length > 0,
-      !!issue.subject.trim(),
-      !!design && checks.errors.filter((e) => e.code !== 'subject').length === 0,
-      sent || (!!issue.mailchimp_exported_at && !issue.mailchimp_changed),
-    ].filter(Boolean).length;
+    const steps = {
+      articles: issue.articles.length > 0,
+      subject: !!issue.subject.trim(),
+      content: !!design && checks.errors.filter((e) => e.code !== 'subject').length === 0,
+      mailchimp: sent || (!!issue.mailchimp_exported_at && !issue.mailchimp_changed),
+    };
+    next = sent ? null : Object.keys(steps).find((k) => !steps[k]) || null;
+    const done = Object.values(steps).filter(Boolean).length;
     pageTitle(issue.name);
     root.innerHTML = `
       <a class="nl-back" href="#/newsletters">${icon('arrowLeft', 16)} ${esc(t('issue.toList'))}</a>
@@ -156,10 +162,6 @@ export function showNewsletter(root) {
           ${sent ? '' : `<button type="button" class="st-icon-btn" data-act="rename" title="${esc(t('issue.rename'))}" aria-label="${esc(t('issue.rename'))}">${icon('pencil', 18)}</button>`}
           <span class="nl-status ${issue.status}">${esc(t(`list.status.${issue.status}`))}</span>
           ${issue.current && !sent ? `<span class="nl-current">${esc(t('list.current'))}</span>` : ''}
-        </div>
-        <div class="nl-head-actions">
-          <a class="btn ghost" href="#/newsletters">${esc(sent ? t('issue.back') : t('issue.finishLater'))}</a>
-          ${sent ? '' : `<button type="button" class="btn" data-act="handoff" ${design ? '' : 'disabled'}>${esc(t('issue.export'))}</button>`}
         </div>
       </div>
       <div class="nl-layout">

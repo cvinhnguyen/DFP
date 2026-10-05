@@ -233,9 +233,6 @@ export const fi = {
   'offer.stopYes': 'Lopeta ehdotus',
   'offer.stopNo': 'Pidä',
 
-  'status.thesesToday.one': 'Lisäksi 1 opinnäytetyö.',
-  'status.thesesToday.other': 'Lisäksi {n} opinnäytetyötä.',
-
   'error.no_such_topic': 'Tällä numerolla ei ole aihetta.',
   'error.no_such_tag': 'Artikkelilla ei ole tätä asiasanaa.',
   'error.not_a_term': 'YSO:ssa ei ole tällaista asiasanaa.',
@@ -431,7 +428,7 @@ export const en = {
   'reader.driveSaved': 'Saved to Drive {date} in the folder {folder}',
   'reader.driveOpen': 'Open',
   'reader.driveAgain': 'Save again',
-  'reader.driveChanged': 'The Drive document changed {when}. The newsletter the article is in waits for someone to look at it in Tarkistus.',
+  'reader.driveChanged': 'The Drive document changed {when}. The newsletter the article is in waits for someone to look at it in Check.',
   'driveSave.title': 'Save to Drive',
   'driveSave.folder': 'Folder',
   'driveSave.newFolder': 'New folder…',
@@ -529,9 +526,6 @@ export const en = {
   'offer.stopAsk': 'Stop suggesting it?',
   'offer.stopYes': 'Stop suggesting',
   'offer.stopNo': 'Keep it',
-
-  'status.thesesToday.one': 'And 1 thesis.',
-  'status.thesesToday.other': 'And {n} theses.',
 
   'error.no_such_topic': 'There is no topic with that number.',
   'error.no_such_tag': 'The article has no such tag.',

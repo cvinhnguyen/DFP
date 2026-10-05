@@ -5,7 +5,7 @@
 // saves a change.
 // Jira: DM42-37
 
-import { t } from '../texts.js';
+import { t, tn } from '../texts.js';
 import { esc, number } from '../format.js';
 
 export const RIGHTS = ['own', 'open', 'check', 'none'];
@@ -13,7 +13,8 @@ export const RIGHTS = ['own', 'open', 'check', 'none'];
 function row(source, busy) {
   const options = RIGHTS.map((r) => `<option value="${r}"${r === source.rights ? ' selected' : ''}>${esc(t(`pics.rights.${r}`))}</option>`).join('');
   return `<tr>
-    <td>${esc(source.name)}${source.active ? '' : ` <small>${esc(t('pics.off'))}</small>`}</td>
+    <td>${esc(source.name)}${source.active ? '' : ` <small>${esc(t('pics.off'))}</small>`}
+      ${source.pictures ? `<span class="pics-n">${esc(tn('pics.countShort', source.pictures, { n: number(source.pictures) }))}</span>` : ''}</td>
     <td class="num">${source.pictures ? number(source.pictures) : '–'}</td>
     <td><select class="cf-input pics-select" data-source="${source.id}" aria-label="${esc(t('pics.label', { source: source.name }))}"
       ${busy === source.id ? 'disabled' : ''}>${options}</select></td>

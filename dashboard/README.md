@@ -1,9 +1,15 @@
 # The dashboard
 
-The editors' web app, in Finnish with an English switch for the team.
+The editors' web app, in Finnish with an English switch for the team. The
+menu under one's name in the top bar has the look (light, dark, or as the
+computer has it), the language, and logging out; the look and the language
+are kept in that browser.
 
-- **Artikkelit**: everything the tool collected, read by topic. A column of
-  topics and lists on the left, the list in the middle, the article on the
+- **Artikkelit**: everything the tool collected, read by topic. One quiet
+  line above it says what came today and when the sources were checked,
+  with the button to check now; a source whose check failed and articles
+  that need attention show as chips beside it, and the AI's budget gets a
+  line of its own. A column of topics and lists on the left, the list in the middle, the article on the
   right in the order an editor decides: the title and where it is from, an
   event's day, place and deadline on one line, and the Finnish summary at
   once, with the picture beside or under it. The topics, tags, saving to
@@ -24,11 +30,14 @@ The editors' web app, in Finnish with an English switch for the team.
   undo. It starts from a template with the picked articles in place. On a
   phone it shows the email itself, full width, with the preview and the
   comments: building an email is for a computer, as in Mailchimp.
-- **Asetukset**, for admins: the Mailchimp connection, the banners and logo
-  new emails start with, what the AI costs against its monthly budget, how
-  long articles are kept, the member organisations, what each source's
-  pictures are, how often the suggested sections were right, and the
-  association's Google Drive folder.
+- **Asetukset**, for admins, in three groups with a list of them beside the
+  page that marks the one in view (a row at the top on a phone). Yhteydet:
+  the Mailchimp connection and the association's Google Drive folder.
+  Kirjeiden sisältö: the banners and logo new emails start with, what each
+  source's pictures are, how often the suggested sections were right, and
+  the member organisations. Tekoäly ja tiedot: what the AI costs against its
+  monthly budget, and how long articles are kept. A section that needs an
+  admin's eye has a mark in the list.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
 DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
@@ -377,10 +386,10 @@ reading the sources for it took. The model in use is free at our volume, so
 the page also says what the same use would cost at that model's paid rate.
 
 An admin sets the monthly budget there (`monthly_budget_eur`, 0 for no cap).
-At 80 % the status line warns and the bot tells the team once. When it is
+At 80 % the status bar warns and the bot tells the team once. When it is
 used up, the articles the sources bring in wait in the queue until the next
 month, or until the budget is raised; a link sent to the bot and a summary
-an editor asks for are still made. The status line says so, with how many
+an editor asks for are still made. The status bar says so, with how many
 wait, and the bot tells the team when it stops and when it starts again.
 `ai_budget` in `db/init/24-ai-budget.sql` is where that state is worked out.
 
@@ -698,14 +707,17 @@ web/
   js/app.js        starts the dashboard and picks the page
   js/api.js        every call to the API goes through here
   js/live.js       what changes, as it happens: one stream for the browser's tabs
+  js/theme.js      the chosen look, put on the page before it is drawn
+  js/appearance.js the look in the user menu: light, dark or the computer's
   js/texts.js      every word on the screen, in Finnish and English, with
                    the editor's, the newsletter pages' and the articles
                    page's words in texts/
   js/format.js     escaping, safe links, dates in Finnish time
-  js/ui/           building blocks: elements, icons, dialogs, form controls
+  js/ui/           building blocks: elements, icons, dialogs, form controls,
+                   the menu from a button
   js/pages/        one file per page: what it shows and what each click does
   js/components/   how one piece is drawn: an article, the column of topics,
-                   the status line
+                   the status bar
   js/newsletter/   the email itself, used by the editor and the pages alike:
     model.js         what an email is made of: sections, blocks, styles
     render.js        a design written out as email HTML

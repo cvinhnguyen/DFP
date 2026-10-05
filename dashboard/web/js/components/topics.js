@@ -7,6 +7,7 @@
 import { t, tn } from '../texts.js';
 import { esc, number, safeUrl } from '../format.js';
 import { colourOf } from './side.js';
+import { icon } from '../ui/icons.js';
 
 export function topicRows(topics, selectedId, { creating = false } = {}) {
   const top = creating
@@ -16,7 +17,7 @@ export function topicRows(topics, selectedId, { creating = false } = {}) {
          <button type="submit" class="btn small">${esc(t('topic.create'))}</button>
          <button type="button" class="btn ghost small" data-act="topic-new-cancel">${esc(t('topic.cancel'))}</button>
        </form>`
-    : `<p class="tp-newbar"><button type="button" class="btn ghost small" data-act="topic-new">+ ${esc(t('topic.new'))}</button></p>`;
+    : `<p class="tp-newbar"><button type="button" class="btn ghost small" data-act="topic-new">${icon('plus', 16)}<span>${esc(t('topic.new'))}</span></button></p>`;
   const rows = topics.map((x) => {
     const meta = [tn('topic.rowTerms', x.tags.length), t('topic.rowNew', { n: number(x.new) }),
       x.followed ? t('topic.rowFollowed') : ''].filter(Boolean).join(' · ');

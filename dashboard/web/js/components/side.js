@@ -77,7 +77,8 @@ function signalsGroup(signals, latest, current) {
 function driveGroup(sources, c, current) {
   const drive = sources.find((s) => s.type === 'drive');
   if (!drive || !c.drive) return '';
-  const fresh = c.drive_new ? `<span class="side-unseen">${esc(t('side.driveNew', { n: number(c.drive_new) }))}</span>` : '';
+  // "2 new" beside 2 says nothing more: only when some have been opened.
+  const fresh = c.drive_new && c.drive_new < c.drive ? `<span class="side-unseen">${esc(t('side.driveNew', { n: number(c.drive_new) }))}</span>` : '';
   return `
     <div class="side-group">
       ${entry(`source:${drive.id}`, current, `<span class="side-name">${esc(t('side.drive'))}</span>${fresh}`, c.drive, { extra: ' drive' })}
@@ -95,7 +96,7 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
   return `
     <button type="button" class="side-close btn ghost small" data-act="side">${esc(t('side.close'))}</button>
     <div class="side-group">
-      ${entry('inbox', current, `<span class="side-name">${esc(t('place.inbox'))}</span>${c.unseen
+      ${entry('inbox', current, `<span class="side-name">${esc(t('place.inbox'))}</span>${c.unseen && c.unseen < c.inbox
         ? `<span class="side-unseen">${esc(t('side.unseen', { n: number(c.unseen) }))}</span>` : ''}`, c.inbox, { extra: ' big' })}
       ${entry('picked', current, `<span class="side-name">${esc(t('view.picked'))}</span>`, c.picked, { muted: true })}
       ${entry('later', current, `<span class="side-name">${esc(t('view.later'))}</span>`, c.later, { muted: true })}

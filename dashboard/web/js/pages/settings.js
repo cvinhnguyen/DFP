@@ -22,6 +22,22 @@ import { driveCard } from '../components/drive.js';
 import { showDriveFiles } from '../components/driveFiles.js';
 import { onLive } from '../live.js';
 
+// The sections in the order of the page, under three headings in the list
+// beside them: what the tool is connected to, what goes into the emails,
+// and what the AI costs and how long articles are kept.
+const SECTIONS = [
+  { key: 'mailchimp', group: 'connections', title: 'admin.mailchimp' },
+  { key: 'drive', group: 'connections', title: 'drive.title' },
+  { key: 'brand', group: 'content', title: 'brand.title' },
+  { key: 'pics', group: 'content', title: 'pics.title' },
+  { key: 'sugg', group: 'content', title: 'sugg.title' },
+  { key: 'members', group: 'content', title: 'members.title' },
+  { key: 'costs', group: 'data', title: 'cost.title' },
+  { key: 'keep', group: 'data', title: 'keep.title' },
+];
+const GROUPS = ['connections', 'content', 'data'];
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
+
 export function showSettings(root, { user }) {
   let state = null;
   let costs = null;
@@ -34,6 +50,13 @@ export function showSettings(root, { user }) {
   let picsBusy = null;    // the source whose pictures are being saved
   let drive = null;
   let driveBusy = null;   // check or sync, while it runs
+  let driveLogAll = false; // the whole Drive log, not only the latest
+  let current = SECTIONS[0].key;   // the section in view, marked in the list
+  let held = 0;           // until then a press in the list decides the mark
+  let watcher = null;
+  const seen = new Map();  // which sections are in the band that marks one
+  let heldTimer = null;
+  let refocus = null;     // the control that had the focus before a redraw
   let gone = false;
   let busy = false;
   const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '', pics: '', drive: '' };
@@ -49,22 +72,158 @@ export function showSettings(root, { user }) {
     return `<p class="set-status bad">${icon('error', 18)} ${esc(t('admin.notConnectedTitle'))}<span class="nl-meta">${esc(why)}</span></p>`;
   }
 
+  // What needs an admin's eye, as a mark beside the section's name.
+  function flag(key) {
+    if (key === 'mailchimp' && state && !state.connected) return 'bad';
+    if (key === 'drive' && drive && (!drive.configured || drive.check?.problem || drive.check?.outside_count)) return 'bad';
+    if (key === 'costs' && costs && ['warn', 'over'].includes(costs.budget?.state)) return costs.budget.state === 'over' ? 'bad' : 'warn';
+    return '';
+  }
+
+  function card(key) {
+    if (key === 'mailchimp') return state ? mailchimpCard() : '';
+    if (key === 'drive') return drive ? driveCard(drive, driveBusy, { logAll: driveLogAll }) : '';
+    if (key === 'brand') return brand ? brandCard(brand, brandBusy) : '';
+    if (key === 'costs') return costs ? costsCard(costs) : '';
+    if (key === 'keep') return keep ? retentionCard(keep) : '';
+    if (key === 'members') return members ? membersCard(members) : '';
+    if (key === 'pics') return pics ? sourcePicturesCard(pics, picsBusy) : '';
+    return sugg ? suggestionsCard(sugg) : '';
+  }
+
+  // A section not read yet, or that could not be read, keeps its place and
+  // its heading, so the page does not jump as the others arrive.
+  function section(s) {
+    const body = problems[s.key]
+      ? `<p class="problem">${esc(problems[s.key])}</p>`
+      : card(s.key);
+    const inner = body && !problems[s.key] ? body : `
+      <section class="card set-card"${problems[s.key] ? '' : ' aria-busy="true"'}>
+        <div class="set-head"><h2>${esc(t(s.title))}</h2></div>
+        ${body || `<p class="loading">${esc(t('admin.loading'))}</p>`}
+      </section>`;
+    return `<div class="set-sec" id="set-${s.key}" data-sec="${s.key}">${inner}</div>`;
+  }
+
+  function nav() {
+    return GROUPS.map((g) => `
+      <div class="set-nav-group">
+        <p class="set-nav-h" aria-hidden="true">${esc(t(`admin.group.${g}`))}</p>
+        ${SECTIONS.filter((s) => s.group === g).map((s) => {
+          const f = flag(s.key);
+          return `<button type="button" class="set-nav-item" data-goto="${s.key}"${s.key === current ? ' aria-current="true"' : ''}>
+            <span>${esc(t(s.title))}</span>${f ? `<span class="set-flag ${f}"><span class="sr-only">${esc(t('admin.needsLook'))}</span></span>` : ''}</button>`;
+        }).join('')}
+      </div>`).join('');
+  }
+
   function render() {
     pageTitle(t('admin.title'));
     if (user.role !== 'admin') {
       root.innerHTML = `<p class="problem">${esc(t('error.admin_only'))}</p>`;
       return;
     }
+    // The page is drawn whole again as its parts arrive and change; the
+    // focus goes back to the control that had it, so a keyboard keeps its
+    // place.
+    const had = document.activeElement;
+    if (had && had !== document.body && root.contains(had)) refocus = focusKey(had);
     root.innerHTML = `
       <div class="pagehead"><h1>${esc(t('admin.title'))}</h1><p>${esc(t('admin.lead'))}</p></div>
-      ${problems.mailchimp ? `<p class="problem">${esc(problems.mailchimp)}</p>` : (state ? mailchimpCard() : '')}
-      ${problems.drive ? `<p class="problem">${esc(problems.drive)}</p>` : (drive ? driveCard(drive, driveBusy) : '')}
-      ${problems.brand ? `<p class="problem">${esc(problems.brand)}</p>` : (brand ? brandCard(brand, brandBusy) : '')}
-      ${problems.costs ? `<p class="problem">${esc(problems.costs)}</p>` : (costs ? costsCard(costs) : '')}
-      ${problems.keep ? `<p class="problem">${esc(problems.keep)}</p>` : (keep ? retentionCard(keep) : '')}
-      ${problems.members ? `<p class="problem">${esc(problems.members)}</p>` : (members ? membersCard(members) : '')}
-      ${problems.pics ? `<p class="problem">${esc(problems.pics)}</p>` : (pics ? sourcePicturesCard(pics, picsBusy) : '')}
-      ${problems.sugg ? `<p class="problem">${esc(problems.sugg)}</p>` : (sugg ? suggestionsCard(sugg) : '')}`;
+      <div class="set-layout">
+        <nav class="set-nav" id="set-nav" aria-label="${esc(t('admin.nav'))}">${nav()}</nav>
+        <div class="set-list">${SECTIONS.map(section).join('')}</div>
+      </div>`;
+    if (refocus) {
+      const back = root.querySelector(refocus);
+      if (back && !back.disabled) {
+        back.focus({ preventScroll: true });
+        refocus = null;
+      }
+    }
+    watch();
+  }
+
+  // One section drawn again, and the marks in the list, leaving the rest
+  // of the page as it is: a form being filled in elsewhere keeps its text.
+  function update(key) {
+    if (gone) return;
+    if (!root.querySelector('.set-layout')) {
+      render();
+      return;
+    }
+    const had = document.activeElement;
+    if (had && had !== document.body && root.contains(had)) refocus = focusKey(had);
+    const el = root.querySelector(`#set-${key}`);
+    if (el) el.outerHTML = section(SECTIONS.find((x) => x.key === key));
+    root.querySelector('#set-nav').innerHTML = nav();
+    if (refocus) {
+      const back = root.querySelector(refocus);
+      if (back && !back.disabled) {
+        back.focus({ preventScroll: true });
+        refocus = null;
+      }
+    }
+    watch();
+  }
+
+  function focusKey(el) {
+    if (el.id) return `#${CSS.escape(el.id)}`;
+    const attrs = ['act', 'goto', 'which', 'source', 'form'].filter((k) => el.dataset[k] !== undefined)
+      .map((k) => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
+    if (attrs) return attrs;
+    if (el.name) return `[name="${CSS.escape(el.name)}"]`;
+    return null;
+  }
+
+  // The section in view is marked in the list beside the page.
+  function watch() {
+    watcher?.disconnect();
+    if (!('IntersectionObserver' in window)) return;
+    seen.clear();
+    watcher = new IntersectionObserver((entries) => {
+      entries.forEach((e) => seen.set(e.target.dataset.sec, e.isIntersecting));
+      if (Date.now() >= held) markSeen();
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    root.querySelectorAll('.set-sec').forEach((el) => watcher.observe(el));
+  }
+
+  function markSeen() {
+    const first = SECTIONS.find((x) => seen.get(x.key));
+    if (first) mark(first.key);
+  }
+
+  function mark(key) {
+    if (key === current) return;
+    current = key;
+    root.querySelectorAll('.set-nav-item').forEach((b) => {
+      if (b.dataset.goto === key) b.setAttribute('aria-current', 'true');
+      else b.removeAttribute('aria-current');
+    });
+    // On a phone the list is one row that scrolls sideways: the marked one
+    // stays in it.
+    const navEl = root.querySelector('#set-nav');
+    const item = root.querySelector(`.set-nav-item[data-goto="${key}"]`);
+    if (navEl && item && navEl.scrollWidth > navEl.clientWidth) {
+      navEl.scrollTo({ left: item.offsetLeft - 16, behavior: REDUCED.matches ? 'auto' : 'smooth' });
+    }
+  }
+
+  function goTo(key) {
+    const target = root.querySelector(`#set-${key}`);
+    if (!target) return;
+    // While the page scrolls there, the pressed one stays marked; then
+    // whatever is in view, in case the page moved on meanwhile.
+    held = Date.now() + 900;
+    clearTimeout(heldTimer);
+    heldTimer = setTimeout(markSeen, 950);
+    mark(key);
+    target.scrollIntoView({ behavior: REDUCED.matches ? 'auto' : 'smooth', block: 'start' });
+    const heading = target.querySelector('h2');
+    if (heading) {
+      heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+    }
   }
 
   function mailchimpCard() {
@@ -78,7 +237,7 @@ export function showSettings(root, { user }) {
         ${status()}
         <form class="set-form" data-form="mailchimp">
           <label for="set-server">${esc(t('admin.server'))}</label>
-          <input id="set-server" class="cf-input" name="server" value="${esc(state.server)}" placeholder="us4" maxlength="8" autocomplete="off">
+          <input id="set-server" class="cf-input short" name="server" value="${esc(state.server)}" placeholder="us4" maxlength="8" autocomplete="off">
           <p class="cf-hint">${esc(t('admin.serverHint'))}</p>
 
           <label for="set-audience">${esc(t('admin.audience'))}</label>
@@ -118,7 +277,7 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.mailchimp = e.message;
     }
-    if (!gone) render();
+    update('mailchimp');
   }
 
   async function loadDrive() {
@@ -129,14 +288,14 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.drive = e.message;
     }
-    if (!gone) render();
+    update('drive');
   }
 
   // Drive's check and the folder's reading take a moment: the button says so
   // meanwhile, and the card shows the answer.
   async function driveRun(kind) {
     driveBusy = kind;
-    render();
+    update('drive');
     try {
       if (kind === 'check') {
         drive = await api.post('/api/drive/check');
@@ -150,12 +309,12 @@ export function showSettings(root, { user }) {
       await loadDrive();
     }
     driveBusy = null;
-    if (!gone) render();
+    update('drive');
   }
 
   async function driveSave(body, message) {
     driveBusy = 'save';
-    render();
+    update('drive');
     try {
       drive = await api.put('/api/drive', body);
       toast(message);
@@ -163,7 +322,7 @@ export function showSettings(root, { user }) {
       toast(e.message, 'warn');
     }
     driveBusy = null;
-    if (!gone) render();
+    update('drive');
   }
 
   async function loadRetention() {
@@ -174,7 +333,7 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.keep = e.message;
     }
-    if (!gone) render();
+    update('keep');
   }
 
   async function loadPictures() {
@@ -185,7 +344,7 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.pics = e.message;
     }
-    if (!gone) render();
+    update('pics');
   }
 
   // What a source's pictures are, saved as soon as it is chosen.
@@ -193,7 +352,7 @@ export function showSettings(root, { user }) {
     const id = Number(select.dataset.source);
     const rights = select.value;
     picsBusy = id;
-    render();
+    update('pics');
     try {
       const done = await api.put(`/api/sources/${id}/pictures`, { rights });
       pics.sources = pics.sources.map((x) => (x.id === id ? done.source : x));
@@ -204,7 +363,7 @@ export function showSettings(root, { user }) {
       toast(e.message, 'warn');
     }
     picsBusy = null;
-    if (!gone) render();
+    update('pics');
   }
 
   async function loadSuggestions() {
@@ -215,7 +374,7 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.sugg = e.message;
     }
-    if (!gone) render();
+    update('sugg');
   }
 
   async function loadMembers() {
@@ -226,7 +385,7 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.members = e.message;
     }
-    if (!gone) render();
+    update('members');
   }
 
   async function loadBrand() {
@@ -237,7 +396,7 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.brand = e.message;
     }
-    if (!gone) render();
+    update('brand');
   }
 
   // A picture into Kuvapankki, the way the editor uploads one: the address
@@ -264,7 +423,7 @@ export function showSettings(root, { user }) {
       input.remove();
       if (!file) return;
       brandBusy = which;
-      render();
+      update('brand');
       try {
         const added = await upload(file);
         brand = await api.put(`/api/brand/${which}`, { src: added.src });
@@ -273,7 +432,7 @@ export function showSettings(root, { user }) {
         toast(e.message, 'warn');
       } finally {
         brandBusy = null;
-        if (!gone) render();
+        update('brand');
       }
     });
     input.click();
@@ -287,10 +446,20 @@ export function showSettings(root, { user }) {
       if (e.status === 401) return;
       problems.costs = e.message;
     }
-    if (!gone) render();
+    update('costs');
   }
 
   root.addEventListener('click', async (event) => {
+    const goto = event.target.closest('[data-goto]');
+    if (goto) {
+      goTo(goto.dataset.goto);
+      return;
+    }
+    if (event.target.closest('[data-act="drive-log-all"]')) {
+      driveLogAll = !driveLogAll;
+      update('drive');
+      return;
+    }
     if (event.target.closest('[data-act="drive-files"]')) {
       showDriveFiles();
       return;
@@ -330,7 +499,7 @@ export function showSettings(root, { user }) {
       }
       try {
         brand = await api.del(`/api/brand/${which}`);
-        render();
+        update('brand');
         toast(t('brand.restored'));
       } catch (e) {
         toast(e.message, 'warn');
@@ -352,10 +521,10 @@ export function showSettings(root, { user }) {
     const target = event.target.closest('[data-act="test"]');
     if (!target) return;
     busy = true;
-    render();
+    update('mailchimp');
     await load(true);
     busy = false;
-    render();
+    update('mailchimp');
     toast(state && state.connected ? t('admin.testOk') : t('admin.testBad'), state && state.connected ? 'good' : 'warn');
   });
 
@@ -381,7 +550,7 @@ export function showSettings(root, { user }) {
       event.preventDefault();
       try {
         keep = await api.put('/api/retention', { days: Number(days.days.value) });
-        render();
+        update('keep');
         toast(t('keep.saved'));
       } catch (e) {
         toast(e.message, 'warn');
@@ -393,7 +562,7 @@ export function showSettings(root, { user }) {
       event.preventDefault();
       try {
         costs = await api.put('/api/costs/budget', { eur: Number(budget.eur.value) });
-        render();
+        update('costs');
         toast(t('cost.saved'));
       } catch (e) {
         toast(e.message, 'warn');
@@ -411,7 +580,7 @@ export function showSettings(root, { user }) {
         from_name: form.from_name.value.trim(),
         reply_to: form.reply_to.value.trim(),
       });
-      render();
+      update('mailchimp');
       toast(t('admin.saved'));
     } catch (e) {
       toast(e.message, 'warn');
@@ -437,6 +606,12 @@ export function showSettings(root, { user }) {
     if (driveStale) setTimeout(() => { if (driveStale && !typing()) driveChanged(); }, 0);
   });
 
+  const forget = (event) => {
+    if (refocus && !(root.contains(event.target) && focusKey(event.target) === refocus)) refocus = null;
+  };
+  document.addEventListener('focusin', forget);
+
+  render();
   load();
   loadDrive();
   loadBrand();
@@ -448,6 +623,9 @@ export function showSettings(root, { user }) {
   return {
     leave() {
       gone = true;
+      watcher?.disconnect();
+      clearTimeout(heldTimer);
+      document.removeEventListener('focusin', forget);
       quiet();
       clearTimeout(driveTimer);
     },

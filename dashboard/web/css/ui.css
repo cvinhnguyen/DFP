@@ -36,6 +36,23 @@
 .tt-menu-item:hover, .tt-menu-item.active { background: var(--bg); }
 .tt-menu-item.danger { color: var(--danger); }
 .tt-link { display: flex; flex-direction: column; gap: 6px; width: 280px; padding: 4px; }
+/* A menu from a button (ui/menu.js): the user menu in the top bar. */
+.mb-menu { padding: 6px; min-width: 250px; display: flex; flex-direction: column; }
+.mb-head { display: grid; gap: 1px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--rule); }
+.mb-head strong { font-size: 14.5px; }
+.mb-head span { font-size: 12.5px; color: var(--soft); overflow-wrap: anywhere; }
+.mb-group { padding: 8px 10px 4px; font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
+.mb-item {
+  appearance: none; width: 100%; border: 0; background: none; color: var(--ink); font: inherit; font-size: 14px; text-align: left;
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+}
+.mb-item:hover { background: var(--bg); }
+.mb-item:focus-visible { background: var(--bg); outline: 2px solid var(--focus); outline-offset: -2px; }
+.mb-item[aria-checked="true"] { font-weight: 600; }
+.mb-item .icon { color: var(--soft); }
+.mb-tick { width: 16px; display: inline-flex; flex: 0 0 auto; }
+.mb-tick .icon { color: var(--sel); }
+.mb-sep { height: 1px; background: var(--rule); margin: 6px 4px; }
 .tt-pop-title { margin: 0 0 4px; font-size: 15px; }
 .tt-pop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
@@ -55,6 +72,14 @@
 .cf-input:focus { border-color: var(--sel); outline: none; box-shadow: 0 0 0 3px var(--sel-soft); }
 .cf-area { resize: vertical; min-height: 54px; }
 .cf-select { padding-right: 4px; }
+/* Every dropdown alike, on every page and in both looks, with its arrow
+   drawn here: the browser's own differs between systems and does not follow
+   the dark look. */
+select:not([multiple]):not([size]) {
+  -webkit-appearance: none; appearance: none; cursor: pointer; padding-right: 30px;
+  background-image: var(--chevron); background-repeat: no-repeat; background-position: right 8px center; background-size: 16px 16px;
+}
+select:not([multiple]):not([size]):disabled { cursor: default; opacity: .6; }
 .cf-numberbox { display: flex; align-items: center; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
 .cf-numberbox:focus-within { border-color: var(--sel); box-shadow: 0 0 0 3px var(--sel-soft); }
 .cf-number { border: 0; box-shadow: none !important; -moz-appearance: textfield; min-width: 0; }
@@ -123,7 +148,6 @@
 .not-ready-title { display: flex; align-items: center; gap: 6px; color: var(--danger); font-weight: 650; font-size: 15px; }
 .not-ready-list { margin: 6px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 3px; }
 .not-ready-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-.not-ready-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .help { display: grid; gap: 10px; }
 .help-row h3 { margin: 0 0 2px; font-size: 15px; }
 .help-row p { margin: 0; color: var(--soft); font-size: 14px; }
