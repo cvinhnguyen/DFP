@@ -34,7 +34,8 @@ import { openPreview } from './preview.js';
 import { chooseTemplate } from './chooser.js';
 import { createComments } from './comments.js';
 import { modal, confirmDialog, promptDialog, toast } from '../ui/dialogs.js';
-import { h, $ } from '../ui/dom.js';
+import { h, fill, $ } from '../ui/dom.js';
+import { onLive, startLive, stopLive, touches } from '../live.js';
 import { icon } from '../ui/icons.js';
 import { popover, closePopover, textInput, field } from '../ui/controls.js';
 
@@ -258,6 +259,16 @@ const actions = {
   },
   toast,
   confirm: (text) => confirmDialog(text),
+  // An editor has looked at an article whose Drive document changed after
+  // it went into the email: Tarkistus no longer holds the email for it.
+  async driveChangeSeen(itemId) {
+    try {
+      await api.post(`/api/items/${itemId}/drive-change`);
+    } catch (e) {
+      toast(e.message, 'warn');
+    }
+    await refreshArticles();
+  },
   prompt: (title, value) => promptDialog(title, value),
   help: showHelp,
   editSubject,
@@ -604,6 +615,84 @@ async function refreshArticles() {
 
 let blocksPanel = null;
 
+// ---------- live ----------
+
+// What other editors and the Drive guard change shows here as it happens
+// (live.js): the picked articles and their Drive flags, the comments, and
+// another save of this same newsletter, which a note at the top offers to
+// load instead of the editor finding out only on their own next save.
+let articlesTimer = null;
+let elsewhereTimer = null;
+let liveNote = null;
+
+function articlesChanged() {
+  clearTimeout(articlesTimer);
+  articlesTimer = setTimeout(refreshArticles, 800);
+}
+
+function showLiveNote(text, action) {
+  if (!liveNote) {
+    liveNote = h('div', { class: 'ed-live-note', role: 'status' });
+    document.querySelector('.ed-top').after(liveNote);
+  }
+  fill(liveNote, h('span', {}, text),
+    action ? h('button', { type: 'button', class: 'btn small', onclick: action }, t('editor.loadNewest')) : null);
+  liveNote.hidden = false;
+}
+
+async function loadNewest() {
+  if (store.dirty && !(await confirmDialog(t('editor.loadNewestConfirm')))) return;
+  store.saved(store.version);
+  location.reload();
+}
+
+function savedElsewhere() {
+  clearTimeout(elsewhereTimer);
+  elsewhereTimer = setTimeout(async () => {
+    // This editor's own save says so itself when it is done.
+    if (saving) {
+      savedElsewhere();
+      return;
+    }
+    let fresh;
+    try {
+      fresh = await api.get(`/api/issues/${issueId}`);
+    } catch {
+      return;
+    }
+    if (fresh.status !== 'draft') {
+      showLiveNote(t('editor.sentElsewhere'), null);
+      return;
+    }
+    if (!fresh.design_saved_at || !basedOn || Date.parse(fresh.design_saved_at) === Date.parse(basedOn)) {
+      if (liveNote) liveNote.hidden = true;
+      return;
+    }
+    const mine = context.me && fresh.design_saved_by === context.me.name;
+    showLiveNote(t(mine ? 'editor.savedElsewhereMine' : 'editor.savedElsewhere',
+      { name: fresh.design_saved_by || '?', when: when(fresh.design_saved_at) }), loadNewest);
+  }, 1000);
+}
+
+function listen() {
+  startLive();
+  onLive('picks', articlesChanged);
+  onLive('items', (change) => {
+    if (touches(change, context.articles.map((a) => a.id))) articlesChanged();
+  });
+  onLive('comments', (change) => {
+    if (touches(change, [issueId])) comments.reload();
+  });
+  onLive('issues', (change) => {
+    if (touches(change, [issueId])) savedElsewhere();
+  });
+  onLive('resync', () => {
+    articlesChanged();
+    comments.reload();
+    savedElsewhere();
+  });
+}
+
 function bindUi() {
   $('ed-name').addEventListener('click', startRename);
   $('ed-exit').addEventListener('click', saveAndExit);
@@ -641,7 +730,10 @@ function bindUi() {
     }
   });
   window.addEventListener('focus', refreshArticles);
-  window.addEventListener('auth-lost', () => setStatus('loggedOut'));
+  window.addEventListener('auth-lost', () => {
+    setStatus('loggedOut');
+    stopLive();
+  });
 }
 
 async function start() {
@@ -711,6 +803,7 @@ async function start() {
   comments = createComments({ api, store, issueId, me: context.me, panel: $('ed-comments'), badge: $('ed-comments-badge'), actions });
   blocksPanel.render();
   sectionsPanel.render();
+  listen();
 
   store.on('change', () => {
     scheduleSave();

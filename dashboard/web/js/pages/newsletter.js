@@ -16,6 +16,7 @@ import { toast, confirmDialog, promptDialog } from '../ui/dialogs.js';
 import { mailchimpLine } from './newsletters.js';
 import { suggestionsBox } from '../newsletter/writing.js';
 import { saveTarget } from './articles.js';
+import { onLive, touches } from '../live.js';
 
 const SECTION_ORDER = ['own_news', 'events', 'member_news', 'highlights', 'training'];
 
@@ -307,6 +308,34 @@ export function showNewsletter(root) {
     }
   });
 
+  // Another editor's save, a pick, a comment, or an article's Drive document
+  // gone or changed: the page catches up as it happens (live.js). Not while
+  // someone types on it or a window is open over it; then once they stop.
+  let liveTimer = null;
+  const busyHere = () => (root.contains(document.activeElement) && document.activeElement.matches('input, textarea, select'))
+    || document.querySelector('.md-overlay');
+  function changed() {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => {
+      if (gone) return;
+      if (busyHere()) changed();
+      else load();
+    }, 2000);
+  }
+  const unlisten = [
+    onLive('issues', (c) => { if (issue && touches(c, [issue.id])) changed(); }),
+    onLive('picks', changed),
+    onLive('items', (c) => { if (issue && touches(c, issue.articles.map((a) => a.id))) changed(); }),
+    onLive('comments', (c) => { if (issue && touches(c, [issue.id])) changed(); }),
+    onLive('resync', changed),
+  ];
+
   load();
-  return { leave() { gone = true; } };
+  return {
+    leave() {
+      gone = true;
+      clearTimeout(liveTimer);
+      unlisten.forEach((stop) => stop());
+    },
+  };
 }

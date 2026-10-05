@@ -145,7 +145,16 @@ SELECT i.id,
        iss.name                                AS pick_issue_name,
        iss.status                              AS pick_issue_status,
        pu.display_name                         AS decided_by,
-       p.decided_at
+       p.decided_at,
+       -- saved into the association's Drive folder, the latest time (34-drive-library.sql)
+       (SELECT jsonb_build_object('at', ds.saved_at, 'folder', ds.folder, 'link', ds.link,
+                                  'folder_link', ds.folder_link)
+          FROM drive_saves ds WHERE ds.item_id = i.id
+         ORDER BY ds.saved_at DESC LIMIT 1)    AS drive_saved,
+       -- its Drive document changed after it went into a newsletter, and no
+       -- editor has looked since
+       (SELECT dc.changed_at FROM drive_changes dc
+         WHERE dc.item_id = i.id AND dc.seen_at IS NULL) AS drive_changed_at
 """ + FROM + """
   LEFT JOIN users u  ON u.id = i.captured_by
   LEFT JOIN items d  ON d.id = i.duplicate_of
@@ -156,7 +165,12 @@ COUNTS = "SELECT " + ",\n       ".join(
     [f'count(*) FILTER (WHERE {condition}) AS "{view}"' for view, condition in VIEWS.items()]
     # Uudet the editor asking has not opened yet.
     + [f"""count(*) FILTER (WHERE {INBOX} AND NOT EXISTS (
-            SELECT 1 FROM item_views v WHERE v.item_id = i.id AND v.user_id = %(user)s)) AS unseen"""]) + FROM
+            SELECT 1 FROM item_views v WHERE v.item_id = i.id AND v.user_id = %(user)s)) AS unseen"""]
+    # The association's own Drive folder: all its articles, and those nobody
+    # has decided about that the editor asking has not opened.
+    + ["count(*) FILTER (WHERE s.type = 'drive') AS drive",
+       """count(*) FILTER (WHERE s.type = 'drive' AND p.item_id IS NULL AND NOT EXISTS (
+            SELECT 1 FROM item_views v WHERE v.item_id = i.id AND v.user_id = %(user)s)) AS drive_new"""]) + FROM
 
 TITLE_TEXT = "to_tsvector('finnish', coalesce(i.title, '') || ' ' || coalesce(i.excerpt, ''))"
 QUERY = "websearch_to_tsquery('finnish', %(q)s)"
@@ -206,7 +220,7 @@ def filters(q=None, source=None, language=None, signal=None, section=None, date_
     fixed SQL goes into the conditions; everything the editor typed travels as
     a parameter. hide_drive leaves out the association's own Drive material,
     for the shared demo login."""
-    where, params = [], {}
+    where, params = [NOT_WITHDRAWN], {}
     if hide_drive:
         where.append(f"({NOT_DRIVE})")
     if q:
@@ -248,6 +262,9 @@ def filters(q=None, source=None, language=None, signal=None, section=None, date_
 
 # Not from the association's Drive folder (33-drive.sql).
 NOT_DRIVE = "coalesce(s.type, '') <> 'drive'"
+# Not taken away because its Drive document left the folder: such an
+# article stays only for the newsletter that has it (34-drive-library.sql).
+NOT_WITHDRAWN = "i.withdrawn_at IS NULL"
 
 
 def where_sql(conditions):
@@ -266,12 +283,15 @@ def page(where, params, view, sort, limit, offset):
 
 
 def one(item_id, user_id=None):
-    return database.row(COLUMNS + " WHERE i.id = %(id)s", {"id": item_id, "user": user_id})
+    return database.row(COLUMNS + f" WHERE i.id = %(id)s AND {NOT_WITHDRAWN}", {"id": item_id, "user": user_id})
 
 
-def by_ids(ids, user_id=None):
-    """Several articles by id, in no particular order."""
-    return database.rows(COLUMNS + " WHERE i.id = ANY(%(ids)s)", {"ids": list(ids), "user": user_id})
+def by_ids(ids, user_id=None, hide_drive=False):
+    """Several articles by id, in no particular order. One taken away, or
+    gone, is simply not among them."""
+    hidden = f" AND {NOT_DRIVE}" if hide_drive else ""
+    return database.rows(COLUMNS + f" WHERE i.id = ANY(%(ids)s) AND {NOT_WITHDRAWN}{hidden}",
+                         {"ids": list(ids), "user": user_id})
 
 
 def mark_seen(item_id, user_id):
@@ -292,11 +312,12 @@ def request_summary(item_id, requested_by):
     return queued
 
 
-def filter_options():
+def filter_options(hide_drive=False):
     sources = database.rows(
-        """SELECT s.id, s.name, count(*) AS items
+        f"""SELECT s.id, s.name, s.type, count(*) AS items
              FROM sources s
              JOIN items i ON i.source_id = s.id
+            WHERE {NOT_WITHDRAWN}{f" AND {NOT_DRIVE}" if hide_drive else ""}
             GROUP BY s.id
             ORDER BY s.name""")
     languages = database.rows(

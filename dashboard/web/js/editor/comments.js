@@ -137,6 +137,8 @@ export function createComments({ api, store, issueId, me, panel, badge, actions 
 
   load();
   return {
+    // Someone commented: live.js says so, and the comments are asked for again.
+    reload: load,
     toggle() {
       if (panel.hidden) open();
       else close();

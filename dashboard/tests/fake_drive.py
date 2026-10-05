@@ -19,8 +19,10 @@ cannot save outside a shared drive.
 import io
 import json
 import re
+import struct
 import sys
 import zipfile
+import zlib
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
@@ -35,6 +37,16 @@ DOC = "application/vnd.google-apps.document"
 SHEET = "application/vnd.google-apps.spreadsheet"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 ACCOUNT = "uutiskirje-drive@eok-newsletter.iam.gserviceaccount.com"
+
+
+def png(width=64, height=48, colour=(40, 120, 200)):
+    """A small one-colour PNG picture, made without any library."""
+    rows = b"".join(b"\x00" + bytes(colour) * width for _ in range(height))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
 def docx(text):
@@ -82,6 +94,24 @@ class FakeDrive:
 
     def move(self, file_id, new_parent):
         self.files[file_id]["meta"]["parents"] = [new_parent]
+
+    # What people in the association do to the folder, between the tool's reads.
+
+    def trash(self, file_id, trashed=True):
+        self.files[file_id]["meta"]["trashed"] = trashed
+
+    def rename(self, file_id, name, minutes_ago=60):
+        self.files[file_id]["meta"]["name"] = name
+        self.touch(file_id, minutes_ago=minutes_ago)
+
+    def write(self, file_id, content, minutes_ago=60):
+        self.files[file_id]["content"] = content
+        self.files[file_id]["meta"]["size"] = str(len(content))
+        self.touch(file_id, minutes_ago=minutes_ago)
+
+    def touch(self, file_id, minutes_ago=60):
+        when = self.now - timedelta(minutes=minutes_ago)
+        self.files[file_id]["meta"]["modifiedTime"] = when.isoformat().replace("+00:00", "Z")
 
     # --- the requests drive_google.Drive makes -----------------------------------------
 
@@ -161,6 +191,9 @@ def association(now=None):
         Vuosikertomus.pdf                     too big
         Jäsenrekisteri/lista.txt              a folder never opened
         Luonnos.txt                           changed five minutes ago
+        Kuvat/Syysseminaari.png               a picture for Kuvapankki
+        Kuvat/IMG_2041.heic                   a picture straight from an iPhone
+        Kuvat/Osallistujalista.png            its name says it is people's details
         Uutiskirjetyökalu/                    shared with the tool to edit
       Hallitus/Pöytäkirja 9-2026     shared with the tool by mistake
       Talous/Budjetti                not shared: the tool cannot see it
@@ -185,6 +218,10 @@ def association(now=None):
     d.add("register01", "Jäsenrekisteri", FOLDER, "root000001")
     d.add("txt0000004", "lista.txt", "text/plain", "register01", b"Nimi, osoite, puhelin")
     d.add("txt0000005", "Luonnos.txt", "text/plain", "root000001", b"Kesken oleva teksti.", age_minutes=5)
+    d.add("pictures01", "Kuvat", FOLDER, "root000001")
+    d.add("png0000002", "Syysseminaari.png", "image/png", "pictures01", png())
+    d.add("heic000001", "IMG_2041.heic", "image/heic", "pictures01", b"ftypheic....")
+    d.add("png0000003", "Osallistujalista.png", "image/png", "pictures01", png(colour=(200, 60, 60)))
     d.add("output0001", "Uutiskirjetyökalu", FOLDER, "root000001", editable=True)
     # outside the folder
     d.add("board00001", "Hallitus", FOLDER, "sharedroot")

@@ -29,8 +29,10 @@ SELECT t.id, t.name, t.followed, t.position,
            AND i.created_at >= {WINDOW}) AS new,
        (SELECT count(*)
           FROM item_topics x
+          JOIN items i           ON i.id = x.item_id
           LEFT JOIN item_picks p ON p.item_id = x.item_id
          WHERE x.topic_id = t.id
+           AND i.withdrawn_at IS NULL
            AND p.decision IS DISTINCT FROM 'dismissed') AS total
   FROM topics t
 """
@@ -40,6 +42,7 @@ SELECT t.id, t.name, t.followed, t.position,
 UNTOPICED = """
     NOT coalesce(s.learning_tag_required, FALSE)
     AND i.status = 'summarised'
+    AND i.withdrawn_at IS NULL
     AND EXISTS (SELECT 1 FROM item_tagging tg WHERE tg.item_id = i.id)
     AND NOT EXISTS (SELECT 1 FROM item_topics x WHERE x.item_id = i.id)
 """

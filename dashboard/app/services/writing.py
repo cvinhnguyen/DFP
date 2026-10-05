@@ -96,7 +96,7 @@ def ask(question, days, user_id=None, previous=None, hide_drive=False):
         spent.append(whole)
         asked_as = whole["text"] or question
     found = ask_queries.relevant(asked_as, days, ASK_ARTICLES, hide_drive)
-    sources = items.items_by_ids([f["id"] for f in found], user_id)
+    sources = items.items_by_ids([f["id"] for f in found], user_id, hide_drive=hide_drive)
     rewritten = asked_as if asked_as != question else None
     if not sources:
         return {"answer": None, "sources": [], "asked_as": rewritten, **_usage_of(spent)}

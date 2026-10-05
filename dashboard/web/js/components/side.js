@@ -72,6 +72,18 @@ function signalsGroup(signals, latest, current) {
     </div>`;
 }
 
+// The association's own Drive folder, near the top: what came from it, and
+// how much of that the editor has not opened. Only while it has articles.
+function driveGroup(sources, c, current) {
+  const drive = sources.find((s) => s.type === 'drive');
+  if (!drive || !c.drive) return '';
+  const fresh = c.drive_new ? `<span class="side-unseen">${esc(t('side.driveNew', { n: number(c.drive_new) }))}</span>` : '';
+  return `
+    <div class="side-group">
+      ${entry(`source:${drive.id}`, current, `<span class="side-name">${esc(t('side.drive'))}</span>${fresh}`, c.drive, { extra: ' drive' })}
+    </div>`;
+}
+
 // current: the place shown, such as inbox or topic:3.
 export function sideHtml({ current, counts, topics, untopiced, sources, drafts, target, signals = [], signalsLatest = null }) {
   const c = counts || {};
@@ -89,6 +101,7 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
       ${entry('later', current, `<span class="side-name">${esc(t('view.later'))}</span>`, c.later, { muted: true })}
       ${entry('dismissed', current, `<span class="side-name">${esc(t('view.dismissed'))}</span>`, c.dismissed, { muted: true })}
     </div>
+    ${driveGroup(sources, c, current)}
     <div class="side-group">
       ${entry('ask', current, `<span class="side-name">${esc(t('side.ask'))}</span>`, null, { extra: ' ask' })}
       <p class="side-hint">${esc(t('side.askHint'))}</p>

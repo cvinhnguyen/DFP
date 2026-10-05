@@ -67,6 +67,39 @@ def upload(raw, filename, issue_id, user_id):
     return _shape({"key": key, "filename": filename, "width": width, "height": height, "created_at": None})
 
 
+def from_drive(raw, filename, drive_id, user_id):
+    """A picture an editor picked from the association's Drive folder, in
+    Kuvapankki like an upload: shrunk for email and without its camera
+    details. The association's own (services/drive.py)."""
+    mime, data, width, height = prepare(raw)
+    key = queries.add(None, (filename or "")[:200] or None, mime, data, width, height, user_id,
+                      drive_id=drive_id, rights="own")
+    return _shape({"key": key, "filename": filename, "width": width, "height": height, "created_at": None})
+
+
+def from_drive_already(drive_id, since):
+    """The picture brought in from this Drive file since it last changed, if
+    it was: picking it again does not make a second copy."""
+    found = queries.from_drive(drive_id, since)
+    return _shape(found) if found else None
+
+
+def thumbnail(raw, size=320):
+    """A small JPEG preview of a picture, without its camera details."""
+    if len(raw) > MAX_BYTES:
+        raise BadImage("image_too_big", "The image is over 10 MB.")
+    try:
+        picture = Image.open(BytesIO(raw))
+        picture.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        raise BadImage("not_an_image", "That file is not a picture.")
+    picture = ImageOps.exif_transpose(picture)
+    picture.thumbnail((size, size))
+    out = BytesIO()
+    picture.convert("RGB").save(out, "JPEG", quality=80)
+    return out.getvalue()
+
+
 def _shape(row):
     return {"key": str(row["key"]), "src": f"/media/{row['key']}", "type": "image",
             "width": row["width"], "height": row["height"], "name": row["filename"] or "image",

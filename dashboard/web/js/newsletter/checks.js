@@ -7,7 +7,9 @@
 // unsubscribe link, the postal address Mailchimp requires, a subject line),
 // the template's sample text, which would otherwise go out as it is, and
 // what Kaisa asked for: a person reads every AI-written text before it goes
-// out. That reading is the "checked" tick on each article, and on each text
+// out. An article from the association's Drive folder whose document has
+// left the folder goes out of the email too, and one whose document changed
+// after it went in waits for a person to look (services/drive.py). That reading is the "checked" tick on each article, and on each text
 // the AI drafted for the greeting or a trend (newsletter/writing.js); it is
 // also what lets AI-written text go out without an AI label under the EU's
 // transparency rules, because a person has reviewed it and the association
@@ -95,6 +97,15 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
     .map(({ block, sec }) => item(block, sec)));
   add(errors, 'placeholders', sent.filter(({ block }) => hasPlaceholder(block)).map(({ block, sec }) => item(block, sec)));
 
+  // The articles the Drive guard says about: gone from the folder, or
+  // changed there since they went in. The server holds the email back for
+  // the same (services/issues.py).
+  const byId = new Map(articles.map((a) => [Number(a.id), a]));
+  const flagged = (test) => sent.filter(({ block }) => block.type === 'article' && test(byId.get(Number(block.itemId))))
+    .map(({ block, sec }) => ({ ...item(block, sec), itemId: Number(block.itemId) }));
+  add(errors, 'driveGone', flagged((a) => a && a.withdrawn));
+  add(errors, 'driveChanged', flagged((a) => a && !a.withdrawn && a.drive_changed_at));
+
   const links = collectLinks(design);
   const mergeTags = new Set();
   for (const { block } of sent) {
@@ -124,7 +135,7 @@ export function checkDesign(design, { issue = {}, articles = [], size = 0 } = {}
     placed.add(Number(block.itemId));
     if (!picked.has(Number(block.itemId))) orphans.push(item(block, sec));
   });
-  add(warnings, 'missing', articles.filter((a) => !placed.has(Number(a.id)))
+  add(warnings, 'missing', articles.filter((a) => !placed.has(Number(a.id)) && !a.withdrawn)
     .map((a) => ({ itemId: Number(a.id), snippet: a.title, type: 'article' })));
   add(warnings, 'orphans', orphans);
 

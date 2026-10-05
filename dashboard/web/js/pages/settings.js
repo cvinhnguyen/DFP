@@ -11,7 +11,7 @@ import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
 import { esc, number } from '../format.js';
 import { icon } from '../ui/icons.js';
-import { toast } from '../ui/dialogs.js';
+import { confirmDialog, toast } from '../ui/dialogs.js';
 import { costsCard } from '../components/costs.js';
 import { retentionCard } from '../components/retention.js';
 import { brandCard } from '../components/brand.js';
@@ -19,6 +19,8 @@ import { membersCard } from '../components/members.js';
 import { suggestionsCard } from '../components/suggestions.js';
 import { sourcePicturesCard } from '../components/sourcePictures.js';
 import { driveCard } from '../components/drive.js';
+import { showDriveFiles } from '../components/driveFiles.js';
+import { onLive } from '../live.js';
 
 export function showSettings(root, { user }) {
   let state = null;
@@ -289,6 +291,21 @@ export function showSettings(root, { user }) {
   }
 
   root.addEventListener('click', async (event) => {
+    if (event.target.closest('[data-act="drive-files"]')) {
+      showDriveFiles();
+      return;
+    }
+    if (event.target.closest('[data-act="drive-withdraw"]')) {
+      if (!(await confirmDialog(t('drive.withdrawConfirm'), { danger: true, okLabel: t('drive.withdrawAll') }))) return;
+      try {
+        const done = await api.post('/api/drive/withdraw');
+        toast(t('drive.withdrawDone', { deleted: number(done.deleted), withdrawn: number(done.withdrawn) }));
+      } catch (e) {
+        toast(e.message, 'warn');
+      }
+      await loadDrive();
+      return;
+    }
     const driveAct = event.target.closest('[data-act="drive-check"], [data-act="drive-sync"], [data-act="drive-copy"]');
     if (driveAct) {
       if (driveAct.dataset.act === 'drive-copy') {
@@ -347,6 +364,9 @@ export function showSettings(root, { user }) {
     if (event.target.dataset.act === 'drive-switch') {
       driveSave({ enabled: event.target.checked }, t(event.target.checked ? 'drive.on' : 'drive.off'));
     }
+    if (event.target.dataset.act === 'drive-autosave') {
+      driveSave({ autosave: event.target.checked }, t(event.target.checked ? 'drive.autosaveOn' : 'drive.autosaveOff'));
+    }
   });
 
   root.addEventListener('submit', async (event) => {
@@ -398,6 +418,25 @@ export function showSettings(root, { user }) {
     }
   });
 
+  // The folder read every 15 minutes, or a Drive setting changed by another
+  // admin: the card shows it as it happens (live.js). The page is drawn
+  // again for it, so not while someone is typing anywhere on it or a check
+  // runs; then once the typing stops.
+  let driveTimer = null;
+  let driveStale = false;
+  const typing = () => root.contains(document.activeElement) && document.activeElement.matches('input, textarea, select');
+  function driveChanged() {
+    clearTimeout(driveTimer);
+    driveTimer = setTimeout(() => {
+      driveStale = Boolean(driveBusy) || typing();
+      if (!driveStale) loadDrive();
+    }, 800);
+  }
+  const quiet = onLive('drive', driveChanged);
+  root.addEventListener('focusout', () => {
+    if (driveStale) setTimeout(() => { if (driveStale && !typing()) driveChanged(); }, 0);
+  });
+
   load();
   loadDrive();
   loadBrand();
@@ -406,5 +445,11 @@ export function showSettings(root, { user }) {
   loadMembers();
   loadPictures();
   loadSuggestions();
-  return { leave() { gone = true; } };
+  return {
+    leave() {
+      gone = true;
+      quiet();
+      clearTimeout(driveTimer);
+    },
+  };
 }

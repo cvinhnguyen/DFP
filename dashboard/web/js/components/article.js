@@ -164,22 +164,20 @@ function chips(item, topics) {
     </div>`;
 }
 
-// When, where and the deadline, and the line the newsletter will start the
-// event with. The AI read these out of the article, so they are marked so.
-function eventBox(item) {
+// The event on one line above the summary: the line the newsletter will
+// start it with (17.9.2026 klo 13–16 | Tampere), and the last day to sign
+// up. The AI read these out of the article, so the line says so.
+function eventStrip(item) {
   const e = item.event;
   if (!e) return '';
-  const rows = [
-    eventWhen(e) && [t('event.when'), eventWhen(e)],
-    e.place && [t('event.where'), e.place],
-    e.deadline && [t('event.deadline'), fiDay(e.deadline)],
-  ].filter(Boolean);
+  const parts = [];
+  const line = e.line || [eventWhen(e), e.place].filter(Boolean).join(' | ');
+  if (line) parts.push(`<strong>${esc(line)}</strong>`);
+  if (e.deadline) parts.push(`<span>${esc(t('event.deadlineOn', { date: fiDay(e.deadline) }))}</span>`);
+  if (!parts.length) return '';
   return `
-    <dl class="rd-event">
-      ${rows.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join('')}
-      ${e.line ? `<dd class="rd-event-line">${esc(t('event.line'))}: <strong>${esc(e.line)}</strong></dd>` : ''}
-      <dd class="rd-event-note">${esc(t('event.byAi'))}</dd>
-    </dl>`;
+    <p class="rd-event"><span class="rd-event-tag">${esc(t('event.label'))}</span>${parts.join(' ')}
+      <span class="rd-event-note">${esc(t('event.byAiShort'))}</span></p>`;
 }
 
 function signalNotes(item) {
@@ -263,39 +261,37 @@ function decision(item, target, offer) {
     return `<div class="rd-decide"><p class="rd-sent">${esc(t('reader.sentIn', { issue: item.pick_issue_name }))}</p></div>`;
   }
   const picked = item.decision === 'picked';
-  // What to do here, in words an editor new to the tool can follow: which
-  // newsletter, and that pressing a section is the choice. Each section says
-  // what goes in it; its key is in the corner, for those who use the keys.
+  // Which newsletter, and that pressing a section is the choice. Each
+  // section says what goes in it when pointed at, and its key is in its
+  // corner for those who use the keys.
   const where = picked
     ? t('pick.inIssue', { issue: item.pick_issue_name, section: t(`section.${item.pick_section}`) })
     : (target ? t('reader.addTo', { issue: target }) : t('reader.addToNew'));
   const how = picked ? t('reader.howMove') : (target ? t('reader.how') : t('reader.howNew'));
+  const suggestion = item.decision ? null : item.suggested_section;
   const buttons = SECTIONS.map((s, n) => {
     const chosen = picked && item.pick_section === s;
-    const suggested = !item.decision && item.suggested_section === s;
-    const why = suggested ? suggestionWhy(item) : '';
-    const badge = chosen ? `<span class="rd-sec-badge">${esc(t('reader.chosen'))}</span>`
-      : (suggested ? `<span class="rd-sec-badge">${esc(t('reader.suggested'))}</span>${why ? `<small class="rd-sec-why">${esc(why)}</small>` : ''}` : '');
-    return `<button type="button" class="rd-sec${chosen ? ' chosen' : ''}${suggested ? ' suggested' : ''}"
-              data-act="pick" data-section="${s}" aria-pressed="${chosen}">
-              <span class="rd-sec-name">${icon(chosen ? 'check' : 'plus', 16)}<span>${esc(t(`section.${s}`))}</span></span>
-              <small class="rd-sec-what">${esc(t(`reader.sectionWhat.${s}`))}</small>
-              ${badge}<kbd class="rd-sec-key" aria-hidden="true">${n + 1}</kbd></button>`;
+    const what = t(`reader.sectionWhat.${s}`) + (suggestion === s ? `. ${t('reader.suggested')}` : '');
+    return `<button type="button" class="rd-sec${chosen ? ' chosen' : ''}${suggestion === s ? ' suggested' : ''}"
+              data-act="pick" data-section="${s}" aria-pressed="${chosen}" title="${esc(what)}" aria-description="${esc(what)}">
+              ${chosen ? icon('check', 15) : ''}<span class="rd-sec-name">${esc(t(`section.${s}`))}</span><kbd class="rd-sec-key" aria-hidden="true">${n + 1}</kbd></button>`;
   }).join('');
+  const why = suggestion ? suggestionWhy(item) : '';
+  const hint = suggestion
+    ? `<span class="rd-why">${esc(t(why ? 'reader.suggestionWhy' : 'reader.suggestion', { section: t(`section.${suggestion}`), why }))}</span>` : '';
   const by = item.decided_by && item.decided_at
     ? `<span class="rd-by">${esc(t('reader.decidedBy', { name: item.decided_by, when: when(item.decided_at) }))}</span>` : '';
   return `
     <div class="rd-decide">
       ${offerBox(offer)}
-      <p class="rd-where"><strong>${esc(where)}</strong> <span>${esc(how)}</span></p>
-      <div class="rd-secs">${buttons}</div>
+      <div class="rd-secs" role="group" aria-label="${esc(where)}" aria-description="${esc(how)}">${buttons}</div>
       <div class="rd-other">
-        ${picked ? '' : `<span class="rd-other-k">${esc(t('reader.notForIt'))}</span>`}
-        <button type="button" class="btn ghost small${item.decision === 'later' ? ' on' : ''}" data-act="later" aria-pressed="${item.decision === 'later'}" title="${esc(t('reader.laterHint'))}">${esc(t('reader.later'))}</button>
-        <button type="button" class="btn ghost small${item.decision === 'dismissed' ? ' on' : ''}" data-act="dismiss" aria-pressed="${item.decision === 'dismissed'}" title="${esc(t('reader.dismissHint'))}">${esc(t('reader.dismiss'))}</button>
-        ${item.decision ? `<button type="button" class="linkish" data-act="clear">${esc(t('reader.clear'))}</button>` : ''}
-        ${by}
-        <span class="rd-keys" aria-hidden="true"><kbd>J</kbd> ${esc(t('reader.keysPrev'))} · <kbd>K</kbd> ${esc(t('reader.keysNext'))} · <kbd>L</kbd> ${esc(t('reader.keysLater'))} · <kbd>X</kbd> ${esc(t('reader.keysDismiss'))}</span>
+        <p class="rd-info"><strong>${esc(where)}</strong>${hint}${by}</p>
+        <span class="rd-acts">
+          <button type="button" class="btn ghost small${item.decision === 'later' ? ' on' : ''}" data-act="later" aria-pressed="${item.decision === 'later'}" title="${esc(t('reader.laterHint'))}">${esc(t('reader.laterShort'))}<kbd aria-hidden="true">L</kbd></button>
+          <button type="button" class="btn ghost small${item.decision === 'dismissed' ? ' on' : ''}" data-act="dismiss" aria-pressed="${item.decision === 'dismissed'}" title="${esc(t('reader.dismissHint'))}">${esc(t('reader.dismiss'))}<kbd aria-hidden="true">X</kbd></button>
+          ${item.decision ? `<button type="button" class="linkish" data-act="clear">${esc(t('reader.clear'))}</button>` : ''}
+        </span>
       </div>
       <p class="row-error" role="alert" hidden></p>
     </div>`;
@@ -309,8 +305,8 @@ function copyLink(copy) {
 
 function facts(item) {
   const rows = [
-    [t('details.collected'), when(item.collected_at)],
     item.published_at && [t('details.published'), date(item.published_at)],
+    [t('details.collected'), when(item.collected_at)],
     item.summary && [t('details.summarised'), when(item.summary.made_at)],
     [t('details.text'), item.text_length ? t('details.chars', { count: number(item.text_length) })
       : item.text_removed_at ? t('details.textRemoved', { date: date(item.text_removed_at) }) : t('details.noText')],
@@ -320,11 +316,11 @@ function facts(item) {
   const copies = item.copies.length
     ? `<p class="copies-title">${esc(t('details.copies'))}</p><ul class="copies">${item.copies.map(copyLink).join('')}</ul>` : '';
   return `
-    <details class="rd-facts">
-      <summary>${esc(t('item.details'))}${item.copies.length ? ` · ${esc(tn('item.alsoIn', item.copies.length))}` : ''}</summary>
+    <section class="rd-facts" aria-label="${esc(t('item.details'))}">
+      <p class="rd-lbl">${esc(t('item.details'))}</p>
       <dl>${rows.map(([name, value]) => `<dt>${esc(name)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>
       ${copies}
-    </details>`;
+    </section>`;
 }
 
 // ctx: place (its name), index and total (for "3 / 25"), canPrev, canNext,
@@ -344,6 +340,32 @@ function picture(item) {
     </figure>`;
 }
 
+// Saving the article into the association's Drive folder (services/drive.py),
+// and when it was saved before. Nothing for a document from the folder
+// itself, or while Drive is off.
+function driveRow(item, drive) {
+  if (!drive || !drive.enabled || item.source_type === 'drive') return '';
+  const saved = item.drive_saved;
+  const link = saved && safeUrl(saved.link);
+  return `
+    <div class="rd-drive">
+      ${saved ? `<p class="rd-drive-saved">${icon('check', 16)}<span>${esc(t('reader.driveSaved', { date: date(saved.at), folder: saved.folder }))}</span>
+        ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(t('reader.driveOpen'))} ↗</a>` : ''}</p>` : ''}
+      <button type="button" class="btn ghost small" data-act="drive-save">${icon('save', 16)}<span>${esc(t(saved ? 'reader.driveAgain' : 'reader.driveSave'))}</span></button>
+    </div>`;
+}
+
+// A document from the folder that changed after its article went into a
+// newsletter: the email waits in Tarkistus until someone has looked.
+function driveChange(item) {
+  return item.drive_changed_at
+    ? `<p class="rd-state attention-drive">${esc(t('reader.driveChanged', { when: when(item.drive_changed_at) }))}</p>` : '';
+}
+
+// The reader, in the order an editor decides: the title and where it is
+// from, the event's day and place, the summary; beside it (under it on a
+// narrow pane) the topics, tags, saving to Drive and the details; and the
+// sections at the bottom, always in sight.
 export function articleReader(item, ctx) {
   const url = safeUrl(item.url);
   const kind = kindLabel(item);
@@ -361,22 +383,36 @@ export function articleReader(item, ctx) {
       <button type="button" class="btn ghost small rd-back" data-act="back">‹ ${esc(t('reader.back'))}</button>
       <span class="rd-pos">${esc(t('reader.position', { place: ctx.place, n: number(ctx.index + 1), total: number(ctx.total) }))}</span>
       <span class="rd-nav">
-        <button type="button" class="btn ghost small" data-act="prev" aria-label="${esc(t('reader.prev'))}"${ctx.canPrev ? '' : ' disabled'}>‹ <span class="rd-word">${esc(t('reader.prev'))}</span></button>
-        <button type="button" class="btn ghost small" data-act="next" aria-label="${esc(t('reader.next'))}"${ctx.canNext ? '' : ' disabled'}><span class="rd-word">${esc(t('reader.next'))}</span> ›</button>
+        <button type="button" class="btn ghost small" data-act="prev" aria-label="${esc(t('reader.prev'))}" title="${esc(t('reader.prev'))} (J)"${ctx.canPrev ? '' : ' disabled'}>‹ <span class="rd-word">${esc(t('reader.prev'))}</span></button>
+        <button type="button" class="btn ghost small" data-act="next" aria-label="${esc(t('reader.next'))}" title="${esc(t('reader.next'))} (K)"${ctx.canNext ? '' : ' disabled'}><span class="rd-word">${esc(t('reader.next'))}</span> ›</button>
       </span>
     </div>
-    ${item.title_fi
+    <header class="rd-head">
+      ${item.title_fi
     ? `<h2 class="rd-title" lang="fi">${esc(item.title_fi)}</h2>
-       <p class="rd-original">${esc(t('reader.originalTitle'))}: <span${langAttr(item.language)}>${esc(item.title)}</span>. ${esc(t('reader.titleByAi'))}</p>`
+         <p class="rd-original">${esc(t('reader.originalTitle'))}: <span${langAttr(item.language)}>${esc(item.title)}</span>. ${esc(t('reader.titleByAi'))}</p>`
     : `<h2 class="rd-title"${langAttr(item.language)}>${esc(item.title)}</h2>`}
-    <p class="rd-meta">${meta}</p>
-    ${picture(item)}
-    ${eventBox(item)}
-    ${chips(item, ctx.topics)}
-    ${signalNotes(item)}
-    <div class="rd-body">${body(item)}</div>
-    ${decision(item, ctx.target, ctx.offer)}
-    ${facts(item)}`;
+      <p class="rd-meta">${meta}</p>
+    </header>
+    <div class="rd-layout">
+      <div class="rd-grid">
+        <div class="rd-main">
+          <div class="rd-flow">
+            ${driveChange(item)}
+            ${eventStrip(item)}
+            <div class="rd-body">${body(item)}</div>
+            ${picture(item)}
+            ${item.signals.length ? `<div class="rd-signals">${signalNotes(item)}</div>` : ''}
+          </div>
+        </div>
+        <aside class="rd-aside" aria-label="${esc(t('reader.aside'))}">
+          ${chips(item, ctx.topics)}
+          ${driveRow(item, ctx.drive)}
+          ${facts(item)}
+        </aside>
+      </div>
+    </div>
+    ${decision(item, ctx.target, ctx.offer)}`;
 }
 
 // The YSO terms found for what the editor typed into "add a tag".

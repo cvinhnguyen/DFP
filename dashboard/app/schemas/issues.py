@@ -26,7 +26,8 @@ class PickedArticle(BaseModel):
     title: str
     title_fi: str | None = Field(default=None, description="The AI's Finnish title, for an article in another language")
     event_line: str | None = Field(default=None, description="For an event, the line it starts with: 17.9.2026 | Tampere")
-    url: str
+    url: str | None = Field(description="Where the article is. None for a document from the association's Drive "
+                                        "folder, which readers could not open (33-drive.sql)")
     publisher: str | None
     source: str | None
     language: str | None
@@ -37,6 +38,10 @@ class PickedArticle(BaseModel):
                                     "which its entry in the newsletter starts with")
     decided_by: str | None
     decided_at: datetime
+    withdrawn: bool = Field(default=False, description="Its Drive document left the folder: take it out of the email")
+    withdrawn_reason: str | None = Field(default=None, description="gone, personal_name or personal_id")
+    drive_changed_at: datetime | None = Field(default=None, description="Its Drive document changed after it was "
+                                              "picked, and nobody has looked since")
 
 
 class IssueSummary(BaseModel):

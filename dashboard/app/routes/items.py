@@ -13,7 +13,7 @@ from ..dependencies import current_user, is_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.issues import DecisionIn
-from ..schemas.items import FilterOptions, Item, ItemPage, Section, Sort, View
+from ..schemas.items import FilterOptions, Item, ItemBatch, ItemPage, Section, Sort, View
 from ..schemas.topics import TagIn
 from ..services import issues, items, picks, topics, yso
 
@@ -42,6 +42,17 @@ def list_items(
     return items.list_items(view, sort, page, per_page, user.id, q=q, source=source, language=language,
                             signal=signal, section=section, date_from=date_from, date_to=date_to,
                             topic=topic, tag=tag, untopiced=untopiced, hide_drive=is_demo(user))
+
+
+@router.get("/items/batch", response_model=ItemBatch, summary="Several articles by number, as they are now")
+def items_batch(ids: Annotated[str, Query(pattern=r"^\d{1,12}(,\d{1,12}){0,99}$",
+                                          description="Up to 100 article numbers: 6073,6074")],
+                user: User = Depends(current_user)):
+    """For an open page that heard these articles changed (GET /api/live).
+    One that is gone, such as an article whose Drive document left the
+    folder, is not in the answer."""
+    wanted = list(dict.fromkeys(int(x) for x in ids.split(",")))
+    return ItemBatch(items=items.items_by_ids(wanted, user.id, hide_drive=is_demo(user)))
 
 
 @router.get("/items/{item_id}", response_model=Item, summary="One article")
@@ -125,5 +136,5 @@ def remove_tag(item_id: int, tag_id: int, user: User = Depends(current_user)):
 
 
 @router.get("/filters", response_model=FilterOptions, summary="What the article filters can choose from")
-def filter_options():
-    return items.filter_options()
+def filter_options(user: User = Depends(current_user)):
+    return items.filter_options(hide_drive=is_demo(user))

@@ -11,8 +11,9 @@ middleware.py, then a route in routes/, which calls services/, which run the
 SQL in queries/. The shapes going in and out are in schemas/.
 """
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
@@ -22,9 +23,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import database, errors, middleware
 from .dependencies import current_user
-from .routes import (archive, auth, brand, comments, costs, drive, images, issues, items, mailchimp, members,
-                     overview, pictures, retention, robots, signals, suggestions, telegram, templates, topics,
-                     writing)
+from .routes import (archive, auth, brand, comments, costs, drive, images, issues, items, live, mailchimp,
+                     members, overview, pictures, retention, robots, signals, suggestions, telegram, templates,
+                     topics, writing)
+from .services import live as live_service
 
 log = logging.getLogger("uvicorn.error")
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -36,7 +38,12 @@ async def lifespan(app):
     app.state.schema_problem = database.schema_problem()
     if app.state.schema_problem:
         log.error(app.state.schema_problem)
+    # What changes in the database, passed to the open pages (services/live.py).
+    listening = asyncio.create_task(live_service.listen())
     yield
+    listening.cancel()
+    with suppress(asyncio.CancelledError):
+        await listening
     database.pool.close()
 
 
@@ -72,6 +79,7 @@ private.include_router(members.router)
 private.include_router(suggestions.router)
 private.include_router(pictures.admin_router)
 private.include_router(drive.router)
+private.include_router(live.router)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(private)

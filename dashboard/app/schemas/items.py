@@ -64,6 +64,13 @@ class Copy(BaseModel):
     publisher: str | None = None
 
 
+class DriveSaveRef(BaseModel):
+    at: datetime
+    folder: str = Field(description="The folder it went into, inside the tool's own folder in Drive")
+    link: str | None = Field(default=None, description="The saved Google Doc")
+    folder_link: str | None = None
+
+
 class Item(BaseModel):
     id: int
     title: str
@@ -112,6 +119,10 @@ class Item(BaseModel):
     pick_issue_status: str | None = Field(description="draft, or sent once that newsletter has gone out")
     decided_by: str | None
     decided_at: datetime | None
+    drive_saved: DriveSaveRef | None = Field(default=None, description="Saved into the association's Drive folder: "
+                                                                        "the latest time")
+    drive_changed_at: datetime | None = Field(default=None, description="For an article from the Drive folder: its "
+                                              "document changed after it went into a newsletter, and nobody has looked")
     suggested_section: str = Field(description="The section it most likely belongs in, as the default when picking "
                                    "(services/suggest.py)")
     suggestion_reason: str | None = Field(default=None, description="Why: chosen, event, deadline, invitation, "
@@ -134,6 +145,9 @@ class Counts(BaseModel):
     attention: int
     open: int
     all: int
+    drive: int = Field(default=0, description="Articles from the association's Drive folder")
+    drive_new: int = Field(default=0, description="Of those, the ones nobody has decided about that the editor "
+                                                  "asking has not opened")
 
 
 class ItemPage(BaseModel):
@@ -145,9 +159,14 @@ class ItemPage(BaseModel):
     tag_label: str | None = Field(default=None, description="The name of the tag filtered by, if one is")
 
 
+class ItemBatch(BaseModel):
+    items: list[Item] = Field(description="The articles asked for that are still here, in the order asked")
+
+
 class SourceOption(BaseModel):
     id: int
     name: str
+    type: str | None = None
     items: int
 
 

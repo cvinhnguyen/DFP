@@ -3,12 +3,22 @@
 from .. import database
 
 
-def add(issue_id, filename, mime, data, width, height, user_id):
+def add(issue_id, filename, mime, data, width, height, user_id, drive_id=None, rights=None):
+    """drive_id: the file in the association's Drive folder it came from
+    (34-drive-library.sql), with rights own."""
     return database.row(
-        """INSERT INTO images (issue_id, filename, mime, data, width, height, uploaded_by)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO images (issue_id, filename, mime, data, width, height, uploaded_by, drive_id, rights)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING key""",
-        (issue_id, filename, mime, data, width, height, user_id))["key"]
+        (issue_id, filename, mime, data, width, height, user_id, drive_id, rights))["key"]
+
+
+def from_drive(drive_id, since):
+    """The picture brought in from this Drive file since it last changed."""
+    return database.row(
+        """SELECT key, filename, width, height, created_at FROM images
+            WHERE drive_id = %s AND created_at >= coalesce(%s, '-infinity'::timestamptz)
+            ORDER BY created_at DESC LIMIT 1""", (drive_id, since))
 
 
 def by_key(key):

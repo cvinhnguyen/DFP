@@ -4,14 +4,17 @@ The editors' web app, in Finnish with an English switch for the team.
 
 - **Artikkelit**: everything the tool collected, read by topic. A column of
   topics and lists on the left, the list in the middle, the article on the
-  right with its Finnish summary, its subject tags and the buttons that
-  decide. The panel names the newsletter the article goes into, and each of
-  its five sections says what belongs there, Learning Factory's trainings
-  the fifth; pressing one adds the article.
-  "Säästä myöhemmäksi" keeps it for later and "Ei käytetä" leaves it out.
-  The next article opens by itself, and keys do the same as the buttons.
-  Both editors see who decided what. Skipped and failed articles say why,
-  and can be summarised anyway.
+  right in the order an editor decides: the title and where it is from, an
+  event's day, place and deadline on one line, and the Finnish summary at
+  once, with the picture beside or under it. The topics, tags, saving to
+  Drive and the details sit in a column beside the summary on a wide pane,
+  under it on a narrow one. The five sections stay at the bottom in a row or
+  two, each by its name, what belongs in it shown when pointed at; pressing
+  one adds the article. The line under them names the newsletter and why a
+  section is suggested. "Myöhemmin" keeps it for later and "Ei käytetä"
+  leaves it out. The next article opens by itself, and keys do the same as
+  the buttons. Both editors see who decided what. Skipped and failed
+  articles say why, and can be summarised anyway.
 - **Uutiskirjeet**: every newsletter, drafts first, like Mailchimp's list of
   campaigns. Each one opens to a checklist: articles, subject line and
   preview text, content, Mailchimp, with a preview beside it.
@@ -556,40 +559,108 @@ works and the first results are in `docs/evaluation.md`. Jira: DM42-47.
 ## Google Drive
 
 The association shares one Drive folder with the tool, a Google service
-account. Every hour the dashboard reads the folder: each new or changed
-document becomes an article of the source Google Drive, summarised like any
-other. A document in a folder named after a section, such as `Tapahtumat/`,
-is suggested for that section ("Drive-kansiosta Tapahtumat"). The export
-window's "Tallenna Driveen" saves a finished newsletter back into the
-tool's save folder: the email as HTML, as a Google Doc, and its articles as
-a Google Sheet.
+account. Every 15 minutes the dashboard reads the folder: each new or
+changed document becomes an article of the source Google Drive, summarised
+like any other. A document in a folder named after a section, such as
+`Tapahtumat/`, is suggested for that section ("Drive-kansiosta
+Tapahtumat"). Artikkelit has the folder as a place of its own near the top
+of the column, "Yhdistyksen Drive", with how much of the folder became
+articles and every file's state ("Näytä kansion tiedostot").
+
+It follows the documents it has read. One deleted from the folder or moved
+out, renamed to say it holds people's details, or with a personal identity
+code added, has its article taken out of the tool at the next read: deleted,
+or kept without its text for the newsletter that has it, where Tarkistus
+holds a draft back until the article is out of the email. A document that
+changes after its article went into a newsletter gets a new summary, and
+Tarkistus holds the email until an editor has looked ("Tarkistettu").
+
+The editors save what they keep into the tool's own save folder there:
+
+- an article, with "Tallenna Driveen" in the reader, as a Google Doc in
+  `Artikkelit/<folder>`, the folder its topic or section unless the editor
+  names another; its picture beside it when the picture is the
+  association's own or openly licensed; never the original's full text;
+- the list on the screen, with "Tallenna lista Driveen", as one Google Doc
+  and a Google Sheet;
+- a finished newsletter, from the export window, in `Uutiskirjeet/`, and each
+  sent newsletter by itself when an admin switches that on.
+
+Kuvapankki in the editor has the folder's pictures ("Yhdistyksen Drive"):
+the one picked is brought in like an upload, shrunk and without its camera
+details. A picture whose file leaves the folder leaves Kuvapankki too,
+unless a newsletter uses it.
 
 Everything goes through one guard, `services/drive.py`, with its rules in
-`services/drive_rules.py`. It is the only code that talks to Drive
+`services/drive_rules.py` and what a saved Doc says in
+`services/drive_docs.py`. It is the only code that talks to Drive
 (`services/drive_google.py`, which has no request that deletes, moves,
 changes or shares anything):
 
 - every file comes from its own listing of the folder, and is checked again
-  just before it is read;
+  just before it is opened;
 - shortcuts are never followed;
-- a file whose name says it holds people's details is not opened;
+- a file whose name says it holds people's details is not opened, and no
+  folder is made with such a name;
 - a document with a personal identity code is kept out whole;
 - contact details and bank accounts are taken out of the text;
-- every hour it checks that the account sees nothing outside the folder,
+- only a listing that got to the end takes anything out of the tool, and
+  nothing is taken out while the folder cannot be reached;
+- at every read it checks that the account sees nothing outside the folder,
   and it refuses a folder open to anyone with its link;
-- every read, save and refusal is logged in `drive_log`.
+- every read, save, picture brought in, article taken out and refusal is
+  logged in `drive_log`.
 
 On Asetukset → Google Drive an admin sees the tool's Google address to
-share the folder with, chooses the folder, switches it on and off, checks
-what the tool can reach, and sees the log. A Drive article goes into the
-email without a link, and Tarkistus refuses any link into Drive, as the
-server does. Why it is safe, and how the association sets it up and takes
-it back, is in `../docs/drive.md`.
+share the folder with, chooses the folder, switches it and the saving of
+sent newsletters on and off, checks what the tool can reach, sees the
+folder's files and the log, and can take every article made from the folder
+out of the tool at once. A Drive article goes into the email without a link,
+and Tarkistus refuses any link into Drive, as the server does. Why it is
+safe, and how the association sets it up and takes it back, is in
+`../docs/drive.md`.
 
-`GET /api/drive`, `PUT /api/drive`, `POST /api/drive/check` and
-`POST /api/drive/sync` for admins, `POST /api/issues/{id}/drive` for
-editors, and `POST /api/drive/refresh` for n8n (`n8n/workflows/drive.json`).
-`db/init/33-drive.sql`. Jira: DM42-43.
+`GET /api/drive` for everyone; `PUT /api/drive`, `POST /api/drive/check`,
+`POST /api/drive/sync` and `POST /api/drive/withdraw` for admins;
+`GET /api/drive/files`, `GET /api/drive/pictures`,
+`GET /api/drive/pictures/{id}/thumb`, `POST /api/drive/pictures/{id}`,
+`GET`/`POST /api/items/{id}/drive`, `POST /api/drive/lists`,
+`POST /api/items/{id}/drive-change` and `POST /api/issues/{id}/drive` for
+editors; and `POST /api/drive/refresh` for n8n (`n8n/workflows/drive.json`).
+`db/init/33-drive.sql`, `34-drive-library.sql`. Jira: DM42-43.
+
+## Live pages
+
+The pages show what changes as it happens, without a reload: new articles,
+a summary, tags or a picture arriving, another editor's pick, a comment or
+another save of the same newsletter, the Drive folder being read.
+
+The database says what changed (`db/init/35-live.sql`): one short notice per
+statement, such as `{"k": "items", "ids": [6073]}`, on the Postgres channel
+`dfp_live`. The dashboard listens on one connection (`services/live.py`) and
+passes the notices to every open page over `GET /api/live`, a stream of
+Server-Sent Events. Only the kind of change and the ids travel, never a
+title or a text: a page asks the API again for what it shows, under the same
+login rules as any request. The demo login hears nothing about the Drive
+folder and no article ids. The stream checks the login again every 25
+seconds and ends when it has.
+
+In the browser (`web/js/live.js`) one tab keeps the stream and passes it to
+the others, so many open tabs never use up the six connections a browser
+keeps to one address. What each page does with a notice:
+
+- Artikkelit draws the open article and the changed rows again where they
+  stand, and new articles wait above the list behind a button, so nothing
+  moves under the editor's eyes;
+- the editor refreshes its picked articles and Tarkistus, its comments, and
+  says when someone else saved the same newsletter;
+- Uutiskirjeet, a newsletter's page and Asetukset load again, but never while
+  someone types on them or a window is open.
+
+The pages' own timers stay as they were, for when the stream is down. On a
+restart, uvicorn closes the open streams after three seconds
+(`UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` in `docker-compose.yml`) and the pages
+connect again. Jira: DM42-80.
 
 ## How the code is laid out
 
@@ -610,9 +681,12 @@ app/
   cli/users.py     accounts, from the command line
   cli/archive.py   imports the association's past newsletters, for docs/evaluation.md
   services/drive*.py  the Google Drive folder and the guard around it
+  services/live.py    passes what changes in the database to the open pages
 
 tests/
-  test_drive_*.py  the Drive guard's rules and what it never touches
+  test_drive_*.py  the Drive guard's rules, what it saves, and what it never touches
+  test_live.py     which page hears which change
+  test_issue_shapes.py  a newsletter's articles as the database gives them
   fake_drive.py    a stand-in for Drive, for the tests and for trying the pages
 
 web/
@@ -623,6 +697,7 @@ web/
   img/social/      the social network icons the emails use
   js/app.js        starts the dashboard and picks the page
   js/api.js        every call to the API goes through here
+  js/live.js       what changes, as it happens: one stream for the browser's tabs
   js/texts.js      every word on the screen, in Finnish and English, with
                    the editor's, the newsletter pages' and the articles
                    page's words in texts/

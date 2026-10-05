@@ -103,6 +103,30 @@ def refusal(meta, *, output_id=None):
     return None
 
 
+# The folder's pictures that can go into Kuvapankki, when an editor picks
+# one there: what an email can show. A photo straight from an iPhone (HEIC)
+# is listed with a note to save it as JPEG.
+PICTURES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+def picture_refusal(meta, *, output_id=None):
+    """Why a picture in the folder is not opened for Kuvapankki, as a code,
+    or None when it may be: the same rules as a document's, for pictures."""
+    mime = meta.get("mimeType") or ""
+    if is_tool_made(meta) or (output_id and meta.get("id") == output_id):
+        return "own_output"
+    if mime == SHORTCUT:
+        return "shortcut"
+    if personal_name(meta.get("name")):
+        return "personal_name"
+    if mime not in PICTURES:
+        return "type"
+    size = meta.get("size")
+    if size is not None and int(size) > MAX_READ_BYTES:
+        return "too_big"
+    return None
+
+
 def is_tool_made(meta):
     props = meta.get("appProperties") or {}
     return all(props.get(k) == v for k, v in TOOL_MARK.items())
@@ -303,3 +327,13 @@ def safe_name(name, limit=120):
     text = re.sub(r"[\x00-\x1f\x7f/\\]", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" .")
     return text[:limit].strip() or "Uutiskirje"
+
+
+def folder_name(text, limit=80):
+    """A name for a folder the tool makes in its own folder, as an editor
+    typed it or the tool chose it, or None when nothing is left of it. No
+    slashes or control characters, no dot at the ends."""
+    name = unicodedata.normalize("NFC", str(text or ""))
+    name = re.sub(r"[\x00-\x1f\x7f/\\]", " ", name)
+    name = re.sub(r"\s+", " ", name).strip(" .")
+    return name[:limit].strip() or None

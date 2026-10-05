@@ -50,8 +50,13 @@ export function createCheckPanel({ store, root, context, actions }) {
         }
       }) }, t('check.removePicture')));
     }
-    if (code === 'orphans') {
+    if (code === 'orphans' || code === 'driveGone') {
       buttons.push(h('button', { type: 'button', class: 'btn ghost small', onclick: () => store.change((d) => removeBlock(d, item.blockId)) }, t('check.removeFromEmail')));
+    }
+    if (code === 'driveChanged') {
+      // The article's page, with its new summary, opens beside the editor.
+      buttons.push(h('a', { class: 'cf-linkish', href: `index.html#/?item=${item.itemId}&place=all`, target: '_blank', rel: 'noopener' }, t('check.driveArticle')));
+      buttons.push(h('button', { type: 'button', class: 'btn small', onclick: () => actions.driveChangeSeen(item.itemId) }, t('check.driveSeen')));
     }
     return h('li', { class: 'ck-item' }, h('span', { class: 'ck-snippet' }, `${t(`block.${item.type}`)}: ${label}`), h('span', { class: 'ck-actions' }, buttons));
   }

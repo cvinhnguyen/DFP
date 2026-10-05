@@ -58,7 +58,13 @@ SELECT i.id, p.section, i.title,
                                   'rights', coalesce(img.rights, 'check'))
           FROM images img WHERE img.item_id = i.id) AS picture,
        u.display_name AS decided_by,
-       p.decided_at
+       p.decided_at,
+       -- its Drive document left the folder, or changed after it was picked
+       -- and nobody has looked since (34-drive-library.sql)
+       i.withdrawn_at IS NOT NULL AS withdrawn,
+       i.withdrawn_reason,
+       (SELECT dc.changed_at FROM drive_changes dc
+         WHERE dc.item_id = i.id AND dc.seen_at IS NULL) AS drive_changed_at
   FROM item_picks p
   JOIN items i            ON i.id = p.item_id
   LEFT JOIN sources s     ON s.id = i.source_id
@@ -159,3 +165,17 @@ def drafts_in_mailchimp():
     return database.rows(
         """SELECT id, mailchimp_campaign_id FROM issues
             WHERE status = 'draft' AND mailchimp_campaign_id IS NOT NULL""")
+
+
+def drive_flags(item_ids):
+    """For the articles an email has: which were taken away because their
+    Drive document left the folder, and which have a Drive document that
+    changed since and nobody has looked. {id: {"withdrawn", "changed"}}"""
+    if not item_ids:
+        return {}
+    return {r["id"]: r for r in database.rows(
+        """SELECT i.id, i.withdrawn_at IS NOT NULL AS withdrawn,
+                  EXISTS (SELECT 1 FROM drive_changes dc
+                           WHERE dc.item_id = i.id AND dc.seen_at IS NULL) AS changed
+             FROM items i
+            WHERE i.id = ANY(%s)""", (list(item_ids),))}

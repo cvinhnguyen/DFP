@@ -192,25 +192,52 @@
 
 /* ---------- the article ---------- */
 
-.ar-read { overflow-y: auto; min-height: 0; padding: 18px 26px 24px; display: flex; flex-direction: column; gap: 12px; }
+.ar-read { overflow-y: auto; min-height: 0; padding: 18px 26px 16px; display: flex; flex-direction: column; gap: 12px; }
 .ar-read:focus { outline: none; }
 .ar-empty-read { margin: auto; color: var(--soft); }
 .rd-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--soft); }
 .rd-back { display: none; }
 .rd-nav { margin-left: auto; display: flex; gap: 6px; }
+/* The article reads in the order an editor decides: what it is and where
+   from, the event's day and place, the summary; beside it, the topics,
+   tags and details; and the sections always in sight at the bottom. */
+.rd-head { display: grid; gap: 6px; }
 .rd-title { margin: 2px 0 0; font-size: 22px; font-weight: 650; line-height: 1.3; letter-spacing: -.005em; text-wrap: balance; overflow-wrap: anywhere; }
-.rd-original { margin: -6px 0 0; font-size: 13.5px; color: var(--soft); max-width: 70ch; }
+.rd-original { margin: 0; font-size: 13.5px; color: var(--soft); max-width: 70ch; }
 .rd-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 13.5px; color: var(--soft); }
-.rd-event {
-  display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 14px; margin: 0; max-width: 70ch;
-  padding: 10px 14px; border: 1px solid var(--rule); border-left: 3px solid var(--link); border-radius: 8px; font-size: 14px;
-}
-.rd-event dt { color: var(--soft); }
-.rd-event dd { margin: 0; font-weight: 600; }
-.rd-event .rd-event-line { grid-column: 1 / -1; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--rule); font-weight: 400; color: var(--soft); }
-.rd-event .rd-event-line strong { color: var(--ink); }
-.rd-event .rd-event-note { grid-column: 1 / -1; font-size: 12.5px; font-weight: 400; color: var(--soft); }
 .rd-meta a { font-weight: 600; }
+/* Beside each other once the pane is wide enough for both: the summary
+   keeps a reading width, and the details take a narrow column. */
+.rd-layout { container-type: inline-size; }
+.rd-grid { display: grid; gap: 16px; align-items: start; }
+/* The summary first, and the picture beside it once there is room for
+   both, under it before that. */
+.rd-main { container: main / inline-size; min-width: 0; }
+.rd-flow { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start;
+  grid-template-areas: "note" "event" "body" "picture" "signals"; }
+.rd-flow > * { margin: 0 0 12px; }
+.rd-flow > .attention-drive { grid-area: note; }
+.rd-flow > .rd-event { grid-area: event; }
+.rd-flow > .rd-body { grid-area: body; }
+.rd-flow > .rd-picture { grid-area: picture; }
+.rd-flow > .rd-signals { grid-area: signals; display: grid; gap: 8px; }
+@container main (min-width: 560px) {
+  .rd-flow { grid-template-columns: minmax(0, 1fr) minmax(160px, 36%); column-gap: 20px;
+    grid-template-areas: "note note" "event event" "body picture" "signals signals"; }
+  .rd-flow > .rd-picture img { width: 100%; max-height: 190px; object-fit: cover; }
+}
+.rd-aside { display: grid; gap: 12px; align-content: start; min-width: 0; padding-top: 14px; border-top: 1px solid var(--rule); }
+@container (min-width: 680px) {
+  .rd-grid { grid-template-columns: minmax(0, 1fr) minmax(200px, 240px); gap: 20px 26px; }
+  .rd-aside { padding: 2px 0 0 22px; border-top: 0; border-left: 1px solid var(--rule); }
+}
+/* An event's day, place and deadline on one line above the summary. */
+.rd-event {
+  margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; max-width: 70ch;
+  padding: 7px 12px; border-radius: 8px; border-left: 3px solid var(--link); background: var(--brand-soft); font-size: 14px;
+}
+.rd-event-tag { font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--green); }
+.rd-event-note { flex-basis: 100%; font-size: 12.5px; color: var(--soft); }
 .rd-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .rd-lbl { font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); margin-right: 2px; }
 .chip {
@@ -253,61 +280,59 @@ button.chip:hover { border-color: var(--link); }
   background: var(--amber-soft); color: var(--ink);
 }
 .rd-signal strong { color: var(--amber); }
-.rd-body { display: grid; gap: 8px; justify-items: start; }
-.rd-label { margin: 6px 0 0; font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
+.rd-body > * + * { margin-top: 8px; }
+.rd-body .btn, .rd-body .linkish { margin-top: 8px; }
+.rd-label { margin: 0; font-size: 11.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--soft); }
 .rd-text { margin: 0; max-width: 70ch; font-size: 16px; line-height: 1.65; }
 .rd-state { margin: 0; max-width: 70ch; font-size: 14.5px; }
 .rd-state.attention-summary_failed, .rd-state.attention-manual { color: var(--amber); }
 .rd-abstract { max-width: 70ch; font-size: 14.5px; }
 .rd-abstract summary { cursor: pointer; color: var(--soft); width: fit-content; }
 .rd-abstract p { line-height: 1.6; }
-/* The picture from the article's page: a glimpse rather than the width of
-   the pane, so the summary stays in sight. */
+/* The picture from the article's page: a glimpse beside the summary, so the
+   summary starts at the top. */
 .rd-picture { margin: 0; display: grid; gap: 6px; justify-items: start; }
 .rd-picture img {
-  display: block; width: auto; height: auto; max-width: 100%; max-height: 240px;
+  display: block; width: auto; height: auto; max-width: 100%; max-height: 200px;
   border-radius: 8px; border: 1px solid var(--rule); background: var(--bg);
 }
+
 .rd-picture figcaption { font-size: 12.5px; color: var(--soft); }
 .rd-picture-rights.check { color: var(--amber); }
 .rd-licence { margin: 0; max-width: 70ch; font-size: 13.5px; padding: 8px 12px; border-radius: 8px; background: var(--amber-soft); color: var(--amber); }
 .rd-licence.open { background: var(--brand-soft); color: var(--green); }
 
-/* The buttons stay in sight at the bottom of the pane however long the
-   article is, so deciding never needs a scroll. */
+/* The sections stay in sight at the bottom of the pane however long the
+   article is, so deciding never needs a scroll; kept to two rows at most,
+   so they never hide the summary. */
 .rd-decide {
-  margin-top: auto; position: sticky; bottom: -24px; z-index: 2; display: grid; gap: 10px;
-  padding: 12px 0 24px; border-top: 1px solid var(--rule); background: var(--surface);
-  box-shadow: 0 -12px 12px -12px rgba(0, 0, 0, .16);
+  margin-top: auto; position: sticky; bottom: -16px; z-index: 2; display: grid; gap: 8px;
+  padding: 10px 0 14px; border-top: 1px solid var(--rule); background: var(--surface);
+  box-shadow: 0 -12px 12px -12px rgba(0, 0, 0, .16); container-type: inline-size;
 }
-.rd-where { margin: 0; font-size: 13.5px; color: var(--soft); }
-.rd-where strong { color: var(--ink); font-size: 15px; font-weight: 650; margin-right: 4px; }
-/* The five sections by the panel's width: two by two with Learning Factory
-   across under them, three above two, or all five in a row. */
-.rd-decide { container-type: inline-size; }
-.rd-secs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+/* The five sections by the pane's width: all five in a row, three above
+   two, or two by two with Learning Factory across under them. */
+.rd-secs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .rd-secs > .rd-sec:last-child:nth-child(odd) { grid-column: 1 / -1; }
-@container (min-width: 560px) {
+@container (min-width: 440px) {
   .rd-secs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .rd-secs > .rd-sec { grid-column: span 2; }
   .rd-secs > .rd-sec:nth-child(n+4), .rd-secs > .rd-sec:last-child:nth-child(odd) { grid-column: span 3; }
 }
-@container (min-width: 900px) {
+@container (min-width: 760px) {
   .rd-secs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .rd-secs > .rd-sec, .rd-secs > .rd-sec:nth-child(n+4), .rd-secs > .rd-sec:last-child:nth-child(odd) { grid-column: auto; }
 }
-/* A section is a button that says what goes in it; its key sits in the corner. */
+/* A section is a button by its name; what goes in it shows when pointed at,
+   and its key sits in the corner. */
 .rd-sec {
-  appearance: none; font: inherit; font-size: 14px; font-weight: 600; text-align: left; color: var(--ink);
-  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 9px 10px 10px;
-  cursor: pointer; display: grid; align-content: start; gap: 4px; min-width: 0; position: relative;
+  appearance: none; font: inherit; font-size: 13px; font-weight: 600; line-height: 1.25; text-align: left; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 22px 8px 9px; min-height: 42px;
+  cursor: pointer; display: flex; align-items: center; gap: 5px; min-width: 0; position: relative;
 }
-.rd-sec-name { display: flex; align-items: flex-start; gap: 5px; }
-.rd-sec-name .icon { flex: 0 0 auto; margin-top: 2px; color: var(--link); }
-.rd-sec-what { font-size: 12px; font-weight: 450; line-height: 1.35; color: var(--soft); margin-right: 22px; }
-.rd-sec-badge { justify-self: start; font-size: 11.5px; font-weight: 650; padding: 1px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--green); }
-.rd-sec-key { position: absolute; bottom: 8px; right: 8px; }
-.rd-sec-why { font-size: 11.5px; font-weight: 500; line-height: 1.35; color: var(--green); margin-right: 22px; }
+.rd-sec .icon { flex: 0 0 auto; }
+.rd-sec-name { min-width: 0; }
+.rd-sec-key { position: absolute; top: 5px; right: 5px; font-size: 10px; padding: 0 4px; line-height: 1.4; }
 .rd-offer {
   display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--link);
   background: var(--brand-soft); font-size: 13.5px; line-height: 1.45;
@@ -316,30 +341,43 @@ button.chip:hover { border-color: var(--link); }
 .rd-offer small { color: var(--soft); font-size: 12.5px; }
 .rd-offer-act { display: flex; flex-wrap: wrap; gap: 8px; }
 .rd-sec:hover { border-color: var(--link); }
-.rd-sec.suggested { border-color: var(--link); box-shadow: inset 0 0 0 1px var(--link); }
+.rd-sec.suggested { border-color: var(--link); box-shadow: inset 0 0 0 1px var(--link); background: var(--brand-soft); }
 .rd-sec.chosen { background: var(--button); border-color: var(--button); color: var(--button-ink); }
-.rd-sec.chosen .icon, .rd-sec.chosen .rd-sec-what { color: var(--button-ink); }
-.rd-sec.chosen .rd-sec-badge { background: transparent; color: var(--button-ink); padding: 0; }
+.rd-sec.chosen .icon { color: var(--button-ink); }
 .rd-sec.chosen .rd-sec-key { background: transparent; color: var(--button-ink); border-color: currentColor; }
 .rd-sec:disabled { opacity: .6; cursor: default; }
-.rd-other { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 13.5px; }
-.rd-other-k { color: var(--soft); }
+/* Under the sections: which newsletter and why the suggestion, or where
+   it went and who chose; and the other two ways. */
+.rd-other { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+@container (min-width: 440px) {
+  .rd-other { flex-wrap: nowrap; }
+  .rd-acts { flex: 0 0 auto; flex-wrap: nowrap; }
+}
+.rd-info { margin: 0; min-width: 0; flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 13px; color: var(--soft); }
+.rd-info strong { color: var(--ink); font-weight: 650; }
+.rd-why { color: var(--green); }
+.rd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.rd-acts .btn kbd { margin-left: 6px; }
+.rd-acts .linkish { font-size: 13px; }
 .btn.on { background: var(--slate-soft); color: var(--ink); border-color: var(--soft); }
-.rd-by { color: var(--soft); font-size: 13px; }
-.rd-keys { margin-left: auto; font-size: 12px; color: var(--soft); }
+.rd-by { color: var(--soft); }
 kbd {
   font-family: var(--sans); font-size: 11px; border: 1px solid var(--rule); border-bottom-width: 2px;
   border-radius: 4px; padding: 0 5px; color: var(--soft); background: var(--surface);
 }
 .row-error { margin: 0; font-size: 13.5px; color: var(--amber); }
 .rd-sent { margin: 0; font-weight: 600; color: var(--soft); }
-.rd-facts { font-size: 13.5px; }
-.rd-facts summary { cursor: pointer; color: var(--soft); width: fit-content; }
-.rd-facts summary:hover { color: var(--ink); }
-.rd-facts dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 16px; margin: 8px 0 0; }
+.rd-facts { font-size: 13px; display: grid; gap: 6px; }
+.rd-facts > .rd-lbl { margin: 0; }
+.rd-facts dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 0; }
 .rd-facts dt { color: var(--soft); }
-.rd-facts dd { margin: 0; }
-.copies-title { margin: 10px 0 2px; color: var(--soft); }
+.rd-facts dd { margin: 0; overflow-wrap: anywhere; }
+.rd-aside .rd-chips { gap: 5px; }
+/* A long topic's name wraps inside its chip, from the left. */
+.rd-aside .chip { max-width: 100%; text-align: left; border-radius: 12px; align-items: baseline; }
+.rd-aside .rd-lbl { flex-basis: 100%; }
+.rd-aside .addtag input { width: 100%; max-width: 230px; }
+.copies-title { margin: 4px 0 0; color: var(--soft); }
 ul.copies { margin: 0; padding-left: 20px; }
 
 .ar-toast {
@@ -445,15 +483,14 @@ ul.copies { margin: 0; padding-left: 20px; }
   .rd-word { display: none; }
   .ar.side-open::before { position: fixed; z-index: 1099; }
   .rd-title { font-size: 20px; }
-  .rd-keys { display: none; }
   /* Read, then decide: the summary first, the sections right under it, and
      the topics, tags and details after them. Nothing covers the text. */
+  .rd-layout, .rd-grid { display: contents; }
   .rd-decide { position: static; order: 1; margin-top: 4px; padding-bottom: 4px; box-shadow: none; }
-  .rd-chips, .rd-signal { order: 2; }
-  .rd-facts { order: 3; }
+  .rd-aside { order: 2; }
   .rd-picture img { max-height: 200px; object-fit: cover; }
-  /* No keyboard on a phone, and less room: each section by its name. */
-  .rd-sec-what, .rd-sec-key { display: none; }
+  /* No keyboard on a phone. */
+  .rd-sec-key, .rd-acts kbd { display: none; }
   .rd-sec { padding-right: 10px; }
   .ar.side-open .ar-side { position: fixed; z-index: 1100; width: min(320px, 88vw); }
   .addtag input { width: 160px; }
@@ -576,3 +613,37 @@ ul.copies { margin: 0; padding-left: 20px; }
   .chat-compose { position: sticky; bottom: 0; z-index: 3; padding: 8px 10px 10px; }
   .chat-alone { display: none; }
 }
+
+/* ---------- live updates and the association's Drive ---------- */
+
+/* New articles for this place, waiting above the list until the editor
+   brings them in (live.js), so the list never moves while it is read. */
+.ar-fresh {
+  appearance: none; border: 0; border-bottom: 1px solid var(--rule); background: var(--brand-soft); color: var(--link);
+  font: inherit; font-size: 13.5px; padding: 8px 14px; text-align: left; cursor: pointer;
+}
+.ar-fresh strong { margin-left: 6px; text-decoration: underline; text-underline-offset: 2px; }
+.ar-fresh:hover strong { text-decoration-thickness: 2px; }
+.ar-list-drive svg { flex: 0 0 auto; }
+.ar-list-drive { display: inline-flex; align-items: center; gap: 4px; }
+/* In the Drive folder's own place: how much of the folder became articles. */
+.ar-drive-line { margin: 0; font-size: 13px; line-height: 1.45; color: var(--soft); }
+.ar-drive-line .linkish { font-size: 13px; }
+
+/* Saving the open article into Drive, and when it was. */
+.rd-drive { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.rd-drive .btn { display: inline-flex; align-items: center; gap: 6px; }
+.rd-drive-saved { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 13.5px; color: var(--green); }
+.rd-drive-saved svg { flex: 0 0 auto; }
+.rd-drive-saved a { color: var(--link); }
+.rd-state.attention-drive {
+  max-width: 70ch; padding: 8px 12px; border-radius: 8px; background: var(--amber-soft); color: var(--amber); font-size: 13.5px;
+}
+
+/* The windows for saving into Drive. */
+.dv-save { display: grid; gap: 8px; }
+.dv-save p { margin: 0; }
+.dv-save select, .dv-save input { width: 100%; }
+.dv-what { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; color: var(--soft); }
+.dv-done { padding: 8px 12px; border-radius: 8px; background: var(--green-soft); color: var(--green); }
+.dv-done a { color: var(--link); }

@@ -62,8 +62,11 @@ data centre, the end of the key after the dash, like `us4`. Read
 
 Google Drive is optional too. The association shares one folder with the
 tool's Google service account; its key goes in `secrets/google-drive.json`,
-and an admin chooses the folder on Asetukset. How the tool is kept to that
-one folder, and how to set it up, is in `docs/drive.md`.
+and an admin chooses the folder on Asetukset. The tool reads the folder's
+documents into Artikkelit every 15 minutes, saves articles, lists and
+newsletters into a folder of its own there, and brings the folder's
+pictures into Kuvapankki. How the tool is kept to that one folder, and how
+to set it up, is in `docs/drive.md`.
 
 On Windows, run the scripts from Git Bash.
 

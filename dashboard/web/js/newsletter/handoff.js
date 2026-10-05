@@ -287,6 +287,7 @@ export function openHandoff({ issue, design, mailchimp, errors = [], onChanged }
     });
     driveSlot.replaceChildren(card('drive', t('handoff.driveTitle'), h('div', {},
       h('p', {}, t('handoff.driveLead', { folder: drive.save_folder || drive.folder_name })),
+      drive.autosave ? h('p', { class: 'cf-hint' }, t('handoff.driveAuto')) : null,
       h('div', { class: 'ho-actions' }, button), status)));
   }).catch(() => {});
 

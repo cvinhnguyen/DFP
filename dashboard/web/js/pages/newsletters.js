@@ -14,6 +14,7 @@ import { h } from '../ui/dom.js';
 import { promptDialog, confirmDialog, toast } from '../ui/dialogs.js';
 import { popover, closePopover } from '../ui/controls.js';
 import { saveTarget } from './articles.js';
+import { onLive } from '../live.js';
 
 export function mailchimpLine(issue) {
   if (issue.status === 'sent') return issue.mailchimp_status === 'sent' ? t('list.mcSent') : t('list.mcMarked');
@@ -208,6 +209,29 @@ export function showNewsletters(root) {
     applyFilter();
   });
 
+  // A newsletter made, saved, sent or given articles elsewhere: the list
+  // catches up as it happens (live.js), but not while someone types in the
+  // search or a menu or window is open.
+  let liveTimer = null;
+  const busyHere = () => (root.contains(document.activeElement) && document.activeElement.matches('input, textarea, select'))
+    || document.querySelector('.md-overlay, .cf-popover');
+  function changed() {
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => {
+      if (gone) return;
+      if (busyHere()) changed();
+      else load();
+    }, 1500);
+  }
+  const unlisten = [onLive('issues', changed), onLive('picks', changed), onLive('resync', changed)];
+
   load().then(refreshFromMailchimp);
-  return { leave() { gone = true; closePopover(); } };
+  return {
+    leave() {
+      gone = true;
+      closePopover();
+      clearTimeout(liveTimer);
+      unlisten.forEach((stop) => stop());
+    },
+  };
 }

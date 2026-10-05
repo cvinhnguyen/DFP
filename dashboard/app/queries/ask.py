@@ -43,6 +43,8 @@ def relevant(question, days, limit, hide_drive=False):
                  FROM items i
                  JOIN summaries sm ON sm.item_id = i.id AND sm.language = 'fi'
                 WHERE i.duplicate_of IS NULL
+                  -- taken away because its Drive document left the folder
+                  AND i.withdrawn_at IS NULL
                   AND coalesce(i.published_at, i.created_at) >= now() - make_interval(days => %(days)s)
                   AND NOT (%(hide_drive)s AND EXISTS (
                         SELECT 1 FROM sources s WHERE s.id = i.source_id AND s.type = 'drive'))

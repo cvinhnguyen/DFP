@@ -67,11 +67,12 @@ docker compose up -d
 | `ai_budget` (view) | this month's AI spending against `monthly_budget_eur`: warn at 80 %, over when used up | `24-ai-budget.sql` |
 | `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, the pictures from their pages that went with it, and the old ones kept because they are in use | `25-retention.sql`, `28` |
 | `members` | the association's member organisations from its members page, with their websites, so their articles are suggested for Jäsenkuulumisia; organisations only | `29-members.sql` |
-| `drive_files`, `drive_log` | what the Drive guard last listed in the association's one Drive folder and what it did with each file, and every action it took or refused; names, never contents (`docs/drive.md`) | `33-drive.sql` |
+| `drive_files`, `drive_log` | what the Drive guard last listed in the association's one Drive folder and what it did with each file, and every action it took or refused; names, never contents (`docs/drive.md`) | `33-drive.sql`, `34` |
+| `drive_saves`, `drive_changes`, `drive_thumbs` | what the tool saved into the folder and who asked; a document that changed after its article went into a newsletter, until an editor has looked; small previews of the folder's pictures for Kuvapankki (`docs/drive.md`) | `34-drive-library.sql` |
 | `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, brought in from their public archive (`newsletter_archive_url` in `app_settings`) to check the system against (`docs/evaluation.md`) | `26-archive.sql`, `32` |
 | `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
 | `item_picks` | what the editors decided about each article: picked (for which issue and which section: the four, or Learning Factory), later, or not used, with the section the dashboard suggested at the time and why | `17-newsletter.sql`, `19`, `30`, `31` |
-| `images` | pictures uploaded in the newsletter editor, and each article's picture from its own page, kept with the article's id, whose it is and its credit | `17-newsletter.sql`, `28-article-pictures.sql` |
+| `images` | pictures uploaded in the newsletter editor, each article's picture from its own page, kept with the article's id, whose it is and its credit, and pictures brought in from the Drive folder, with their file's id | `17-newsletter.sql`, `28-article-pictures.sql`, `34` |
 | `newsletter_templates` | templates and sections the editors saved, to start a newsletter from | `18-editor-mailchimp.sql` |
 | `issue_comments` | the editors' comments on a newsletter, each on one block or on the whole email | `18-editor-mailchimp.sql` |
 | `mailchimp_files` | which pictures are already in Mailchimp's Content Studio, so each is uploaded once | `18-editor-mailchimp.sql` |
@@ -105,6 +106,14 @@ A signal must link to at least one article, which a trigger checks at commit,
 so write the signal and its links in one statement. There is a worked example
 at the bottom of `04-signals.sql`. Running detection again on the same day
 updates the existing signal rather than adding a copy.
+
+Every change to the tables the pages show also sends a short notice on the
+channel `dfp_live`: what kind of change, and which articles or newsletters.
+The dashboard passes it to the open pages, which then show the change
+without a reload (`35-live.sql`, `dashboard/README.md`, "Live pages"). An
+article taken out because its Drive document left the folder keeps its row
+only for the newsletter that has it, with `withdrawn_at` set, and is in no
+list (`34-drive-library.sql`).
 
 ## Writing data
 

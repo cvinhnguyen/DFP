@@ -33,6 +33,11 @@ const timeFormats = {
   en: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: ZONE }),
 };
 
+// 14.25 in Finnish, 14:25 in English: a time today.
+export function time(value) {
+  return value ? timeFormats[currentLanguage()].format(new Date(value)) : '';
+}
+
 // 30.9.2026
 export function date(value) {
   return value ? dayFormat.format(new Date(value)) : '';

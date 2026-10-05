@@ -138,6 +138,11 @@ services:
       # the stand-in's address (dashboard/tests/fake_drive.py). Leave it empty.
       DRIVE_KEY_FILE: ${DRIVE_KEY_FILE:-/srv/secrets/google-drive.json}
       DRIVE_TEST_SERVER: ${DRIVE_TEST_SERVER:-}
+      # An open page keeps a stream to the dashboard for live updates
+      # (services/live.py). On a restart uvicorn would wait for those to end
+      # by themselves, which they never do: three seconds, then it closes
+      # them, and the pages connect again to the new one.
+      UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN: "3"
     # Lets the dashboard ask the model server on your machine whether it is
     # answering, on Linux as well as on Mac and Windows.
     extra_hosts:

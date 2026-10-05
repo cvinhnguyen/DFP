@@ -2,6 +2,11 @@
 // Content Studio. Upload new ones by choosing files or dropping them on the
 // window, search by name, pick one for the block. An image is shrunk for
 // email and stripped of its camera data on upload, by the dashboard.
+//
+// With the association's Drive folder in use, its pictures are here too
+// (Yhdistyksen Drive): small previews, made by the Drive guard, and the one
+// picked is brought into Kuvapankki the same way as an upload
+// (services/drive.py).
 
 import { t, tn } from '../texts.js';
 import { when } from '../format.js';
@@ -55,11 +60,20 @@ export function createLibrary({ api, issueId }) {
     const search = h('input', { class: 'cf-input lib-search', type: 'search', placeholder: t('library.search'), 'aria-label': t('library.search') });
     const fileInput = h('input', { type: 'file', multiple: true, accept: 'image/jpeg,image/png,image/gif,image/webp', hidden: true });
     const uploadButton = h('button', { type: 'button', class: 'btn', html: `${icon('upload', 18)} `, onclick: () => fileInput.click() }, t('library.upload'));
+    const scopeIcons = { all: 'folder', issue: 'article', drive: 'image' };
     const nav = h('nav', { class: 'lib-nav' },
-      ['all', 'issue'].map((s) => h('button', { type: 'button', class: 'lib-nav-item', 'aria-pressed': String(s === scope), dataset: { scope: s }, html: `${icon(s === 'all' ? 'folder' : 'article', 18)} ` }, t(`library.scope.${s}`))));
+      ['all', 'issue', 'drive'].map((s) => h('button', { type: 'button', class: 'lib-nav-item', 'aria-pressed': String(s === scope), dataset: { scope: s }, hidden: s === 'drive', html: `${icon(scopeIcons[s], 18)} ` }, t(`library.scope.${s}`))));
+    const driveLead = h('p', { class: 'lib-drive-lead', hidden: true }, t('library.driveLead'));
+    let pictures = null;
+    // The Drive tab only while the folder is in use; never for the demo login.
+    api.get('/api/drive').then((d) => {
+      if (d && d.enabled) nav.querySelector('[data-scope="drive"]').hidden = false;
+    }).catch(() => {});
 
     async function load() {
       status.textContent = t('library.loading');
+      driveLead.hidden = scope !== 'drive';
+      if (scope === 'drive') return loadDrive();
       try {
         result = await api.get('/api/images', { q: query, page, per_page: PER_PAGE, issue_id: scope === 'issue' ? issueId : undefined });
         draw();
@@ -108,6 +122,56 @@ export function createLibrary({ api, issueId }) {
         h('button', { type: 'button', class: 'btn ghost small', disabled: page >= pages, onclick: () => { page += 1; load(); } }, t('library.next')));
     }
 
+    // The folder's pictures, from the guard's last listing of it.
+    async function loadDrive() {
+      try {
+        pictures = pictures || await api.get('/api/drive/pictures');
+        drawDrive();
+      } catch (e) {
+        status.textContent = e.message;
+      }
+    }
+
+    function drawDrive() {
+      clear(grid);
+      fill(pager);
+      const shown = pictures.filter((p) => !query || p.name.toLowerCase().includes(query.toLowerCase()));
+      if (!shown.length) {
+        grid.append(h('div', { class: 'lib-empty' }, h('span', { html: icon('image', 40) }),
+          h('h3', {}, query ? t('library.nothingFound') : t('library.driveEmpty'))));
+      }
+      shown.forEach((p) => {
+        const why = p.usable ? null : (/hei[cf]$/i.test(p.mime_type) ? t('library.driveHeic')
+          : (p.size > 10 * 1024 * 1024 ? t('library.driveTooBig') : t('library.drivePersonal')));
+        // A picture the preview cannot be made of shows the picture sign.
+        const thumb = h('img', { src: `/api/drive/pictures/${encodeURIComponent(p.drive_id)}/thumb`, alt: '', loading: 'lazy',
+          onerror: () => thumb.replaceWith(h('span', { class: 'lib-drive-off', html: icon('image', 32) })) });
+        const picture = p.usable
+          ? h('button', { type: 'button', class: 'lib-pick', title: t('library.drivePick'), onclick: (e) => bringIn(p, e.currentTarget) }, thumb)
+          : h('div', { class: 'lib-pick lib-drive-off', html: icon('image', 32) });
+        grid.append(h('div', { class: `lib-card${p.usable ? '' : ' off'}` }, picture,
+          h('div', { class: 'lib-meta' },
+            h('span', { class: 'lib-name', title: `${p.path ? `${p.path}/` : ''}${p.name}` }, p.name),
+            h('span', { class: 'lib-size' }, why || (p.image_key ? t('library.driveInLibrary') : (p.modified_at ? when(p.modified_at) : ''))))));
+      });
+      status.textContent = '';
+    }
+
+    async function bringIn(p, button) {
+      button.disabled = true;
+      status.textContent = t('library.driveImporting');
+      try {
+        const img = await api.post(`/api/drive/pictures/${encodeURIComponent(p.drive_id)}`);
+        dialog.close();
+        onPick(img);
+        toast(t('library.driveImported'));
+      } catch (e) {
+        button.disabled = false;
+        status.textContent = e.message;
+        toast(e.message, 'warn');
+      }
+    }
+
     async function addFiles(files) {
       if (!files || !files.length) return;
       status.textContent = t('library.uploading');
@@ -148,6 +212,7 @@ export function createLibrary({ api, issueId }) {
       h('div', { class: 'lib-main' },
         h('div', { class: 'lib-top' }, search, uploadButton, fileInput),
         h('p', { class: 'lib-drop-hint' }, t('library.dropHint')),
+        driveLead,
         grid, h('div', { class: 'lib-bottom' }, status, pager)));
     const dialog = modal({ title: t('library.title'), body, wide: true, className: 'md-library' });
     // Files dropped anywhere on the window go in.

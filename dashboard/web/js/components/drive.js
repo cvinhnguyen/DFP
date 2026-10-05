@@ -1,7 +1,8 @@
 // The Google Drive card of the settings page: the tool's Google address to
-// share the folder with, the folder, the switch, the last check of what the
-// tool can reach, and every action it has taken or refused. It only turns
-// GET /api/drive into HTML; the page handles the buttons.
+// share the folder with, the folder, the switches, the last check of what
+// the tool can reach, the folder's files, and every action it has taken or
+// refused. It only turns GET /api/drive into HTML; the page handles the
+// buttons.
 // Jira: DM42-43
 
 import { has, t, tn } from '../texts.js';
@@ -112,10 +113,22 @@ export function driveCard(s, busy) {
         <p>${esc(s.synced ? t('drive.synced', { when: when(s.synced) }) : t('drive.notSynced'))}</p>
         <p class="nl-meta">${esc(t('drive.counts', { read: number(counts.read || 0), refused: number(counts.refused || 0),
           skipped: number(counts.skipped || 0), waiting: number(counts.waiting || 0) }))}</p>
-        <button type="button" class="btn ghost small" data-act="drive-sync" ${busy || !s.enabled ? 'disabled' : ''}>${esc(busy === 'sync' ? t('drive.syncing') : t('drive.sync'))}</button>
+        <div class="drive-sync-acts">
+          <button type="button" class="btn ghost small" data-act="drive-sync" ${busy || !s.enabled ? 'disabled' : ''}>${esc(busy === 'sync' ? t('drive.syncing') : t('drive.sync'))}</button>
+          <button type="button" class="btn ghost small" data-act="drive-files" ${s.enabled ? '' : 'disabled'}>${esc(t('drive.filesShow'))}</button>
+        </div>
       </div>
+
+      <label class="cf-check drive-switch"><input type="checkbox" data-act="drive-autosave" ${s.autosave ? 'checked' : ''} ${busy || !(s.can_save || s.autosave) ? 'disabled' : ''}>
+        <span>${esc(t('drive.autosave'))}</span></label>
+      <p class="cf-hint">${esc(t('drive.autosaveHint'))}${s.can_save ? '' : ` ${esc(t('drive.autosaveNeedsSave'))}`}</p>
 
       <h3 class="cost-h">${esc(t('drive.logTitle'))}</h3>
       ${logTable(s.log)}
+
+      <div class="drive-withdraw">
+        <button type="button" class="btn ghost small danger" data-act="drive-withdraw" ${busy ? 'disabled' : ''}>${esc(t('drive.withdrawAll'))}</button>
+        <p class="cf-hint">${esc(t('drive.withdrawAllHint'))}</p>
+      </div>
     </section>`;
 }

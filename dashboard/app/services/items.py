@@ -55,9 +55,10 @@ def list_items(view, sort, page, per_page, user_id=None, **chosen):
                     tag_label=queries.tag_name(tag) if tag is not None else None)
 
 
-def items_by_ids(ids, user_id=None):
-    """The articles with these ids, in the order given."""
-    found = {f["id"]: f for f in queries.by_ids(ids, user_id)}
+def items_by_ids(ids, user_id=None, hide_drive=False):
+    """The articles with these ids, in the order given. One that is gone
+    is left out."""
+    found = {f["id"]: f for f in queries.by_ids(ids, user_id, hide_drive)}
     min_chars = _min_chars()
     return [_as_item(found[i], min_chars) for i in ids if i in found]
 
@@ -90,5 +91,5 @@ def mark_seen(item_id, user_id):
     queries.mark_seen(item_id, user_id)
 
 
-def filter_options():
-    return FilterOptions(**queries.filter_options())
+def filter_options(hide_drive=False):
+    return FilterOptions(**queries.filter_options(hide_drive))

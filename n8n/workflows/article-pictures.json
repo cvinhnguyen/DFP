@@ -12,12 +12,13 @@
         0,
         0
       ],
+      "notes": "Five minutes after each round of summaries (summarisation.json starts at 0, 15, 30 and 45 past the hour), so a new summary has its picture a few minutes after it is written. A plain 15-minute timer starts at a second n8n picks at random, and could run just before the summaries, leaving each new one a whole round without its picture.",
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 15
+              "field": "cronExpression",
+              "expression": "0 5,20,35,50 * * * *"
             }
           ]
         }

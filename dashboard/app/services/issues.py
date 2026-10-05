@@ -210,6 +210,23 @@ def _blocks(blocks):
                 yield from _blocks(column.get("blocks"))
 
 
+def _item_id(block):
+    try:
+        return int(block.get("itemId"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _placed_anywhere(design):
+    """Every article the email has, in any section."""
+    found = set()
+    for section in (design or {}).get("sections") or []:
+        for block in _blocks(section.get("blocks")):
+            if block.get("type") == "article" and _item_id(block) is not None:
+                found.add(_item_id(block))
+    return found
+
+
 def _goes_out(section):
     if section.get("role") in ARTICLE_SECTIONS:
         return any(b.get("type") == "article" for b in _blocks(section.get("blocks")))
@@ -224,10 +241,18 @@ def not_ready(issue_id):
         raise NotFound()
     design = (queries.design(issue_id) or {}).get("design") or {}
     problems = {}
+    # Articles from the association's Drive: one whose document left the
+    # folder, or changed after it went in and nobody has looked.
+    flags = queries.drive_flags(_placed_anywhere(design))
     for section in design.get("sections") or []:
         if not _goes_out(section):
             continue
         for block in _blocks(section.get("blocks")):
+            flag = flags.get(_item_id(block)) if block.get("type") == "article" else None
+            if flag and flag["withdrawn"]:
+                problems["driveGone"] = problems.get("driveGone", 0) + 1
+            elif flag and flag["changed"]:
+                problems["driveChanged"] = problems.get("driveChanged", 0) + 1
             if block.get("type") == "article" and not block.get("checked"):
                 problems["unchecked"] = problems.get("unchecked", 0) + 1
             if block.get("type") == "text" and block.get("ai") and not block.get("checked"):

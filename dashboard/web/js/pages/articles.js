@@ -8,12 +8,14 @@
 
 import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
-import { aiUsage, date, esc, number, finnishDay } from '../format.js';
+import { aiUsage, date, esc, number, finnishDay, safeUrl } from '../format.js';
 import { articleRow, articleReader, dayHeading, offerBox, termOptions, SECTIONS } from '../components/article.js';
 import { colourOf, sideHtml } from '../components/side.js';
 import { topicRows, topicEditor } from '../components/topics.js';
 import { statusLines } from '../components/status.js';
-import { confirmDialog } from '../ui/dialogs.js';
+import { confirmDialog, modal } from '../ui/dialogs.js';
+import { isLive, onLive } from '../live.js';
+import { fileCounts, showDriveFiles } from '../components/driveFiles.js';
 import { icon } from '../ui/icons.js';
 
 // The lists of the editors' own decisions and of what the AI did. A topic, a
@@ -128,14 +130,17 @@ function layout() {
             <h2 id="place-name"></h2>
             <span class="ar-count" id="place-count"></span>
             <button type="button" class="btn ghost small ask-new" id="ask-new" data-act="ask-new" hidden>${icon('plus', 16)}<span>${esc(t('ask.new'))}</span></button>
+            <button type="button" class="btn ghost small ar-list-drive" id="list-drive" data-act="list-drive" hidden>${icon('save', 16)}<span>${esc(t('driveList.button'))}</span></button>
           </div>
           <p class="ar-note" id="place-note"></p>
+          <p class="ar-drive-line" id="drive-line" hidden></p>
           <form class="ar-tools" id="tools" role="search">
             <input type="search" id="q" maxlength="200" autocomplete="off"
                    placeholder="${esc(t('search.hint'))}" aria-label="${esc(t('search.label'))}">
             <select id="sort" aria-label="${esc(t('filter.sort'))}"></select>
           </form>
         </div>
+        <button type="button" class="ar-fresh" id="fresh" data-act="fresh" hidden></button>
         <div class="ar-rows" id="rows" aria-busy="true"></div>
         <form class="chat-compose" id="ask" hidden>
           <label class="sr-only" for="ask-q">${esc(t('ask.label'))}</label>
@@ -189,6 +194,12 @@ export function showArticles(root) {
   // suggested; the first is asked about above the sections.
   let offers = [];
   let offerBusy = false;
+  // The association's Drive folder: whether it is in use and saving works
+  // (GET /api/drive), and in its own place, what became of its files.
+  let drive = null;
+  let driveFiles = null;
+  // Articles new to this place since the list was loaded, waiting above it.
+  let fresher = 0;
 
   root.classList.add('wide');
   root.innerHTML = layout();
@@ -280,6 +291,7 @@ export function showArticles(root) {
     renderHead();
     // Never while a new topic's name is being typed.
     if (place.kind === 'topics' && !tv.creating) renderRows();
+    if (isDrivePlace() && !driveFiles) loadDriveFiles();
   }
 
   // The numbers in the column catch up shortly after a decision, in one go
@@ -330,6 +342,8 @@ export function showArticles(root) {
     $('ask-new').hidden = place.kind !== 'ask' || !asked.list.length;
     ar.classList.toggle('asking', place.kind === 'ask');
     $('place-note').classList.toggle('of-view', place.kind === 'view' || place.kind === 'ask');
+    $('list-drive').hidden = !(drive && drive.enabled && counted && total > 0);
+    renderDriveLine();
     renderPlaces();
   }
 
@@ -408,7 +422,7 @@ export function showArticles(root) {
     read.innerHTML = articleReader(item, {
       place: placeName(), index, total, topics: topicsById,
       canPrev: index > 0, canNext: index < rows.length - 1 || rows.length < total,
-      target: target ? target.name : null, offer: offers[0] || null,
+      target: target ? target.name : null, offer: offers[0] || null, drive,
     });
     read.scrollTop = 0;
     if (focus) read.focus({ preventScroll: true });
@@ -490,6 +504,10 @@ export function showArticles(root) {
       page = nextPage;
       total = data.total;
       tagLabel = data.tag_label ?? tagLabel;
+      if (!append) {
+        fresher = 0;
+        renderFresh();
+      }
       rows = append ? [...rows, ...data.items.filter((x) => !rows.some((r) => r.id === x.id))] : data.items;
       renderHead();
       renderRows();
@@ -520,6 +538,10 @@ export function showArticles(root) {
     tagLabel = null;
     rows = [];
     total = 0;
+    fresher = 0;
+    renderFresh();
+    driveFiles = null;
+    loadDriveFiles();
     writeState(state);
     ar.classList.remove('side-open', 'reading');
     renderSide();
@@ -1047,7 +1069,7 @@ export function showArticles(root) {
     const panel = read.querySelector('.rd-decide');
     if (!panel || offerBusy) return;
     panel.querySelector('.rd-offer')?.remove();
-    if (panel.querySelector('.rd-where')) panel.insertAdjacentHTML('afterbegin', offerBox(offers[0]));
+    if (panel.querySelector('.rd-secs')) panel.insertAdjacentHTML('afterbegin', offerBox(offers[0]));
   }
 
   async function answerOffer(yes) {
@@ -1086,6 +1108,340 @@ export function showArticles(root) {
       refreshSide();
     } catch (e) {
       showError(e.message);
+    }
+  }
+
+  // ---------- live ----------
+
+  // What n8n and the other editors change shows here as it happens
+  // (live.js). The articles on screen and the open one are asked for again
+  // and drawn where they stand, the numbers in the column catch up, and new
+  // articles wait above the list behind a button, so nothing moves under
+  // the editor's eyes. Nothing is redrawn while the editor types in the
+  // article; it is once the typing stops.
+  const coming = (item) => item.tags_pending || item.status === 'new' || item.status === 'queued';
+  const looks = (item) => JSON.stringify([item.status, item.summary?.text, item.title_fi, item.event,
+    item.tags_pending, item.tags.map((g) => g.id), item.topics.map((x) => x.id), item.picture?.src,
+    item.decision, item.pick_section, item.pick_issue_id, item.pick_issue_status, item.decided_by,
+    item.drive_saved?.at, item.drive_changed_at]);
+  const typing = () => read.contains(document.activeElement) && document.activeElement.matches('input, textarea, select');
+  const heard = { ids: new Set(), all: false, timer: null };
+  let openStale = false;
+  let draftsTimer = null;
+
+  // The open article drawn again as it is now, where the editor was in it.
+  function redrawOpen() {
+    if (typing()) {
+      openStale = true;
+      return;
+    }
+    openStale = false;
+    const top = read.scrollTop;
+    const open = [...read.querySelectorAll('details[open]')].map((d) => d.classList[0]);
+    renderReaderKeepingFocus();
+    open.forEach((name) => read.querySelector(`details.${name}`)?.setAttribute('open', ''));
+    read.scrollTop = top;
+  }
+
+  // The articles with these ids as they are now. A changed one is drawn
+  // again where it stands; one that is gone, such as an article whose Drive
+  // document left the folder, leaves the list.
+  async function refreshRows(ids) {
+    let found;
+    try {
+      found = (await api.get('/api/items/batch', { ids: ids.join(',') })).items;
+    } catch {
+      return;
+    }
+    const now = new Map(found.map((x) => [x.id, x]));
+    const openId = current()?.id;
+    let changed = false;
+    let openChanged = false;
+    for (const id of ids) {
+      const at = rows.findIndex((r) => r.id === id);
+      if (at < 0) continue;
+      const fresh = now.get(id);
+      if (fresh && looks(fresh) === looks(rows[at])) continue;
+      if (fresh) rows[at] = fresh;
+      else {
+        rows.splice(at, 1);
+        total = Math.max(0, total - 1);
+      }
+      changed = true;
+      if (id === openId) openChanged = true;
+    }
+    if (!changed) return;
+    // In Kysy artikkeleilta the conversation is the list, and it stays.
+    if (place.kind !== 'ask') {
+      renderHead();
+      renderRows();
+    }
+    if (!openChanged) return;
+    if (current()) redrawOpen();
+    else {
+      setItem(null);
+      toast(t('live.gone'));
+    }
+  }
+
+  function hear(change) {
+    if (change.ids && change.k !== 'resync') change.ids.forEach((id) => heard.ids.add(Number(id)));
+    else heard.all = true;
+    clearTimeout(heard.timer);
+    heard.timer = setTimeout(catchUp, 500);
+  }
+
+  async function catchUp() {
+    const { all, ids } = heard;
+    heard.all = false;
+    heard.ids = new Set();
+    refreshSide();
+    if (place.kind === 'topics') return;
+    const shown = rows.filter((r) => all || ids.has(Number(r.id))).map((r) => r.id);
+    if (shown.length) await refreshRows(shown.slice(0, 100));
+    if (place.kind !== 'ask') lookForNew();
+  }
+
+  // New articles for this place wait above the list behind a button, so the
+  // list never moves while it is read. An empty list fills at once.
+  async function lookForNew() {
+    const mine = latest;
+    const params = { ...placeParams(place), sort: state.sort, page: 1, per_page: PER_PAGE };
+    if (state.q) params.q = state.q;
+    let data;
+    try {
+      data = await api.get('/api/items', params);
+    } catch {
+      return;
+    }
+    if (mine !== latest || place.kind === 'topics' || place.kind === 'ask') return;
+    if (!rows.length) {
+      if (data.items.length) loadList({ keep: state.item });
+      return;
+    }
+    const known = new Set(rows.map((r) => r.id));
+    fresher = data.items.filter((x) => !known.has(x.id)).length;
+    renderFresh();
+  }
+
+  function renderFresh() {
+    const button = $('fresh');
+    button.hidden = !fresher;
+    if (fresher) button.innerHTML = `${esc(tn('live.fresh', fresher, { n: number(fresher) }))} <strong>${esc(t('live.freshShow'))}</strong>`;
+  }
+
+  // A newsletter made, renamed or sent elsewhere changes the drafts in the
+  // column. Saving an email being edited changes nothing here, so only the
+  // drafts are asked for, and the column is drawn again only if they differ.
+  function refreshDrafts() {
+    clearTimeout(draftsTimer);
+    draftsTimer = setTimeout(async () => {
+      let issues;
+      try {
+        issues = await api.get('/api/issues');
+      } catch {
+        return;
+      }
+      const drafts = issues.filter((i) => i.status === 'draft');
+      const key = (list) => JSON.stringify(list.map((d) => [d.id, d.name, d.current]));
+      if (key(drafts) === key(side.drafts)) return;
+      side.drafts = drafts;
+      const saved = readTarget();
+      const newest = drafts.find((d) => d.current) || drafts[0];
+      side.target = drafts.some((d) => d.id === saved) ? saved : (newest ? newest.id : null);
+      renderSide();
+      if (current()) redrawOpen();
+    }, 1500);
+  }
+
+  // Without the live stream, an open article waiting for its summary or
+  // tags is asked for again every minute instead.
+  async function refreshOpen() {
+    const item = current();
+    if (isLive() || !item || !coming(item) || document.visibilityState !== 'visible' || typing()) return;
+    await refreshRows([item.id]);
+  }
+
+  // ---------- the association's Drive ----------
+
+  async function loadDrive() {
+    try {
+      drive = await api.get('/api/drive');
+    } catch {
+      drive = null;
+    }
+    renderHead();
+    if (current()) redrawOpen();
+  }
+
+  function isDrivePlace() {
+    const folder = side.sources.find((x) => x.type === 'drive');
+    return place.kind === 'source' && Boolean(folder) && place.id === folder.id;
+  }
+
+  // In the folder's own place: how much of the folder became articles, and
+  // the way to every file in it and what became of each.
+  async function loadDriveFiles() {
+    if (!isDrivePlace()) {
+      renderDriveLine();
+      return;
+    }
+    try {
+      driveFiles = await api.get('/api/drive/files');
+    } catch {
+      driveFiles = null;
+    }
+    renderDriveLine();
+  }
+
+  function renderDriveLine() {
+    const line = $('drive-line');
+    if (!isDrivePlace() || !driveFiles) {
+      line.hidden = true;
+      return;
+    }
+    const c = fileCounts(driveFiles.files || []);
+    line.innerHTML = `${esc(t('files.summary', { files: number(c.files), read: number(c.read), coming: number(c.coming), not: number(c.not) }))}
+      <button type="button" class="linkish" data-act="drive-files">${esc(t('drivePlace.files'))}</button>`;
+    line.hidden = false;
+  }
+
+  // Tallenna Driveen: the folder the article goes in, suggested from its
+  // topic or section and free to change, and what is saved, before
+  // anything is.
+  async function saveToDrive() {
+    const item = current();
+    if (!item) return;
+    let options;
+    try {
+      options = await api.get(`/api/items/${item.id}/drive`);
+    } catch (e) {
+      toast(e.message);
+      return;
+    }
+    const canSave = ['subfolder', 'whole_folder'].includes(options.save);
+    const names = [...new Set([options.suggested, ...options.folders])];
+    const picture = options.picture ? (['own', 'open'].includes(options.picture) ? options.picture : 'check') : null;
+    const why = ['my_drive', 'read_only', 'ambiguous'].includes(options.save) ? options.save : 'off';
+    const body = document.createElement('div');
+    body.className = 'dv-save';
+    body.innerHTML = canSave ? `
+        <label class="cf-label" for="dv-folder">${esc(t('driveSave.folder'))}</label>
+        <select id="dv-folder" class="cf-input">
+          ${names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}
+          <option value="">${esc(t('driveSave.newFolder'))}</option>
+        </select>
+        <input id="dv-new" class="cf-input" maxlength="80" hidden placeholder="${esc(t('driveSave.newName'))}" aria-label="${esc(t('driveSave.newName'))}">
+        <p class="cf-hint" id="dv-where"></p>
+        <ul class="dv-what">
+          <li>${esc(t('driveSave.doc'))}</li>
+          ${picture ? `<li>${esc(t(`driveSave.picture.${picture}`))}</li>` : ''}
+          <li>${esc(t('driveSave.noText'))}</li>
+        </ul>
+        ${options.saved ? `<p class="cf-hint">${esc(t('driveSave.savedBefore', { date: date(options.saved.at), folder: options.saved.folder }))}</p>` : ''}
+        <p class="problem" id="dv-error" role="alert" hidden></p>`
+      : `<p class="problem">${esc(t(`driveSave.cannot.${why}`))}</p>`;
+    const select = body.querySelector('#dv-folder');
+    const typed = body.querySelector('#dv-new');
+    const where = body.querySelector('#dv-where');
+    const chosen = () => (select && select.value) || (typed ? typed.value.trim() : '');
+    const showWhere = () => {
+      if (!select) return;
+      typed.hidden = select.value !== '';
+      where.textContent = t('driveSave.where', { path: [...options.path, chosen() || '…'].join(' / ') });
+    };
+    select?.addEventListener('change', () => {
+      showWhere();
+      if (!typed.hidden) typed.focus();
+    });
+    typed?.addEventListener('input', showWhere);
+    showWhere();
+    let busy = false;
+    const dialog = modal({
+      title: t('driveSave.title'),
+      body,
+      className: 'md-drive-save',
+      actions: canSave
+        ? [{ label: t('dialog.cancel'), value: null }, { label: t('driveSave.save'), primary: true, onClick: () => save() }]
+        : [{ label: t('dialog.close'), value: null }],
+    });
+    async function save() {
+      if (busy) return;
+      const folder = chosen();
+      if (!folder) {
+        typed.focus();
+        return;
+      }
+      busy = true;
+      const button = dialog.box.querySelector('.md-actions .btn:not(.ghost)');
+      button.disabled = true;
+      button.textContent = t('driveSave.saving');
+      try {
+        const saved = await api.post(`/api/items/${item.id}/drive`, { folder });
+        dialog.close();
+        toast(t('driveSave.done', { folder: saved.folder.name }));
+        refreshRows([item.id]);
+      } catch (e) {
+        busy = false;
+        button.disabled = false;
+        button.textContent = t('driveSave.save');
+        const error = body.querySelector('#dv-error');
+        error.textContent = e.message;
+        error.hidden = false;
+      }
+    }
+  }
+
+  // Tallenna lista Driveen: the list as the page shows it, its first 100
+  // articles, into one Google Doc and the same as a sheet. A topic's list
+  // goes in the topic's folder; any other in Koosteet, as the tool names
+  // the folder in Drive whatever the page's language.
+  function saveListToDrive() {
+    const title = placeName();
+    const topic = place.kind === 'topic' ? topicsById.get(place.id)?.name : null;
+    const body = document.createElement('div');
+    body.className = 'dv-save';
+    body.innerHTML = `
+      <p>${esc(t('driveList.lead'))}</p>
+      <p class="cf-hint">${esc(total > 100 ? t('driveList.max', { total: number(total) }) : t('driveList.count', { n: number(total) }))}</p>
+      <label class="cf-label" for="dv-list-folder">${esc(t('driveSave.folder'))}</label>
+      <input id="dv-list-folder" class="cf-input" maxlength="80" value="${esc(topic || 'Koosteet')}">
+      <p class="problem" id="dv-error" role="alert" hidden></p>
+      <p class="dv-done" id="dv-done" role="status" hidden></p>`;
+    let busy = false;
+    const dialog = modal({
+      title: t('driveList.button'),
+      body,
+      className: 'md-drive-save',
+      actions: [{ label: t('dialog.cancel'), value: null }, { label: t('driveSave.save'), primary: true, onClick: () => save() }],
+    });
+    async function save() {
+      const folder = body.querySelector('#dv-list-folder').value.trim();
+      if (busy || !folder) return;
+      busy = true;
+      const button = dialog.box.querySelector('.md-actions .btn:not(.ghost)');
+      button.disabled = true;
+      button.textContent = t('driveSave.saving');
+      const p = placeParams(place);
+      const list = { view: p.view, sort: state.sort, q: state.q || null, source: p.source ?? null, topic: p.topic ?? null,
+        tag: p.tag ?? null, signal: p.signal ?? null, untopiced: p.untopiced === 'true' };
+      try {
+        const saved = await api.post('/api/drive/lists', { place: list, title, folder });
+        const link = safeUrl(saved.folder.link);
+        const done = body.querySelector('#dv-done');
+        done.innerHTML = `${esc(t('driveList.done', { folder: saved.folder.name, n: number(saved.count) }))}${link
+          ? ` <a href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(t('driveSave.openFolder'))} ↗</a>` : ''}`;
+        done.hidden = false;
+        body.querySelector('#dv-error').hidden = true;
+        button.hidden = true;
+      } catch (e) {
+        busy = false;
+        button.disabled = false;
+        button.textContent = t('driveSave.save');
+        const error = body.querySelector('#dv-error');
+        error.textContent = e.message;
+        error.hidden = false;
+      }
     }
   }
 
@@ -1348,6 +1704,14 @@ export function showArticles(root) {
     else if (act === 'ask-copy') copyAnswer(Number(target.dataset.n));
     else if (act === 'ask-retry') askAgain(Number(target.dataset.n), false);
     else if (act === 'ask-wider') askAgain(Number(target.dataset.n), true);
+    else if (act === 'drive-save') saveToDrive();
+    else if (act === 'list-drive') saveListToDrive();
+    else if (act === 'drive-files') showDriveFiles();
+    else if (act === 'fresh') {
+      fresher = 0;
+      renderFresh();
+      loadList({ keep: state.item }).then(() => { rowsEl.scrollTop = 0; });
+    }
   });
 
   root.addEventListener('change', (event) => {
@@ -1517,6 +1881,26 @@ export function showArticles(root) {
     loadOverview();
     loadSide().catch(() => {});
   }, 2 * 60000);
+  const waiting = setInterval(refreshOpen, 60000);
+  const unlisten = [
+    onLive('items', hear),
+    onLive('picks', hear),
+    onLive('resync', (change) => {
+      hear(change);
+      refreshDrafts();
+      loadDriveFiles();
+    }),
+    onLive('topics', refreshSide),
+    onLive('signals', refreshSide),
+    onLive('issues', refreshDrafts),
+    onLive('drive', () => {
+      loadDriveFiles();
+      refreshSide();
+    }),
+  ];
+  read.addEventListener('focusout', () => {
+    if (openStale) setTimeout(() => { if (openStale && !typing()) redrawOpen(); }, 0);
+  });
 
   writeState(state);
   q.value = state.q;
@@ -1527,6 +1911,7 @@ export function showArticles(root) {
   loadOverview();
   loadSide({ sources: true }).catch(() => {}).finally(() => show());
   loadOffers();
+  loadDrive();
 
   return {
     leave() {
@@ -1537,6 +1922,10 @@ export function showArticles(root) {
       clearTimeout(terms.timer);
       clearTimeout(seenTimer);
       clearInterval(refresh);
+      clearInterval(waiting);
+      unlisten.forEach((stop) => stop());
+      clearTimeout(heard.timer);
+      clearTimeout(draftsTimer);
       clearInterval(signalPoll);
       window.removeEventListener('hashchange', onHash);
       window.removeEventListener('resize', fit);

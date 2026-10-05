@@ -2,6 +2,7 @@
 // goes back to the login whenever a login ends.
 
 import { api } from './api.js';
+import { startLive, stopLive } from './live.js';
 import { applyTexts, otherLanguage, setLanguage } from './texts.js';
 import { esc } from './format.js';
 import { showLogin } from './pages/login.js';
@@ -45,6 +46,9 @@ function pageFromAddress() {
 
 function setUser(next) {
   user = next;
+  // Changes reach the open pages as they happen while someone is logged in.
+  if (user) startLive();
+  else stopLive();
   who.hidden = !user;
   nav.hidden = !user;
   document.getElementById('who-name').textContent = user ? user.name : '';
