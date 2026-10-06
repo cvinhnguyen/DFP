@@ -9,6 +9,8 @@ import { t } from '../texts.js';
 import { h, fill } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
 import { modal } from '../ui/dialogs.js';
+import { openMenu } from '../ui/menu.js';
+import { KINDS, device as deviceOf, deviceShell, lastDevice, layOutAgain, modelEntries, modelFor, remember, showDevice } from './devices.js';
 
 const checkedLinks = new Set();
 
@@ -17,23 +19,43 @@ export function openPreview({ design, issue, from, onEditBlock, onSendTest, titl
   const html = renderEmail(design, { mode: 'export', issue, t, wireframe: true });
   const size = byteSize(renderEmail(design, { mode: 'export', issue, t }));
   const links = collectLinks(design);
-  let device = 'desktop';
+  let device = lastDevice();
 
   const frame = h('iframe', { class: 'pv-frame', title: t('preview.frameTitle'), sandbox: 'allow-same-origin' });
+  const { shell, screen } = deviceShell('pv-dv');
+  screen.append(frame);
   frame.srcdoc = html;
-  const frameBox = h('div', { class: 'pv-stage', dataset: { device } }, h('div', { class: 'pv-device' }, frame));
+  const frameBox = h('div', { class: 'pv-stage', dataset: { device: 'desktop' } }, shell);
   const side = h('aside', { class: 'pv-side' });
 
+  // A computer, a tablet or a phone, and which model (devices.js).
+  const LABEL = { desktop: 'editor.desktop', tablet: 'editor.tablet', phone: 'editor.mobile' };
+  const ICON = { desktop: 'desktop', tablet: 'tablet', phone: 'mobile' };
+  const model = h('button', { type: 'button', class: 'pv-model', 'aria-haspopup': 'menu' });
   const tabs = h('div', { class: 'pv-tabs', role: 'tablist' },
-    ['desktop', 'mobile'].map((d) => h('button', { type: 'button', role: 'tab', class: 'pv-tab', 'aria-selected': String(d === device), dataset: { device: d }, html: `${icon(d, 18)} ` }, t(`editor.${d}`))),
+    KINDS.map((k) => h('button', { type: 'button', role: 'tab', class: 'pv-tab', dataset: { kind: k }, html: `${icon(ICON[k], 18)} ` }, t(LABEL[k]))),
+    model,
     onSendTest ? h('button', { type: 'button', class: 'pv-tab pv-send', html: `${icon('send', 18)} `, onclick: () => onSendTest() }, t('preview.sendTest')) : null);
+  function show(id) {
+    device = id;
+    const d = showDevice(shell, id);
+    frameBox.dataset.device = d.kind;
+    tabs.querySelectorAll('[data-kind]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.kind === d.kind)));
+    model.hidden = d.kind === 'desktop';
+    model.innerHTML = d.kind === 'desktop' ? '' : `<span>${d.name}</span>${icon('chevronDown', 16)}`;
+    model.setAttribute('aria-label', d.kind === 'desktop' ? '' : `${t('editor.model')}: ${d.name}`);
+    requestAnimationFrame(() => layOutAgain(frame));
+  }
+  function choose(id) {
+    remember(id);
+    show(id);
+  }
   tabs.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-device]');
-    if (!b) return;
-    device = b.dataset.device;
-    frameBox.dataset.device = device;
-    tabs.querySelectorAll('[data-device]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.device === device)));
+    const b = e.target.closest('[data-kind]');
+    if (b) choose(modelFor(b.dataset.kind));
   });
+  model.addEventListener('click', () => openMenu(model, modelEntries(deviceOf(device).kind, device, choose), { align: 'left' }));
+  show(device);
 
   function highlight(link) {
     const doc = frame.contentDocument;

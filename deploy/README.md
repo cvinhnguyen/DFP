@@ -52,6 +52,15 @@ cloud model in `app_settings`.
    `n8n/rebuild.sh` as on a new laptop.
 4. `docker compose up -d --build`. Caddy gets the certificate within a
    minute; `docker compose logs caddy` says "certificate obtained".
+5. Tell the dashboard its own address: `dashboard_url` in `app_settings`,
+   copied with the data, still names the old machine. The email's preview
+   and export build the pictures' addresses from it, and the bot's /login
+   links too, so with the old value the pictures show broken and the links
+   lead nowhere:
+
+   ```
+   UPDATE app_settings SET value = 'https://<the public name>' WHERE key = 'dashboard_url';
+   ```
 
 Only one copy may run the schedules and the Telegram bot: two copies polling
 the same bot split its messages between them, and both would collect,

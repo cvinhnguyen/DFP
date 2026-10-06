@@ -6,9 +6,10 @@
 //   change   the design changed. { render } is false while someone types,
 //            because the canvas already shows the typing.
 //   select   a different block or section is selected
-//   device   desktop or phone
+//   device   desktop, or a phone's or a tablet's id (devices.js)
 //   editing  text editing started or stopped
 
+import { lastDevice } from './devices.js';
 import { findBlock, findSection } from '../newsletter/model.js';
 
 const MAX_HISTORY = 100;
@@ -28,7 +29,7 @@ export function createStore(design) {
     design,
     selection: null,     // { kind: 'block' | 'section', id }
     editing: null,       // { blockId, field }
-    device: 'desktop',
+    device: lastDevice(),
     dirty: false,
     version: 0,          // goes up with every change, for "has it changed since"
   };

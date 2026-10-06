@@ -58,7 +58,9 @@
   font: inherit; font-size: 12px;
 }
 .ed-rail-item:hover { color: var(--ink); background: var(--surface); }
-.ed-rail-item[aria-current="true"] { color: var(--sel); background: var(--surface); box-shadow: inset 3px 0 0 var(--sel); font-weight: 600; }
+/* The panel that is open: a soft green tile, as the phone's tab bar marks its page. */
+.ed-rail-item[aria-current="true"] { color: var(--sel); background: var(--sel-soft); font-weight: 650; }
+.ed-rail-item[aria-current="true"]:hover { color: var(--sel); background: var(--sel-soft); }
 .ed-badge {
   position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
   background: var(--danger); color: var(--on-danger); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
@@ -94,11 +96,89 @@
 #ed-preview { margin-left: 8px; }
 
 .ed-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; justify-content: center; }
-.ed-frame { border: 0; width: 100%; height: 100%; background: transparent; display: block; transition: width .25s ease; }
-.ed-stage[data-device="mobile"] .ed-frame {
-  width: 390px; margin: 12px 0; height: calc(100% - 24px); border-radius: 22px; background: #fff;
-  box-shadow: 0 0 0 10px #2b2f2a, 0 18px 40px rgba(0, 0, 0, .25);
+.ed-frame { border: 0; width: 100%; height: 100%; background: transparent; display: block; }
+.ed-stage:not([data-device="desktop"]) { padding: 16px; overflow: auto; justify-content: flex-start; }
+.ed-model, .pv-model {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 6px 10px 6px 12px;
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; cursor: pointer;
 }
+.ed-model:hover, .pv-model:hover { border-color: var(--sel); }
+.ed-model[hidden], .pv-model[hidden] { display: none; }
+
+/* ---------- the devices (devices.js) ----------
+   A computer is the plain frame. A phone or a tablet is its screen at the
+   model's own width in CSS pixels, as tall as the model or as the space
+   allows, in the model's own frame: the Dynamic Island and the home
+   indicator of an iPhone 16, the home button of an iPhone SE, the camera
+   hole of an Android phone, the even frame of an iPad. */
+.dv { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; }
+.dv-screen { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dv-screen > iframe { flex: 1; min-height: 0; width: 100%; }
+.dv-status, .dv-home { display: none; }
+.dv:not([data-kind="desktop"]) {
+  flex: 0 0 auto; box-sizing: border-box; margin: 0 auto;
+  width: calc(var(--dv-w) + 2 * var(--dv-side));
+  height: min(calc(var(--dv-h) + var(--dv-top) + var(--dv-bottom)), 100%);
+  padding: var(--dv-top) var(--dv-side) var(--dv-bottom);
+  border-radius: var(--dv-r); background: #1c1e1b;
+  box-shadow: inset 0 0 0 1.5px #3d413b, 0 0 0 1px rgba(0, 0, 0, .4), 0 22px 50px rgba(0, 0, 0, .28);
+}
+.dv:not([data-kind="desktop"]) .dv-screen { border-radius: var(--dv-sr); background: #fff; }
+.dv:not([data-kind="desktop"]) .dv-screen > iframe { border-radius: 0; box-shadow: none; }
+.dv:not([data-kind="desktop"]) .dv-status {
+  position: relative; display: flex; align-items: center; justify-content: space-between; flex: 0 0 auto;
+  height: var(--dv-sb); padding: 0 var(--dv-pad); background: #fff; color: #111;
+  font: 600 15px/1 -apple-system, "SF Pro Text", system-ui, sans-serif; letter-spacing: -.01em;
+}
+.dv-icons svg { display: block; fill: currentColor; }
+.dv-cam { position: absolute; left: 50%; transform: translateX(-50%); background: #0a0a0a; }
+.dv:not([data-kind="desktop"]) .dv-home { position: absolute; left: 50%; transform: translateX(-50%); pointer-events: none; }
+
+.dv[data-look="island"] { --dv-side: 12px; --dv-top: 12px; --dv-bottom: 12px; --dv-r: 58px; --dv-sr: 46px; --dv-sb: 54px; --dv-pad: 34px; }
+.dv[data-look="island"] .dv-cam { top: 11px; width: 124px; height: 36px; border-radius: 18px; }
+.dv[data-look="island"] .dv-icons svg { width: 74px; height: 15px; }
+
+.dv[data-look="punch"] { --dv-side: 9px; --dv-top: 9px; --dv-bottom: 9px; --dv-r: 42px; --dv-sr: 34px; --dv-sb: 34px; --dv-pad: 24px; }
+.dv[data-look="punch"] .dv-status { font: 500 13.5px/1 Roboto, "Segoe UI", system-ui, sans-serif; }
+.dv[data-look="punch"] .dv-cam { top: 10px; width: 13px; height: 13px; border-radius: 50%; }
+.dv[data-look="punch"] .dv-icons svg { width: 62px; height: 13px; }
+
+.dv[data-look="home"] { --dv-side: 16px; --dv-top: 72px; --dv-bottom: 82px; --dv-r: 54px; --dv-sr: 2px; --dv-sb: 20px; --dv-pad: 8px; }
+.dv[data-look="home"] .dv-status { font-size: 12px; }
+.dv[data-look="home"] .dv-cam { display: none; }
+.dv[data-look="home"] .dv-icons svg { width: 58px; height: 12px; }
+.dv[data-look="home"]::before { content: ""; position: absolute; top: 33px; left: 50%; width: 52px; height: 6px; margin-left: -26px; border-radius: 3px; background: #3d413b; }
+.dv[data-look="home"] .dv-home { display: block; bottom: 15px; width: 54px; height: 54px; border-radius: 50%; box-shadow: inset 0 0 0 2px #4b4f48; }
+
+.dv[data-look="tablet"] { --dv-side: 20px; --dv-top: 20px; --dv-bottom: 20px; --dv-r: 34px; --dv-sr: 16px; --dv-sb: 26px; --dv-pad: 22px; }
+.dv[data-look="tablet"] .dv-status { font-size: 12.5px; }
+.dv[data-look="tablet"] .dv-cam { display: none; }
+.dv[data-look="tablet"] .dv-icons svg { width: 62px; height: 13px; }
+.dv[data-look="tablet"]::before { content: ""; position: absolute; top: 7px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: #3d413b; }
+
+.dv[data-look="island"] .dv-home, .dv[data-look="tablet"] .dv-home {
+  display: block; bottom: calc(var(--dv-bottom) + 8px); width: 134px; height: 5px; border-radius: 3px; background: #111; opacity: .85;
+}
+.dv[data-look="tablet"] .dv-home { width: 200px; }
+
+/* The notch of an iPhone 16e, joined to the top of the screen. */
+.dv[data-look="notch"] { --dv-side: 12px; --dv-top: 12px; --dv-bottom: 12px; --dv-r: 54px; --dv-sr: 42px; --dv-sb: 47px; --dv-pad: 30px; }
+.dv[data-look="notch"] .dv-cam { top: 0; width: 162px; height: 32px; border-radius: 0 0 20px 20px; }
+.dv[data-look="notch"] .dv-icons svg { width: 70px; height: 14px; }
+.dv[data-look="notch"] .dv-home { display: block; bottom: calc(var(--dv-bottom) + 8px); width: 134px; height: 5px; border-radius: 3px; background: #111; opacity: .85; }
+
+/* The teardrop of a Galaxy A. */
+.dv[data-look="drop"] { --dv-side: 9px; --dv-top: 9px; --dv-bottom: 14px; --dv-r: 40px; --dv-sr: 30px; --dv-sb: 30px; --dv-pad: 24px; }
+.dv[data-look="drop"] .dv-status { font: 500 13px/1 Roboto, "Segoe UI", system-ui, sans-serif; }
+.dv[data-look="drop"] .dv-cam { top: 0; width: 26px; height: 22px; border-radius: 0 0 13px 13px; }
+.dv[data-look="drop"] .dv-icons svg { width: 60px; height: 13px; }
+
+/* A Galaxy Z Fold, open: a thin frame and the fold down the middle. */
+.dv[data-look="fold"] { --dv-side: 8px; --dv-top: 8px; --dv-bottom: 8px; --dv-r: 26px; --dv-sr: 18px; --dv-sb: 30px; --dv-pad: 22px; }
+.dv[data-look="fold"] .dv-status { font: 500 13px/1 Roboto, "Segoe UI", system-ui, sans-serif; }
+.dv[data-look="fold"] .dv-cam { top: 9px; left: auto; right: 22%; transform: none; width: 11px; height: 11px; border-radius: 50%; }
+.dv[data-look="fold"] .dv-icons svg { width: 60px; height: 13px; }
+.dv[data-look="fold"] .dv-home { display: block; top: var(--dv-top); bottom: var(--dv-bottom); width: 1px; background: linear-gradient(rgba(0, 0, 0, .02), rgba(0, 0, 0, .08) 50%, rgba(0, 0, 0, .02)); }
 .ed-layer { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 
 /* The tools over the email: outlines, the block's label and toolbar, the
@@ -308,10 +388,8 @@
 .pv-tab { appearance: none; border: 1px solid transparent; background: none; color: var(--link); font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .pv-tab[aria-selected="true"] { border-color: var(--sel); color: var(--sel); font-weight: 600; }
 .pv-stage { flex: 1; min-height: 0; display: flex; justify-content: center; padding: 16px; overflow: hidden; }
-.pv-device { width: 100%; height: 100%; display: flex; }
+.pv-stage:not([data-device="desktop"]) { overflow: auto; justify-content: flex-start; }
 .pv-frame { border: 0; width: 100%; height: 100%; background: #fff; border-radius: 4px; box-shadow: 0 2px 10px rgba(0, 0, 0, .08); }
-.pv-stage[data-device="mobile"] .pv-device { width: 390px; padding: 12px; background: #2b2f2a; border-radius: 30px; }
-.pv-stage[data-device="mobile"] .pv-frame { border-radius: 18px; }
 .pv-side { width: 340px; flex: 0 0 auto; border-left: 1px solid var(--rule); padding: 16px 18px; overflow: auto; }
 .pv-side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .pv-side-title { font-size: 16px; margin: 0 0 10px; }
@@ -401,7 +479,11 @@
   .ed-phone-note { display: block; margin: 0; padding: 8px 14px; font-size: 13.5px; line-height: 1.4; background: var(--sel-soft); color: var(--ink); }
   .ed-canvas-bar { justify-content: flex-end; }
   .ed-canvas-tools { position: static; }
-  .ed-stage[data-device="mobile"] .ed-frame { width: 100%; margin: 0; height: 100%; border-radius: 0; box-shadow: none; }
+  .ed-model { display: none; }
+  .ed-stage:not([data-device="desktop"]) { padding: 0; }
+  .ed-stage .dv:not([data-kind="desktop"]) { width: 100%; height: 100%; padding: 0; border-radius: 0; background: none; box-shadow: none; }
+  .ed-stage .dv:not([data-kind="desktop"]) .dv-screen { border-radius: 0; }
+  .ed-stage .dv-status, .ed-stage .dv-home, .ed-stage .dv::before { display: none !important; }
 }
 
 /* The AI's draft of the greeting or of a trend's why it matters, above the

@@ -14,6 +14,7 @@ import { fromDom } from '../newsletter/richtext.js';
 import { t } from '../texts.js';
 import { h, keepFocus } from '../ui/dom.js';
 import { icon } from '../ui/icons.js';
+import { deviceShell, layOutAgain, showDevice } from './devices.js';
 
 const PLAIN_FIELDS = new Set(['title', 'button', 'article-button']);
 const EMPTY_CSS = '[data-empty]{position:relative;}'
@@ -63,6 +64,13 @@ export function createCanvas({ store, stage, frame, layer, actions }) {
   }
 
   // ---------- the frame ----------
+
+  // The frame sits in a device (devices.js), put round it before it loads,
+  // as moving it later would load it again.
+  const { shell, screen } = deviceShell('ed-dv');
+  frame.replaceWith(shell);
+  screen.append(frame);
+  stage.dataset.device = showDevice(shell, store.device).kind;
 
   frame.srcdoc = `<!doctype html><html lang="fi"><head><meta charset="utf-8"><style id="nl-css"></style><style>${EMPTY_CSS}</style></head><body></body></html>`;
   frame.addEventListener('load', () => {
@@ -126,10 +134,12 @@ export function createCanvas({ store, stage, frame, layer, actions }) {
     return [...el.querySelectorAll(`[data-edit="${CSS.escape(field)}"]`)].find((f) => f.closest('[data-block-id]') === el) || null;
   }
 
+  // In the layer's coordinates. A tablet wider than the space scrolls the
+  // stage sideways, and the layer, inside the stage, scrolls with it.
   function frameOffset() {
     const f = frame.getBoundingClientRect();
     const s = stage.getBoundingClientRect();
-    return { x: f.left - s.left, y: f.top - s.top, width: f.width, height: f.height };
+    return { x: f.left - s.left + stage.scrollLeft, y: f.top - s.top + stage.scrollTop, width: f.width, height: f.height };
   }
 
   // Where an element of the email is, in the layer's coordinates.
@@ -496,9 +506,13 @@ export function createCanvas({ store, stage, frame, layer, actions }) {
     if (editingEl && !(sel && sel.kind === 'block' && store.editing && sel.id === store.editing.blockId)) stopEditing();
     queueDraw();
   });
+  stage.addEventListener('scroll', () => queueDraw(), { passive: true });
   store.on('device', () => {
-    stage.dataset.device = store.device;
-    setTimeout(queueDraw, 260);
+    stage.dataset.device = showDevice(shell, store.device).kind;
+    requestAnimationFrame(() => {
+      layOutAgain(frame);
+      queueDraw();
+    });
   });
 
   return {

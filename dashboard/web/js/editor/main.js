@@ -31,6 +31,8 @@ import { createStylesPanel } from './panels/styles.js';
 import { createCheckPanel } from './panels/check.js';
 import { createLibrary } from './library.js';
 import { openPreview } from './preview.js';
+import { KINDS, device as deviceOf, lastDevice, modelEntries, modelFor, remember } from './devices.js';
+import { openMenu } from '../ui/menu.js';
 import { chooseTemplate } from './chooser.js';
 import { createComments } from './comments.js';
 import { modal, confirmDialog, promptDialog, toast } from '../ui/dialogs.js';
@@ -699,13 +701,26 @@ function bindUi() {
   $('ed-exit-menu').addEventListener('click', (e) => exitMenu(e.currentTarget));
   $('ed-test').addEventListener('click', sendTest);
   document.querySelectorAll('.ed-rail-item').forEach((b) => b.addEventListener('click', () => openRail(b.dataset.panel)));
-  for (const device of ['desktop', 'mobile']) {
-    $(`ed-${device}`).addEventListener('click', () => {
-      store.setDevice(device);
-      $('ed-desktop').setAttribute('aria-pressed', String(device === 'desktop'));
-      $('ed-mobile').setAttribute('aria-pressed', String(device === 'mobile'));
-    });
-  }
+  // A computer, a tablet or a phone, and which model (devices.js). The
+  // buttons are ready before the email is: until then the device is the one
+  // last shown, which is where the store starts too.
+  const currentDevice = () => (store ? store.device : lastDevice());
+  const showDeviceChoice = () => {
+    const d = deviceOf(currentDevice());
+    for (const kind of KINDS) $(`ed-${kind}`).setAttribute('aria-pressed', String(kind === d.kind));
+    const model = $('ed-model');
+    model.hidden = d.kind === 'desktop';
+    model.innerHTML = d.kind === 'desktop' ? '' : `<span>${d.name}</span>${icon('chevronDown', 16)}`;
+    model.setAttribute('aria-label', d.kind === 'desktop' ? '' : `${t('editor.model')}: ${d.name}`);
+  };
+  const chooseDevice = (id) => {
+    remember(id);
+    if (store) store.setDevice(id);
+    showDeviceChoice();
+  };
+  for (const kind of KINDS) $(`ed-${kind}`).addEventListener('click', () => chooseDevice(modelFor(kind)));
+  $('ed-model').addEventListener('click', (e) => openMenu(e.currentTarget, modelEntries(deviceOf(currentDevice()).kind, currentDevice(), chooseDevice), { align: 'left' }));
+  showDeviceChoice();
   $('ed-undo').addEventListener('click', () => store.undo());
   $('ed-redo').addEventListener('click', () => store.redo());
   $('ed-comments-toggle').addEventListener('click', () => comments.toggle());
