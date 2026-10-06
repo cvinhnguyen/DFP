@@ -521,6 +521,24 @@ The dashboard gathers the material and asks n8n through `POST
 are: `POST /api/issues/{id}/ai/subject`, `/api/issues/{id}/ai/greeting` and
 `/api/signals/{id}/ai/trend`.
 
+### Waiting for the AI
+
+Everything the editors ask the AI for waits its turn in one line
+(`services/ai_line.py`): the dashboard asks the model two things at once and
+the rest wait in the order they came, so a room trying Kysy at the same
+moment waits instead of the model refusing everyone. While a question waits,
+Kysy says how many are ahead of it ("2 questions are ahead of yours", then
+"Your question is next"), asking `GET /api/ai/line/{key}` with the key the
+page sent with it. Waiting costs no thread, so the rest of the dashboard
+stays quick however long the line is.
+
+The questions to ask next are only nice to have, so while anyone waits they
+are not asked for. With 30 waiting, or after four minutes in line, the
+editor is asked to try again in a moment (`ai_busy`). A model that did not
+answer is asked once more after three seconds: a cloud model that refused a
+burst usually answers a moment later. `AI_AT_ONCE`, `AI_LINE_MAX` and
+`AI_LINE_PATIENCE` in `.env` change the numbers.
+
 ### Kysy artikkeleilta
 
 A conversation on Artikkelit for asking, in Finnish, what the sources have
@@ -810,6 +828,7 @@ app/
 tests/
   test_drive_*.py  the Drive guard's rules, what it saves, and what it never touches
   test_live.py     which page hears which change
+  test_ai_line.py  the AI's line: turns in order, places, a full line, a long wait
   test_issue_shapes.py  a newsletter's articles as the database gives them
   test_sources.py  the addresses never fetched, feeds, a watched page's links,
                    how a source is said to be doing

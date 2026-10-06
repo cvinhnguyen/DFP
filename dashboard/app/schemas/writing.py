@@ -44,6 +44,9 @@ class AskIn(BaseModel):
     days: int = Field(default=90, ge=7, le=3650, description="How far back to look, by the article's date")
     previous: AskPrevious | None = Field(default=None, description="The question before in the conversation, for a "
                                          "follow-up such as \"Entä lukioissa?\"; left out, the question stands alone")
+    line: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{8,64}$",
+                             description="A key the page makes up, to ask GET /api/ai/line/{key} how many questions "
+                                         "are ahead of this one while it waits its turn")
 
 
 class AskAnswer(Usage):
@@ -70,3 +73,8 @@ class RecentQuestion(BaseModel):
     days: int
     times: int = Field(description="How often the editor has asked it")
     asked_at: datetime
+
+
+class LinePlace(BaseModel):
+    state: str = Field(description="answering, waiting, or unknown: not in line yet, or already answered")
+    ahead: int = Field(description="Questions still before this one in line")

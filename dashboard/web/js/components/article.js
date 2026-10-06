@@ -209,7 +209,10 @@ function eventStrip(item, sendOn) {
   if (e.deadline) parts.push(`<span>${esc(t('event.deadlineOn', { date: fiDay(e.deadline) }))}</span>`);
   if (!parts.length) return '';
   const early = beforeSend(e, sendOn);
-  const warning = early ? `<span class="rd-event-early">${esc(t(early === 'event' ? 'event.beforeSend' : 'event.deadlineBeforeSend', { date: shortDay(sendOn) }))}</span>` : '';
+  // A day of this year ends in its own full stop, 14.10., and the sentence
+  // does not add a second one.
+  const said = early ? t(early === 'event' ? 'event.beforeSend' : 'event.deadlineBeforeSend', { date: shortDay(sendOn) }).replace(/\.\.$/, '.') : '';
+  const warning = early ? `<span class="rd-event-early">${esc(said)}</span>` : '';
   return `
     <p class="rd-event${early ? ' early' : ''}"><span class="rd-event-tag">${AI_MARK}${esc(t('event.label'))}</span>${parts.join(' ')}
       ${warning}<span class="rd-event-note">${esc(t('event.byAiShort'))}</span></p>`;

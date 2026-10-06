@@ -23,6 +23,7 @@ the AI suggests what to ask next (followups below).
 """
 
 import json
+import time
 import urllib.error
 import urllib.request
 
@@ -219,7 +220,22 @@ def _usage_of(answers):
 
 def _ask(payload, timeout=150):
     """Sends the material to the writing help workflow and waits for its
-    answer: a few seconds, or longer when the model is busy."""
+    answer: a few seconds, or longer when the model is busy. A model that
+    did not answer is asked once more after a pause: a cloud model that
+    refused because of a burst usually answers a moment later."""
+    try:
+        return _ask_once(payload, timeout)
+    except WritingProblem as e:
+        if e.code != "ai_failed":
+            raise
+    time.sleep(RETRY_AFTER)
+    return _ask_once(payload, timeout)
+
+
+RETRY_AFTER = 3
+
+
+def _ask_once(payload, timeout):
     if not config.INGEST_TOKEN:
         raise WritingProblem("ai_not_set_up", "INGEST_TOKEN is missing from .env, so the dashboard cannot ask n8n.", 503)
     request = urllib.request.Request(

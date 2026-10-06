@@ -96,6 +96,11 @@ services:
       # Needed later for the Telegram trigger. Leave as localhost until you
       # run a tunnel, then put the public https URL here.
       WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+    # The model server runs on the machine itself (llm_base_url in
+    # app_settings is http://host.docker.internal:11434). Docker on Mac and
+    # Windows knows that name; on Linux it needs this.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:${N8N_PORT:-5678}:5678"
     volumes:
@@ -143,6 +148,11 @@ services:
       # by themselves, which they never do: three seconds, then it closes
       # them, and the pages connect again to the new one.
       UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN: "3"
+      # The line for the AI (services/ai_line.py): questions asked at once,
+      # how many more may wait, and for how many seconds.
+      AI_AT_ONCE: ${AI_AT_ONCE:-2}
+      AI_LINE_MAX: ${AI_LINE_MAX:-30}
+      AI_LINE_PATIENCE: ${AI_LINE_PATIENCE:-240}
     # Lets the dashboard ask the model server on your machine whether it is
     # answering, on Linux as well as on Mac and Windows.
     extra_hosts:

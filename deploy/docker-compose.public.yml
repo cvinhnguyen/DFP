@@ -1,0 +1,36 @@
+# The dashboard on the internet, on one Linux server: Caddy in front of it
+# with https, the rest as in docker-compose.yml. See deploy/README.md.
+#
+#   COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.public.yml   in .env
+#   docker compose up -d
+services:
+  caddy:
+    image: caddy:2
+    container_name: ${CONTAINER_PREFIX:-dfp}-caddy
+    restart: unless-stopped
+    depends_on:
+      - dashboard
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - dfp
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+# A fixed range, so FORWARDED_ALLOW_IPS can name it: the dashboard takes a
+# visitor's address from X-Forwarded-For only when Caddy, on this network,
+# sends it.
+networks:
+  dfp:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

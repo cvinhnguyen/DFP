@@ -749,22 +749,62 @@ export function showArticles(root, { user = null } = {}) {
     } : null;
   }
 
+  // While a question waits its turn with the AI (services/ai_line.py), how
+  // many are before it: the page asks after a moment, and then every second
+  // and a half until the answer comes.
+  function lineKey() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function waitText(pending) {
+    const wait = pending && pending.wait;
+    if (!wait || wait.state !== 'waiting') return t('ask.busy');
+    return wait.ahead ? tn('ask.inLine', wait.ahead, { n: number(wait.ahead) }) : t('ask.nextInLine');
+  }
+
+  function watchLine(key) {
+    let timer = null;
+    let stopped = false;
+    const look = async () => {
+      try {
+        const place = await api.get(`/api/ai/line/${key}`);
+        if (stopped || !asked.pending || asked.pending.line !== key) return;
+        asked.pending.wait = place;
+        const el = rowsEl.querySelector('.chat-a.busy .chat-wait');
+        if (el) el.textContent = waitText(asked.pending);
+      } catch {
+        // The answer is what matters; the place in line is only shown.
+      }
+      if (!stopped) timer = setTimeout(look, 1500);
+    };
+    timer = setTimeout(look, 1200);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }
+
   async function askQuestion(question, days = Number($('ask-days').value) || 90, { alone = false } = {}) {
     const text = String(question || '').replace(/\s+/g, ' ').trim();
     if (text.length < 3 || asked.busy) return;
     const previous = alone ? null : previousTurn();
     asked.busy = true;
-    asked.pending = { question: text, days };
+    const key = lineKey();
+    asked.pending = { question: text, days, line: key, wait: null };
     $('ask-q').value = '';
     updateComposer();
     renderRows();
     rowsEl.removeAttribute('aria-busy');
     toLatest();
     let turn;
+    const stopWatching = watchLine(key);
     try {
-      turn = { question: text, days, ...(await api.post('/api/ask', { question: text, days, ...(previous ? { previous } : {}) })) };
+      turn = { question: text, days, ...(await api.post('/api/ask', { question: text, days, line: key, ...(previous ? { previous } : {}) })) };
     } catch (e) {
       turn = { question: text, days, answer: null, sources: [], error: e.message };
+    } finally {
+      stopWatching();
     }
     asked.busy = false;
     asked.pending = null;
@@ -962,7 +1002,7 @@ export function showArticles(root, { user = null } = {}) {
     out += asked.list.map(turnHtml).join('');
     if (asked.pending) {
       out += `<article class="chat-turn">${questionHtml(asked.pending)}
-        <div class="chat-a busy" role="status"><span class="chat-dots" aria-hidden="true"><i></i><i></i><i></i></span>${esc(t('ask.busy'))}</div></article>`;
+        <div class="chat-a busy" role="status"><span class="chat-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-wait">${esc(waitText(asked.pending))}</span></div></article>`;
     }
     return `<div class="chat">${out}</div>`;
   }

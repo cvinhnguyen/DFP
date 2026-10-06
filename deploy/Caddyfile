@@ -1,0 +1,9 @@
+# The one public door: https for the dashboard and nothing else. n8n and
+# PostgreSQL stay on 127.0.0.1. Caddy gets and renews the certificate itself
+# (Let's Encrypt) for PUBLIC_HOST from .env, and passes each visitor's address
+# on in X-Forwarded-For, which the dashboard trusts from this network only
+# (FORWARDED_ALLOW_IPS). The live pages' stream is passed on as it comes.
+{$PUBLIC_HOST} {
+	encode zstd gzip
+	reverse_proxy dashboard:8000
+}

@@ -34,3 +34,11 @@ DRIVE_KEY_FILE = os.environ.get("DRIVE_KEY_FILE", "/srv/secrets/google-drive.jso
 # in tests/fake_drive.py. No key and no token are used with it. Never set it
 # for real use.
 DRIVE_TEST_SERVER = os.environ.get("DRIVE_TEST_SERVER", "").strip()
+
+# The line for the AI (services/ai_line.py): how many questions the model is
+# asked at once, how many more may wait their turn, and for how many seconds.
+# A room trying the dashboard at the same moment waits in order instead of
+# the model refusing them all.
+AI_AT_ONCE = max(1, int(os.environ.get("AI_AT_ONCE", "2")))
+AI_LINE_MAX = max(0, int(os.environ.get("AI_LINE_MAX", "30")))
+AI_LINE_PATIENCE = max(5, int(os.environ.get("AI_LINE_PATIENCE", "240")))
