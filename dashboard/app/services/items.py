@@ -4,6 +4,8 @@ each most likely belongs in (services/suggest.py).
 Jira: DM42-31
 """
 
+from datetime import date, timedelta
+
 from ..queries import items as queries
 from ..queries import settings
 from ..schemas.items import Counts, FilterOptions, Item, ItemPage
@@ -93,3 +95,38 @@ def mark_seen(item_id, user_id):
 
 def filter_options(hide_drive=False):
     return FilterOptions(**queries.filter_options(hide_drive))
+
+
+# ---------- what is waiting for each section ----------
+
+def waiting_by_section(hide_drive=False):
+    """How many articles in Uudet each section is suggested for."""
+    counts = {section: 0 for section in suggest.SECTIONS}
+    for row in queries.suggestion_inputs(hide_drive):
+        counts[suggest.suggest(row)[0]] += 1
+    return counts
+
+
+def list_suggested(section, page, per_page, user_id=None, hide_drive=False):
+    """The articles in Uudet suggested for the section, the newest first:
+    what "3 waiting" on a newsletter's page opens."""
+    ids = [r["id"] for r in queries.suggestion_inputs(hide_drive) if suggest.suggest(r)[0] == section]
+    where, params = queries.filters(hide_drive=hide_drive)
+    params["user"] = user_id
+    counts = queries.counts(where, params)
+    chunk = ids[(page - 1) * per_page:page * per_page]
+    return ItemPage(items=items_by_ids(chunk, user_id, hide_drive), total=len(ids), page=page, per_page=per_page,
+                    counts=Counts(**counts))
+
+
+# ---------- the calendar ----------
+
+def calendar(month, user_id=None, hide_drive=False):
+    """The events of a month, 2026-10, as the list shows articles: every
+    one whose days are in it, or whose last day to sign up is."""
+    year, number = (int(x) for x in month.split("-"))
+    first = date(year, number, 1)
+    last = (first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    return {"month": f"{year:04d}-{number:02d}",
+            "items": items_by_ids(queries.event_ids(first, last, hide_drive), user_id, hide_drive),
+            "upcoming": queries.upcoming_events(hide_drive)}

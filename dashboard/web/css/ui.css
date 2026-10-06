@@ -9,13 +9,14 @@
   --drop: #7b4ce0;
   --danger: #b42318;
   --danger-soft: #fdecea;
+  --on-danger: #ffffff;
   --warn: #8c5c10;
   --warn-soft: #fbf1df;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --sel: #8cc460; --sel-soft: rgba(140, 196, 96, .16); --danger: #f2877d; --danger-soft: #3a1d1a; --warn: #d8a852; --warn-soft: #312717; }
+  :root:not([data-theme="light"]) { --sel: #8cc460; --sel-soft: rgba(140, 196, 96, .16); --danger: #f2877d; --danger-soft: #3a1d1a; --on-danger: #2b0b08; --warn: #d8a852; --warn-soft: #312717; }
 }
-:root[data-theme="dark"] { --sel: #8cc460; --sel-soft: rgba(140, 196, 96, .16); --danger: #f2877d; --danger-soft: #3a1d1a; --warn: #d8a852; --warn-soft: #312717; }
+:root[data-theme="dark"] { --sel: #8cc460; --sel-soft: rgba(140, 196, 96, .16); --danger: #f2877d; --danger-soft: #3a1d1a; --on-danger: #2b0b08; --warn: #d8a852; --warn-soft: #312717; }
 
 .icon { display: inline-block; vertical-align: middle; flex: 0 0 auto; }
 /* "Suositeltu" next to a template or a way into Mailchimp. */
@@ -185,3 +186,43 @@ select:not([multiple]):not([size]):disabled { cursor: default; opacity: .6; }
 }
 .ai-chip:hover { border-color: var(--brand); background: var(--brand-soft); }
 .ai-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- empty places (ui/empty.js) ---------- */
+
+/* The one way an empty place looks: a mark, a title, a line on what goes
+   there, and the next step. */
+.empty { display: grid; justify-items: center; gap: 8px; max-width: 440px; margin: 0 auto; padding: 36px 16px; text-align: center; }
+.empty-mark { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--brand-soft); color: var(--link); }
+.empty-title { margin: 4px 0 0; font-size: 16.5px; font-weight: 650; color: var(--ink); text-wrap: balance; }
+.empty-text { margin: 0; font-size: 14px; line-height: 1.5; color: var(--soft); text-wrap: pretty; }
+.empty-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 6px; }
+.empty.is-problem .empty-mark { background: var(--amber-soft); color: var(--amber); }
+.empty.is-problem .empty-text { color: var(--amber); }
+
+/* How many each choice has, inside the choice. */
+.cf-seg-n { margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--soft); font-variant-numeric: tabular-nums; }
+.cf-seg-item[aria-checked="true"] .cf-seg-n { color: var(--ink); }
+
+/* What the AI worked out, marked the same way everywhere: a small spark in
+   the accent's colour before it. */
+.ai-mark { color: var(--green); flex: 0 0 auto; vertical-align: -2px; }
+
+/* How a source is doing (Lähteet): a dot and a word. */
+.health { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--soft); }
+.health::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.health.ok { color: var(--green); }
+.health.failed { color: var(--danger); }
+.health.quiet, .health.unread { color: var(--amber); }
+.health.waiting, .health.checking { color: var(--slate); }
+.health.off::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+
+/* A source's new articles a week, as small bars (an SVG: the page's
+   security policy allows no inline styles). */
+.weeks { display: block; color: var(--green); flex: 0 0 auto; }
+.weeks rect { fill: currentColor; }
+.weeks rect.zero { fill: var(--rule); }
+
+@media (max-width: 760px) {
+  /* Above the tab bar a phone has at the bottom (base.css). */
+  body:has(#mainnav:not([hidden])) .toasts { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+}

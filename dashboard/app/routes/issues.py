@@ -9,7 +9,8 @@ from fastapi.responses import Response
 from ..dependencies import current_user, not_demo
 from ..errors import ApiError
 from ..schemas.auth import User
-from ..schemas.issues import DesignIn, DesignOut, DesignSaved, Issue, IssueCreate, IssueSummary, IssueUpdate
+from ..schemas.issues import (ActivityEntry, DesignIn, DesignOut, DesignSaved, Issue, IssueCreate, IssueSummary,
+                              IssueUpdate)
 from ..services import issues
 
 router = APIRouter(prefix="/issues", tags=["newsletter"])
@@ -36,7 +37,7 @@ def list_issues():
 def create_issue(body: IssueCreate, user: User = Depends(current_user)):
     """It becomes the current draft, which new picks go into. template says
     what the editor starts it from; without one, the editor asks."""
-    return issues.create(body.name, body.template, user.id)
+    return issues.create(body.name, body.template, user.id, body.planned_for)
 
 
 @router.get("/current", response_model=Issue, summary="The newsletter being prepared")
@@ -68,7 +69,20 @@ def delete_issue(issue_id: int):
     return Empty(status_code=204)
 
 
-@router.patch("/{issue_id}", response_model=Issue, summary="Change the name, subject line or preview text")
+@router.get("/{issue_id}/activity", response_model=list[ActivityEntry],
+            summary="What has been done to a newsletter, the newest first")
+def activity(issue_id: int):
+    """Picks, moves and picks taken out, and changes to its name, subject
+    line and day, with what the issue keeps itself: made, the last save in
+    the editor, the export to Mailchimp, sending, saving into Drive and
+    comments."""
+    try:
+        return issues.activity(issue_id)
+    except issues.NotFound:
+        raise ApiError(*NOT_FOUND)
+
+
+@router.patch("/{issue_id}", response_model=Issue, summary="Change the name, subject line, preview text or planned day")
 def update_issue(issue_id: int, body: IssueUpdate, user: User = Depends(current_user)):
     try:
         return issues.update(issue_id, body.model_dump(exclude_unset=True), user.id)

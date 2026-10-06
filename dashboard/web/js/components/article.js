@@ -5,7 +5,7 @@
 // Jira: DM42-80, DM42-31
 
 import { t, tn, has, currentLanguage } from '../texts.js';
-import { esc, safeUrl, date, when, number, languageName, finnishDay } from '../format.js';
+import { esc, safeUrl, date, when, number, languageName, finnishDay, daysUntil, inDays, shortDay } from '../format.js';
 import { colourOf } from './side.js';
 import { icon } from '../ui/icons.js';
 
@@ -89,13 +89,41 @@ function eventWhen(event) {
   return event && event.starts && event.line ? event.line.split(' | ')[0] : '';
 }
 
-// In the list: the dates, or the deadline when only that is known.
-function eventChip(item) {
+// The mark on what the AI read out of an article, the same everywhere.
+export const AI_MARK = `<span class="ai-mark" aria-hidden="true">${icon('sparkle', 14)}</span>`;
+
+// Whether an event, or the last day to sign up for it, falls before the
+// newsletter goes out, sendOn being that day (2026-10-07). An event over
+// already says nothing: Uudet leaves those out anyway.
+export function beforeSend(event, sendOn) {
+  if (!event || !sendOn) return null;
+  const last = event.ends || event.starts;
+  if (last && daysUntil(last) >= 0 && last < sendOn) return 'event';
+  if (event.deadline && daysUntil(event.deadline) >= 0 && event.deadline < sendOn) return 'deadline';
+  return null;
+}
+
+// Under the row's byline, as the AI read it from the article: the event's
+// days and how far off they are, the last day to sign up, and in amber when
+// it all falls before the newsletter goes out.
+function eventLine(item, sendOn) {
   const e = item.event;
-  if (!e) return '';
-  const when = eventWhen(e).split(' klo ')[0];
-  const text = when || (e.deadline ? t('row.deadline', { date: fiDay(e.deadline) }) : '');
-  return text ? `<span class="chip-when">${esc(text)}</span>` : '';
+  if (!e || !(e.starts || e.deadline)) return '';
+  const parts = [];
+  if (e.starts) {
+    const last = e.ends || e.starts;
+    const relative = daysUntil(e.starts) > 0 ? inDays(e.starts) : (daysUntil(last) >= 0 ? t('row.eventNow') : '');
+    const days = eventWhen(e).split(' klo ')[0] || fiDay(e.starts);
+    parts.push(t('row.event', { date: days }) + (relative ? ` · ${relative}` : ''));
+  }
+  if (e.deadline) {
+    const open = daysUntil(e.deadline) >= 0;
+    parts.push(e.starts ? t(open ? 'row.signUp' : 'row.signUpOver', { date: shortDay(e.deadline) })
+      : `${t('row.deadlineOnly', { date: shortDay(e.deadline) })}${open ? ` · ${inDays(e.deadline)}` : ''}`);
+  }
+  const early = beforeSend(e, sendOn);
+  return `<span class="ar-row-event${early ? ' early' : ''}">${AI_MARK}<span class="sr-only">${esc(t('row.byAi'))}</span><span>${esc(parts.join(' · '))}</span>${early
+    ? `<span class="ar-row-early">${esc(t('row.beforeSend'))}</span>` : ''}</span>`;
 }
 
 function topicDots(item, topics) {
@@ -105,8 +133,9 @@ function topicDots(item, topics) {
   }).join('');
 }
 
-// topics: a Map of the topics by id, for their colours.
-export function articleRow(item, { selected = false, topics = new Map() } = {}) {
+// topics: a Map of the topics by id, for their colours. sendOn: the day the
+// newsletter picks go into is planned to go out, if it has one.
+export function articleRow(item, { selected = false, topics = new Map(), sendOn = null } = {}) {
   const meta = [...byline(item).map(esc), kindLabel(item) ? `<span class="kind">${esc(kindLabel(item))}</span>` : '']
     .filter(Boolean).join(' · ');
   let tags = item.tags.slice(0, 3).map((g) => `<span class="tg${g.origin === 'signal' ? ' sig' : ''}">${esc(g.label)}</span>`).join('');
@@ -119,7 +148,8 @@ export function articleRow(item, { selected = false, topics = new Map() } = {}) 
   return `
     <button type="button" class="ar-row${item.decision ? ' decided' : ''}${item.seen ? '' : ' unseen'}" data-id="${item.id}" aria-current="${selected}">
       <span class="ar-row-title">${langBadge(item)}${title}</span>
-      <span class="ar-row-meta"><span class="ar-row-by">${meta}</span>${eventChip(item)}<span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
+      <span class="ar-row-meta"><span class="ar-row-by">${meta}</span><span class="dots">${topicDots(item, topics)}</span>${stateChip(item)}</span>
+      ${eventLine(item, sendOn)}
       ${tags ? `<span class="ar-row-tags">${tags}</span>` : ''}
     </button>`;
 }
@@ -165,19 +195,24 @@ function chips(item, topics) {
 }
 
 // The event on one line above the summary: the line the newsletter will
-// start it with (17.9.2026 klo 13–16 | Tampere), and the last day to sign
-// up. The AI read these out of the article, so the line says so.
-function eventStrip(item) {
+// start it with (17.9.2026 klo 13–16 | Tampere), how far off it is, and the
+// last day to sign up. The AI read these out of the article, so the line is
+// marked and says so, and it says when it all falls before the newsletter
+// goes out.
+function eventStrip(item, sendOn) {
   const e = item.event;
   if (!e) return '';
   const parts = [];
   const line = e.line || [eventWhen(e), e.place].filter(Boolean).join(' | ');
   if (line) parts.push(`<strong>${esc(line)}</strong>`);
+  if (e.starts && daysUntil(e.starts) > 0) parts.push(`<span class="rd-event-away">${esc(inDays(e.starts))}</span>`);
   if (e.deadline) parts.push(`<span>${esc(t('event.deadlineOn', { date: fiDay(e.deadline) }))}</span>`);
   if (!parts.length) return '';
+  const early = beforeSend(e, sendOn);
+  const warning = early ? `<span class="rd-event-early">${esc(t(early === 'event' ? 'event.beforeSend' : 'event.deadlineBeforeSend', { date: shortDay(sendOn) }))}</span>` : '';
   return `
-    <p class="rd-event"><span class="rd-event-tag">${esc(t('event.label'))}</span>${parts.join(' ')}
-      <span class="rd-event-note">${esc(t('event.byAiShort'))}</span></p>`;
+    <p class="rd-event${early ? ' early' : ''}"><span class="rd-event-tag">${AI_MARK}${esc(t('event.label'))}</span>${parts.join(' ')}
+      ${warning}<span class="rd-event-note">${esc(t('event.byAiShort'))}</span></p>`;
 }
 
 function signalNotes(item) {
@@ -204,7 +239,7 @@ function body(item) {
     const original = item.from_archive && abstract
       ? `<details class="rd-abstract"><summary>${esc(t('reader.abstract'))}</summary><p${langAttr(item.language)}>${esc(abstract)}</p></details>`
       : '';
-    return `<p class="rd-label">${esc(t('reader.summary'))}</p>
+    return `<p class="rd-label">${AI_MARK}${esc(t('reader.summary'))}</p>
       <p class="rd-text" lang="fi">${esc(item.summary.text)}</p>${asked}${original}`;
   }
   if (item.from_archive) {
@@ -399,7 +434,7 @@ export function articleReader(item, ctx) {
         <div class="rd-main">
           <div class="rd-flow">
             ${driveChange(item)}
-            ${eventStrip(item)}
+            ${eventStrip(item, ctx.sendOn)}
             <div class="rd-body">${body(item)}</div>
             ${picture(item)}
             ${item.signals.length ? `<div class="rd-signals">${signalNotes(item)}</div>` : ''}

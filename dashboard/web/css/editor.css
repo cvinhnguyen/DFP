@@ -61,10 +61,10 @@
 .ed-rail-item[aria-current="true"] { color: var(--sel); background: var(--surface); box-shadow: inset 3px 0 0 var(--sel); font-weight: 600; }
 .ed-badge {
   position: absolute; top: 4px; right: 8px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+  background: var(--danger); color: var(--on-danger); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
 }
 .ed-tool-badge { position: relative; }
-.ed-tool-badge .ed-badge { top: -4px; right: -6px; background: var(--sel); }
+.ed-tool-badge .ed-badge { top: -4px; right: -6px; background: var(--sel); color: var(--button-ink); }
 
 .ed-panel {
   width: var(--panel-w); flex: 0 0 auto; overflow-y: auto; background: var(--surface);

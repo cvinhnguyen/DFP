@@ -1,11 +1,12 @@
-// Asetukset, for admins: the Mailchimp connection and how drafts are set up
-// there, the banners and logo, what the AI costs against its monthly budget,
-// how long the text of collected articles is kept, the member organisations,
-// how often the suggested sections were right, and the Google Drive folder.
-// The Mailchimp key itself
-// is never here: it lives in n8n's credential store, and this page only says
-// whether n8n can reach Mailchimp with it.
-// Jira: DM42-37, DM42-74, DM42-39, DM42-45, DM42-32, DM42-43
+// Asetukset, for admins: how the sources are doing, with the way to
+// Lähteet where they are kept (pages/sources.js), the Mailchimp connection
+// and how drafts are set up there, the Google Drive folder, the banners and
+// logo, the member organisations, how often the suggested sections were
+// right, what the AI costs against its monthly budget, and how long the text
+// of collected articles is kept. The Mailchimp key itself is never here: it
+// lives in n8n's credential store, and this page only says whether n8n can
+// reach Mailchimp with it.
+// Jira: DM42-37, DM42-74, DM42-39, DM42-45, DM42-32, DM42-43, DM42-29
 
 import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
@@ -17,21 +18,22 @@ import { retentionCard } from '../components/retention.js';
 import { brandCard } from '../components/brand.js';
 import { membersCard } from '../components/members.js';
 import { suggestionsCard } from '../components/suggestions.js';
-import { sourcePicturesCard } from '../components/sourcePictures.js';
+import { sourcesSummary } from '../components/sources.js';
 import { driveCard } from '../components/drive.js';
 import { showDriveFiles } from '../components/driveFiles.js';
 import { onLive } from '../live.js';
 
 // The sections in the order of the page, under three headings in the list
-// beside them: what the tool is connected to, what goes into the emails,
-// and what the AI costs and how long articles are kept.
+// beside them: where articles come from and go to, what goes into the
+// emails, and what the AI does and costs and how long articles are kept.
+// A source's pictures and section are chosen on Lähteet now.
 const SECTIONS = [
+  { key: 'sources', group: 'connections', title: 'src.title' },
   { key: 'mailchimp', group: 'connections', title: 'admin.mailchimp' },
   { key: 'drive', group: 'connections', title: 'drive.title' },
   { key: 'brand', group: 'content', title: 'brand.title' },
-  { key: 'pics', group: 'content', title: 'pics.title' },
-  { key: 'sugg', group: 'content', title: 'sugg.title' },
   { key: 'members', group: 'content', title: 'members.title' },
+  { key: 'sugg', group: 'data', title: 'sugg.title' },
   { key: 'costs', group: 'data', title: 'cost.title' },
   { key: 'keep', group: 'data', title: 'keep.title' },
 ];
@@ -46,8 +48,7 @@ export function showSettings(root, { user }) {
   let brandBusy = null;   // the banner or logo being uploaded
   let members = null;
   let sugg = null;
-  let pics = null;
-  let picsBusy = null;    // the source whose pictures are being saved
+  let sources = null;     // GET /api/sources, for how they are doing
   let drive = null;
   let driveBusy = null;   // check or sync, while it runs
   let driveLogAll = false; // the whole Drive log, not only the latest
@@ -59,7 +60,7 @@ export function showSettings(root, { user }) {
   let refocus = null;     // the control that had the focus before a redraw
   let gone = false;
   let busy = false;
-  const problems = { mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '', pics: '', drive: '' };
+  const problems = { sources: '', mailchimp: '', costs: '', keep: '', brand: '', members: '', sugg: '', drive: '' };
 
   function status() {
     if (!state) return '';
@@ -74,6 +75,11 @@ export function showSettings(root, { user }) {
 
   // What needs an admin's eye, as a mark beside the section's name.
   function flag(key) {
+    if (key === 'sources' && sources) {
+      const on = sources.sources.filter((x) => x.active);
+      if (on.some((x) => x.health === 'failed')) return 'bad';
+      if (on.some((x) => ['quiet', 'unread'].includes(x.health))) return 'warn';
+    }
     if (key === 'mailchimp' && state && !state.connected) return 'bad';
     if (key === 'drive' && drive && (!drive.configured || drive.check?.problem || drive.check?.outside_count)) return 'bad';
     if (key === 'costs' && costs && ['warn', 'over'].includes(costs.budget?.state)) return costs.budget.state === 'over' ? 'bad' : 'warn';
@@ -81,13 +87,13 @@ export function showSettings(root, { user }) {
   }
 
   function card(key) {
+    if (key === 'sources') return sources ? sourcesSummary(sources) : '';
     if (key === 'mailchimp') return state ? mailchimpCard() : '';
     if (key === 'drive') return drive ? driveCard(drive, driveBusy, { logAll: driveLogAll }) : '';
     if (key === 'brand') return brand ? brandCard(brand, brandBusy) : '';
     if (key === 'costs') return costs ? costsCard(costs) : '';
     if (key === 'keep') return keep ? retentionCard(keep) : '';
     if (key === 'members') return members ? membersCard(members) : '';
-    if (key === 'pics') return pics ? sourcePicturesCard(pics, picsBusy) : '';
     return sugg ? suggestionsCard(sugg) : '';
   }
 
@@ -336,34 +342,15 @@ export function showSettings(root, { user }) {
     update('keep');
   }
 
-  async function loadPictures() {
+  async function loadSources() {
     try {
-      pics = await api.get('/api/sources/pictures');
-      problems.pics = '';
+      sources = await api.get('/api/sources');
+      problems.sources = '';
     } catch (e) {
       if (e.status === 401) return;
-      problems.pics = e.message;
+      problems.sources = e.message;
     }
-    update('pics');
-  }
-
-  // What a source's pictures are, saved as soon as it is chosen.
-  async function savePictures(select) {
-    const id = Number(select.dataset.source);
-    const rights = select.value;
-    picsBusy = id;
-    update('pics');
-    try {
-      const done = await api.put(`/api/sources/${id}/pictures`, { rights });
-      pics.sources = pics.sources.map((x) => (x.id === id ? done.source : x));
-      toast([t('pics.saved', { source: done.source.name, rights: t(`pics.rights.${rights}`) }),
-        done.changed ? tn('pics.changed', done.changed) : '', done.removed ? tn('pics.removed', done.removed) : '']
-        .filter(Boolean).join(' '), 'good');
-    } catch (e) {
-      toast(e.message, 'warn');
-    }
-    picsBusy = null;
-    update('pics');
+    update('sources');
   }
 
   async function loadSuggestions() {
@@ -529,7 +516,6 @@ export function showSettings(root, { user }) {
   });
 
   root.addEventListener('change', (event) => {
-    if (event.target.classList.contains('pics-select')) savePictures(event.target);
     if (event.target.dataset.act === 'drive-switch') {
       driveSave({ enabled: event.target.checked }, t(event.target.checked ? 'drive.on' : 'drive.off'));
     }
@@ -602,6 +588,12 @@ export function showSettings(root, { user }) {
     }, 800);
   }
   const quiet = onLive('drive', driveChanged);
+  // A source checked or changed: its card says how they are doing now.
+  let sourcesTimer = null;
+  const sourcesQuiet = onLive('sources', () => {
+    clearTimeout(sourcesTimer);
+    sourcesTimer = setTimeout(() => { if (!gone) loadSources(); }, 1000);
+  });
   root.addEventListener('focusout', () => {
     if (driveStale) setTimeout(() => { if (driveStale && !typing()) driveChanged(); }, 0);
   });
@@ -618,7 +610,7 @@ export function showSettings(root, { user }) {
   loadCosts();
   loadRetention();
   loadMembers();
-  loadPictures();
+  loadSources();
   loadSuggestions();
   return {
     leave() {
@@ -627,7 +619,9 @@ export function showSettings(root, { user }) {
       clearTimeout(heldTimer);
       document.removeEventListener('focusin', forget);
       quiet();
+      sourcesQuiet();
       clearTimeout(driveTimer);
+      clearTimeout(sourcesTimer);
     },
   };
 }

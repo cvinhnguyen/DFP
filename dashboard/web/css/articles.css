@@ -78,7 +78,7 @@
 .sb-note.good { color: var(--green); background: var(--green-soft); }
 .spinner {
   width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
-  border: 2px solid var(--rule); border-top-color: var(--brand); animation: spin .9s linear infinite;
+  border: 2px solid var(--rule); border-top-color: var(--green); animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -217,7 +217,6 @@
 .tg { font-size: 12px; line-height: 1.6; padding: 0 7px; border-radius: 999px; background: var(--slate-soft); color: var(--ink); }
 .tg.sig { background: var(--amber-soft); color: var(--amber); font-weight: 600; }
 .tg.none { background: none; border: 1px dashed var(--rule); color: var(--soft); }
-.chip-when { font-size: 12px; font-weight: 650; color: var(--link); white-space: nowrap; }
 .chip-state { font-size: 11.5px; font-weight: 650; line-height: 1.6; padding: 0 7px; border-radius: 999px; background: var(--slate-soft); color: var(--soft); }
 .chip-state.picked { background: var(--brand-soft); color: var(--green); }
 .chip-state.warn { background: var(--amber-soft); color: var(--amber); }
@@ -501,7 +500,9 @@ ul.copies { margin: 0; padding-left: 20px; }
   /* Only when, and what is new; the chips and the button share a line. */
   .status { font-size: 13px; }
   .sb-facts .sb-more { display: none; }
-  .sb-end { margin-left: 0; }
+  .sb-end { margin-left: 0; flex-wrap: nowrap; }
+  .sb-check-word { display: none; }
+  .sb-check { min-width: 40px; }
   .ar-read { display: none; overflow: visible; padding: 14px 14px 20px; }
   .ar.reading .ar-list { display: none; }
   .ar.reading .ar-read { display: flex; }
@@ -646,23 +647,37 @@ ul.copies { margin: 0; padding-left: 20px; }
   .chat { padding: 14px 12px 8px; }
   .chat-q { max-width: 92%; }
   .chat-turn { scroll-margin-top: 64px; }
-  .chat-compose { position: sticky; bottom: 0; z-index: 3; padding: 8px 10px 10px; }
+  /* Above the tab bar a phone has at the bottom (base.css). */
+  .chat-compose { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 3; padding: 8px 10px 10px; }
   .chat-alone { display: none; }
 }
 
 /* ---------- live updates and the association's Drive ---------- */
 
-/* New articles for this place, waiting above the list until the editor
-   brings them in (live.js), so the list never moves while it is read. */
+/* New articles that came into the list above what is on the screen
+   (live.js): the button leads up to them. */
 .ar-fresh {
   appearance: none; border: 0; border-bottom: 1px solid var(--rule); background: var(--brand-soft); color: var(--link);
-  font: inherit; font-size: 13.5px; padding: 8px 14px; text-align: left; cursor: pointer;
+  font: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 14px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
 }
-.ar-fresh strong { margin-left: 6px; text-decoration: underline; text-underline-offset: 2px; }
-.ar-fresh:hover strong { text-decoration-thickness: 2px; }
+.ar-fresh svg { flex: 0 0 auto; }
+.ar-fresh:hover span { text-decoration: underline; text-underline-offset: 2px; }
+/* An article that has just come into the list stands out for a moment. */
+.ar-row.arrived { animation: ar-arrived 3s ease-out; }
+@keyframes ar-arrived { from { background-color: var(--brand-soft); } }
 .ar-list-drive svg { flex: 0 0 auto; }
 .ar-list-drive { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; align-self: center; }
-@media (max-width: 760px) { .ar-list-drive { margin-left: 0; } }
+@media (max-width: 760px) {
+  .ar-list-drive { margin-left: auto; padding-left: 8px; padding-right: 8px; }
+  .ar-list-drive span { display: none; }
+  .ar-toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  /* The page scrolls on a phone: the button stays in sight under the places. */
+  .ar-fresh {
+    position: sticky; top: 62px; z-index: 7; align-self: center; margin-top: 8px;
+    border: 1px solid var(--rule); border-radius: 999px; box-shadow: 0 4px 14px rgba(0, 0, 0, .16);
+  }
+}
 /* In the Drive folder's own place: how much of the folder became articles. */
 .ar-drive-line { margin: 0; font-size: 13px; line-height: 1.45; color: var(--soft); }
 .ar-drive-line .linkish { font-size: 13px; }
@@ -684,3 +699,137 @@ ul.copies { margin: 0; padding-left: 20px; }
 .dv-what { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; color: var(--soft); }
 .dv-done { padding: 8px 12px; border-radius: 8px; background: var(--green-soft); color: var(--green); }
 .dv-done a { color: var(--link); }
+
+/* ---------- what the AI read, the send day and the calendar ---------- */
+
+/* The event under a row's byline, as the AI read it from the article, and
+   in amber when it falls before the newsletter goes out. */
+.ar-row-event { display: block; font-size: 12.5px; font-weight: 600; line-height: 1.45; color: var(--link); }
+.ar-row-event .ai-mark { margin-right: 4px; vertical-align: -3px; }
+.ar-row-event.early { color: var(--amber); }
+.ar-row-event.early .ai-mark { color: var(--amber); }
+.ar-row-early {
+  display: inline-block; margin-left: 6px; font-size: 11.5px; font-weight: 650; line-height: 1.6; padding: 0 7px;
+  border-radius: 999px; background: var(--amber-soft); color: var(--amber);
+}
+.ai-mark { display: inline-flex; }
+.rd-label .ai-mark, .rd-event-tag .ai-mark { margin-right: 4px; vertical-align: -3px; }
+.rd-event-tag { display: inline-flex; align-items: center; }
+.rd-event-away { color: var(--green); font-weight: 600; }
+.rd-event.early { border-left-color: var(--amber); background: var(--amber-soft); }
+.rd-event-early { flex-basis: 100%; font-size: 13.5px; font-weight: 650; color: var(--amber); }
+
+/* The side column: the calendar, and the newsletter's day and sections. */
+.side-item.cal-link .icon { color: var(--soft); }
+.side-item.cal-link[aria-current="true"] .icon { color: var(--green); }
+.side-card-plan { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.side-card-plan .icon { color: var(--green); }
+.side-fill { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; margin: 3px 0 4px; }
+.side-fill-cell {
+  text-align: center; font-size: 11.5px; font-weight: 650; line-height: 1.7; border-radius: 4px; color: var(--soft);
+  background: var(--surface); border: 1px solid var(--rule); font-variant-numeric: tabular-nums;
+}
+.side-fill-cell.has { background: var(--brand-soft); color: var(--green); border-color: transparent; }
+
+/* Tapahtumakalenteri: the month wider than a list, the reader beside it. */
+.ar.calendar { grid-template-columns: 250px minmax(0, 1.35fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .ar.calendar { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); } }
+.cal { display: grid; gap: 12px; padding: 12px 14px 18px; }
+.cal-bar { display: flex; align-items: center; gap: 8px; }
+.cal-month { margin: 0 4px; font-size: 17px; font-weight: 650; min-width: 9em; text-align: center; }
+.cal-month::first-letter { text-transform: uppercase; }
+.cal-grid { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.cal-grid th { font-weight: 600; color: var(--soft); padding: 4px; text-align: left; font-size: 11.5px; }
+.cal-grid td { vertical-align: top; height: 102px; padding: 3px; border: 1px solid var(--rule); background: var(--surface); }
+.cal-grid td.cal-out, .cal-cell.is-past { background: var(--bg); }
+.cal-cell.is-past .cal-d { color: var(--soft); }
+.cal-n { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cal-d { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px; }
+.cal-cell.is-today .cal-d { background: var(--button); color: var(--button-ink); }
+.cal-cell.is-send { box-shadow: inset 0 0 0 2px var(--green); }
+.cal-flag { display: inline-flex; color: var(--green); }
+.cal-chip {
+  appearance: none; display: flex; align-items: center; gap: 3px; width: 100%; min-height: 24px; margin: 0 0 2px; padding: 1px 5px;
+  border: 0; border-radius: 4px; font: inherit; font-size: 11.5px; line-height: 1.45; text-align: left; cursor: pointer;
+  color: var(--ink); background: var(--brand-soft); box-shadow: inset 2px 0 0 var(--green); overflow: hidden;
+}
+.cal-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip.is-deadline { background: var(--amber-soft); color: var(--amber); box-shadow: inset 2px 0 0 var(--amber); }
+.cal-chip.is-picked { background: var(--button); color: var(--button-ink); box-shadow: none; }
+.cal-chip:hover { filter: brightness(.96); }
+.cal-more {
+  appearance: none; border: 0; background: none; min-height: 24px; padding: 0 4px; font: inherit; font-size: 11.5px; color: var(--link);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+/* A phone's month shows marks; the list under it is where they are pressed. */
+.cal-marks { display: none; }
+.cal-legend { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--soft); }
+.cal-keys { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--soft); }
+.cal-keys li { display: inline-flex; align-items: center; gap: 6px; }
+.cal-keys .icon { color: var(--green); }
+.cal-key { display: inline-block; width: 12px; height: 10px; border-radius: 3px; }
+.cal-key.is-event { background: var(--brand-soft); box-shadow: inset 2px 0 0 var(--green); }
+.cal-key.is-deadline { background: var(--amber-soft); box-shadow: inset 2px 0 0 var(--amber); }
+.cal-key.is-picked { background: var(--button); }
+.cal-agenda { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 12px; }
+.cal-day-h { margin: 0 0 4px; font-size: 12px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--soft); }
+.cal-day-h.is-today { color: var(--green); }
+.cal-day-rows { display: grid; gap: 4px; }
+.cal-row {
+  appearance: none; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start;
+  padding: 8px 10px; font: inherit; text-align: left; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 8px; cursor: pointer;
+}
+.cal-row:hover { border-color: var(--link); }
+.cal-row[aria-current="true"] { border-color: var(--link); background: var(--row-on); }
+.cal-row-kind { padding-top: 2px; color: var(--green); }
+.cal-row.is-deadline .cal-row-kind { color: var(--amber); }
+.cal-row-main { display: grid; gap: 2px; min-width: 0; }
+.cal-row-title { font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.cal-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12.5px; color: var(--soft); }
+.cal-send-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px;
+  background: var(--brand-soft); color: var(--green); font-size: 13.5px; font-weight: 650;
+}
+/* On a phone the month is small and the list under it does the work: a
+   day's events are marks, not titles. */
+@media (max-width: 760px) {
+  .cal { padding: 10px 10px 16px; }
+  .cal-grid td { height: 48px; padding: 2px; }
+  .cal-chip, .cal-more { display: none; }
+  .cal-marks { display: flex; flex-wrap: wrap; gap: 2px; }
+  .cal-mark { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .cal-mark.is-deadline { background: var(--amber); }
+  .cal-month { min-width: 0; flex: 1; }
+}
+
+/* Kysy artikkeleilta: adding a cited article from the answer, the questions
+   to ask next, and the questions asked before. */
+.chat-src-row { display: flex; align-items: stretch; gap: 6px; }
+.chat-src-row .chat-src { flex: 1; min-width: 0; }
+.chat-add {
+  appearance: none; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px; font: inherit;
+  font-size: 12.5px; font-weight: 650; color: var(--link); background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 10px; cursor: pointer; white-space: nowrap;
+}
+.chat-add:hover, .chat-add[aria-expanded="true"] { border-color: var(--link); background: var(--brand-soft); }
+.chat-add.is-picked { color: var(--button-ink); background: var(--button); border-color: var(--button); }
+.chat-add.is-sent { color: var(--soft); cursor: default; }
+.chat-add span { max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+.chat-next { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.chat-next-k { flex-basis: 100%; font-size: 12px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--soft); }
+.chat-recent { display: grid; justify-items: center; gap: 6px; margin-top: 10px; }
+.chat-recent-k { margin: 0; font-size: 12px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--soft); }
+.chat-recent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.chat-recent li { display: inline-flex; align-items: stretch; }
+.chat-recent .chat-chip { border-radius: 999px 0 0 999px; }
+.chat-forget {
+  appearance: none; display: inline-grid; place-items: center; width: 32px; padding: 0; color: var(--soft);
+  background: var(--surface); border: 1px solid var(--rule); border-left: 0; border-radius: 0 999px 999px 0; cursor: pointer;
+}
+.chat-forget:hover, .chat-forget:focus-visible { color: var(--ink); background: var(--bg); }
+.ar-empty-read .empty { padding-top: 0; }
+@media (max-width: 760px) {
+  .chat-src-row { flex-direction: column; }
+  .chat-add { align-self: flex-start; min-height: 32px; }
+}

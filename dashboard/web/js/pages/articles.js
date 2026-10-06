@@ -3,12 +3,19 @@
 // key, and the next article opens by itself. How the parts look is in
 // components/article.js and components/side.js. Kysy artikkeleilta is a
 // place too: a question, the AI's answer, and the articles it is from as the
-// list, each opening in the reader like any other.
-// Jira: DM42-80, DM42-31, DM42-40
+// list, each opening in the reader like any other: an answer's articles can
+// be added to the newsletter from it, the AI suggests what to ask next, and
+// each editor's questions are kept for asking again. Tapahtumakalenteri is a
+// place as well, the events by month, and so is a section's suggestions,
+// what a newsletter's page opens from "3 waiting".
+// Jira: DM42-80, DM42-31, DM42-40, DM42-37
 
 import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
 import { aiUsage, date, esc, number, finnishDay, safeUrl } from '../format.js';
+import { emptyState } from '../ui/empty.js';
+import { openMenu } from '../ui/menu.js';
+import { addMonths, calendarHtml, itemsInOrder, thisMonth } from '../components/calendar.js';
 import { articleRow, articleReader, dayHeading, offerBox, termOptions, SECTIONS } from '../components/article.js';
 import { colourOf, sideHtml } from '../components/side.js';
 import { topicRows, topicEditor } from '../components/topics.js';
@@ -21,10 +28,11 @@ import { icon } from '../ui/icons.js';
 // The lists of the editors' own decisions and of what the AI did. A topic, a
 // tag, a source, a signal or "no topic" is a place too: topic:3, tag:12,
 // source:5, signal:7, none. ask is asking the articles a question.
-// topics is where the topics themselves are edited.
+// topics is where the topics themselves are edited, events the calendar, and
+// suggested:events the articles in Uudet suggested for that section.
 const VIEWS = ['inbox', 'picked', 'later', 'dismissed', 'used', 'waiting', 'skipped', 'attention', 'all'];
 const SORTS = ['collected', 'published', 'relevance'];
-const DEFAULTS = { place: 'inbox', q: '', sort: 'collected', item: '' };
+const DEFAULTS = { place: 'inbox', q: '', sort: 'collected', item: '', month: '' };
 const PER_PAGE = 50;
 // Which newsletter picks go into, remembered in this browser.
 const TARGET_KEY = 'dfp.pickTarget';
@@ -35,10 +43,13 @@ const ASK_KEEP = 15;
 const ASK_DAYS = [30, 90, 365, 3650];
 const NARROW = window.matchMedia('(max-width: 760px)');
 
+const SECTION_KEYS = ['own_news', 'events', 'member_news', 'highlights', 'training'];
+
 function parsePlace(text) {
   const [kind, raw, extra] = String(text || '').split(':');
   if (extra === undefined && raw === undefined && VIEWS.includes(kind)) return { kind: 'view', view: kind };
-  if ((kind === 'none' || kind === 'topics' || kind === 'ask') && raw === undefined) return { kind };
+  if (['none', 'topics', 'ask', 'events'].includes(kind) && raw === undefined) return { kind };
+  if (kind === 'suggested' && extra === undefined && SECTION_KEYS.includes(raw)) return { kind, section: raw };
   const id = Number(raw);
   if (extra === undefined && ['topic', 'tag', 'source', 'signal'].includes(kind) && Number.isInteger(id) && id > 0) return { kind, id };
   return { kind: 'view', view: 'inbox' };
@@ -46,7 +57,8 @@ function parsePlace(text) {
 
 function placeKey(place) {
   if (place.kind === 'view') return place.view;
-  if (place.kind === 'none' || place.kind === 'topics' || place.kind === 'ask') return place.kind;
+  if (['none', 'topics', 'ask', 'events'].includes(place.kind)) return place.kind;
+  if (place.kind === 'suggested') return `suggested:${place.section}`;
   return `${place.kind}:${place.id}`;
 }
 
@@ -60,9 +72,11 @@ function placeParams(place) {
 }
 
 // Whether an article still belongs in the list after a decision about it.
-// An answer's articles stay, whatever is decided about them.
+// An answer's articles and the calendar's stay, whatever is decided about
+// them; a section's suggestions are Uudet, and go once decided.
 function belongs(item, place) {
-  if (place.kind === 'ask') return true;
+  if (place.kind === 'ask' || place.kind === 'events') return true;
+  if (place.kind === 'suggested') return !item.decision;
   const view = place.kind === 'view' ? place.view : (['source', 'signal'].includes(place.kind) ? 'all' : 'open');
   if (view === 'inbox') return !item.decision;
   if (view === 'picked') return item.decision === 'picked' && item.pick_issue_status !== 'sent';
@@ -131,7 +145,8 @@ function layout() {
             <h2 id="place-name"></h2>
             <span class="ar-count" id="place-count"></span>
             <button type="button" class="btn ghost small ask-new" id="ask-new" data-act="ask-new" hidden>${icon('plus', 16)}<span>${esc(t('ask.new'))}</span></button>
-            <button type="button" class="btn ghost small ar-list-drive" id="list-drive" data-act="list-drive" hidden>${icon('save', 16)}<span>${esc(t('driveList.button'))}</span></button>
+            <button type="button" class="btn ghost small ar-list-drive" id="list-drive" data-act="list-drive" hidden
+              aria-label="${esc(t('driveList.button'))}" title="${esc(t('driveList.button'))}">${icon('save', 16)}<span>${esc(t('driveList.button'))}</span></button>
           </div>
           <p class="ar-note" id="place-note"></p>
           <p class="ar-drive-line" id="drive-line" hidden></p>
@@ -163,7 +178,8 @@ function layout() {
     <div class="ar-toast" id="toast" role="status" hidden></div>`;
 }
 
-export function showArticles(root) {
+export function showArticles(root, { user = null } = {}) {
+  const admin = Boolean(user && user.role === 'admin');
   let state = readState();
   let place = parsePlace(state.place);
   let rows = [];            // the articles in the list, in order
@@ -172,7 +188,12 @@ export function showArticles(root) {
   let tagLabel = null;      // the tag's name, when the place is a tag
   let latest = 0;           // the newest list request; older answers are ignored
   const side = { counts: null, topics: [], untopiced: null, windowDays: 30, sources: [], drafts: [], target: null,
-    signals: [], signalsLatest: null };
+    signals: [], signalsLatest: null, upcoming: null };
+  // Tapahtumakalenteri: the month shown and its events.
+  const cal = { month: null, items: [], latest: 0 };
+  // Kysy artikkeleilta: the editor's questions asked before.
+  let recent = [];
+  let recentAsked = false;
   let topicsById = new Map();
   let overview = null;
   let checking = null;      // a check started from this page
@@ -202,7 +223,7 @@ export function showArticles(root) {
   // (GET /api/drive), and in its own place, what became of its files.
   let drive = null;
   let driveFiles = null;
-  // Articles new to this place since the list was loaded, waiting above it.
+  // New articles that came into the list above what is on the screen.
   let fresher = 0;
 
   root.classList.add('wide');
@@ -224,9 +245,19 @@ export function showArticles(root) {
     sideEl.innerHTML = sideHtml({
       current: placeKey(place), counts: side.counts, topics: side.topics, untopiced: side.untopiced,
       sources: side.sources, drafts: side.drafts, target: side.target,
-      signals: side.signals, signalsLatest: side.signalsLatest,
+      signals: side.signals, signalsLatest: side.signalsLatest, upcoming: side.upcoming, admin,
     });
     renderPlaces();
+  }
+
+  // The newsletter picks go into, and the day it is planned to go out:
+  // what events and sign-up deadlines are measured against.
+  function targetDraft() {
+    return side.drafts.find((d) => d.id === side.target) || null;
+  }
+
+  function sendOn() {
+    return targetDraft()?.planned_for || null;
   }
 
   // On a narrow screen the column on the left is folded away. This bar takes
@@ -241,7 +272,7 @@ export function showArticles(root) {
         aria-current="${key === current}">${label}${n ? `<span class="ar-place-n">${number(n)}</span>` : ''}</button>`;
     // A place the bar has no button for, such as a topic not followed or a
     // source, shows first, so the editor sees where they are.
-    const listed = ['inbox', 'ask', 'picked', 'later', 'dismissed', ...followed.map((x) => `topic:${x.id}`)];
+    const listed = ['inbox', 'ask', 'events', 'picked', 'later', 'dismissed', ...followed.map((x) => `topic:${x.id}`)];
     const here = listed.includes(current) ? ''
       : `<button type="button" class="ar-place" aria-current="true" data-place="${esc(current)}"><span class="ar-place-name">${esc(placeName())}</span></button>`;
     bar.innerHTML = `
@@ -249,6 +280,7 @@ export function showArticles(root) {
       ${here}
       ${chip('inbox', esc(t('place.inbox')), c.inbox)}
       ${chip('ask', `${icon('comment', 15)}<span>${esc(t('places.ask'))}</span>`, null)}
+      ${chip('events', `${icon('calendar', 15)}<span>${esc(t('places.calendar'))}</span>`, null)}
       ${chip('picked', esc(t('view.picked')), c.picked)}
       ${chip('later', esc(t('view.later')), c.later)}
       ${chip('dismissed', esc(t('view.dismissed')), c.dismissed)}
@@ -267,12 +299,13 @@ export function showArticles(root) {
   }
 
   async function loadSide({ sources = false } = {}) {
-    const [topics, counts, issues, filters, signals] = await Promise.allSettled([
+    const [topics, counts, issues, filters, signals, events] = await Promise.allSettled([
       api.get('/api/topics'),
       api.get('/api/items', { page: 1, per_page: 1 }),
       api.get('/api/issues'),
       sources || !side.sources.length ? api.get('/api/filters') : Promise.resolve(null),
       api.get('/api/signals'),
+      api.get('/api/events', { month: thisMonth() }),
     ]);
     if (topics.status === 'fulfilled') {
       side.topics = topics.value.topics;
@@ -292,6 +325,7 @@ export function showArticles(root) {
       side.signals = signals.value.signals;
       side.signalsLatest = signals.value.latest;
     }
+    if (events.status === 'fulfilled') side.upcoming = events.value.upcoming;
     renderSide();
     renderHead();
     // Never while a new topic's name is being typed.
@@ -313,6 +347,8 @@ export function showArticles(root) {
     if (place.kind === 'none') return t('place.none');
     if (place.kind === 'topics') return t('place.topics');
     if (place.kind === 'ask') return t('place.ask');
+    if (place.kind === 'events') return t('place.events');
+    if (place.kind === 'suggested') return t('place.suggested', { section: t(`section.${place.section}`) });
     if (place.kind === 'topic') return topicsById.get(place.id)?.name ?? '…';
     if (place.kind === 'tag') return t('place.tag', { tag: tagLabel ?? '…' });
     if (place.kind === 'signal') return t('place.signal', { topic: side.signals.find((s) => s.id === place.id)?.topic ?? '…' });
@@ -323,7 +359,8 @@ export function showArticles(root) {
     if (place.kind === 'view') return place.view === 'inbox' ? t('place.note.inbox', { days: side.windowDays }) : t(`note.${place.view}`);
     if (place.kind === 'none') return t('place.note.none');
     if (place.kind === 'topics') return t('place.note.topics');
-    if (place.kind === 'ask') return '';
+    if (place.kind === 'ask' || place.kind === 'events') return '';
+    if (place.kind === 'suggested') return t('place.note.suggested', { section: t(`section.${place.section}`) });
     if (place.kind === 'topic') {
       const topic = topicsById.get(place.id);
       return topic ? t('place.note.topic', { terms: topic.tags.map((x) => x.label).join(', ') }) : '';
@@ -339,16 +376,20 @@ export function showArticles(root) {
   function renderHead() {
     $('place-name').textContent = placeName();
     pageTitle(placeName(), t('page.articles'));
-    const counted = place.kind !== 'topics' && place.kind !== 'ask';
-    $('place-count').textContent = counted ? tn('count', total, { n: number(total) }) : '';
+    const counted = !['topics', 'ask', 'events'].includes(place.kind);
+    $('place-count').textContent = counted ? tn('count', total, { n: number(total) })
+      : (place.kind === 'events' && cal.month ? tn('cal.count', total, { n: number(total) }) : '');
     $('place-note').textContent = placeNote();
-    $('tools').hidden = place.kind === 'topics' || place.kind === 'ask';
+    // A section's suggestions and the calendar have their own order, and no
+    // search of their own.
+    $('tools').hidden = ['topics', 'ask', 'events', 'suggested'].includes(place.kind);
     $('ask').hidden = place.kind !== 'ask';
     $('ask-new').hidden = place.kind !== 'ask' || !asked.list.length;
     ar.classList.toggle('asking', place.kind === 'ask');
+    ar.classList.toggle('calendar', place.kind === 'events');
     $('place-note').classList.toggle('of-view', place.kind === 'view' || place.kind === 'ask');
     // Not in the Drive folder's own place: its articles are in the folder.
-    $('list-drive').hidden = !(drive && drive.enabled && counted && total > 0) || isDrivePlace();
+    $('list-drive').hidden = !(drive && drive.enabled && counted && total > 0) || isDrivePlace() || place.kind === 'suggested';
     renderDriveLine();
     renderPlaces();
   }
@@ -359,13 +400,12 @@ export function showArticles(root) {
 
   function emptyHtml() {
     if (state.q) {
-      return `<div class="ar-empty"><p>${esc(t('results.none'))}</p>
-        <button type="button" class="btn ghost small" data-act="clear-search">${esc(t('filter.clear'))}</button></div>`;
+      return emptyState({ icon: 'search', title: t('results.noneTitle'), text: t('results.none'),
+        actions: `<button type="button" class="btn ghost small" data-act="clear-search">${esc(t('filter.clear'))}</button>` });
     }
-    const key = place.kind === 'view'
-      ? (place.view === 'inbox' ? 'place.empty.inbox' : `results.empty.${place.view}`)
-      : `place.empty.${place.kind}`;
-    return `<div class="ar-empty"><p>${esc(t(key))}</p></div>`;
+    const inbox = place.kind === 'view' && place.view === 'inbox';
+    const key = place.kind === 'view' ? (inbox ? 'place.empty.inbox' : `results.empty.${place.view}`) : `place.empty.${place.kind}`;
+    return emptyState({ icon: inbox ? 'check' : 'article', title: t(inbox ? 'place.emptyTitle.inbox' : 'place.emptyTitle'), text: t(key) });
   }
 
   function renderRows() {
@@ -376,6 +416,13 @@ export function showArticles(root) {
     if (place.kind === 'ask') {
       rowsEl.innerHTML = chatHtml();
       saveAsked();
+      return;
+    }
+    if (place.kind === 'events') {
+      const target = targetDraft();
+      const now = new Map(rows.map((r) => [r.id, r]));
+      rowsEl.innerHTML = cal.month ? calendarHtml({ month: cal.month, items: cal.items.map((i) => now.get(i.id) || i), sendOn: sendOn(),
+        sendName: target ? target.name : '', selected: state.item }) : '';
       return;
     }
     if (!rows.length) {
@@ -392,7 +439,7 @@ export function showArticles(root) {
           last = day;
         }
       }
-      out += articleRow(item, { selected: String(item.id) === state.item, topics: topicsById });
+      out += articleRow(item, { selected: String(item.id) === state.item, topics: topicsById, sendOn: sendOn() });
     }
     if (rows.length < total) {
       out += `<p class="ar-more"><button type="button" class="btn ghost small" data-act="more">${esc(t('results.more'))}</button></p>`;
@@ -414,13 +461,15 @@ export function showArticles(root) {
       const topic = currentTopic();
       read.innerHTML = topic
         ? topicEditor(topic, tv.preview, { showDropped: tv.showDropped })
-        : `<p class="ar-empty-read">${esc(t(side.topics.length ? 'topic.pick' : 'topic.none'))}</p>`;
+        : `<div class="ar-empty-read">${emptyState({ icon: 'blocks', title: t(side.topics.length ? 'topic.pickTitle' : 'topic.noneTitle'),
+          text: t(side.topics.length ? 'topic.pick' : 'topic.none') })}</div>`;
       return;
     }
     const item = current();
     if (!item) {
-      read.innerHTML = place.kind === 'ask' ? `<p class="ar-empty-read">${esc(t('ask.readerEmpty'))}</p>`
-        : (rows.length ? `<p class="ar-empty-read">${esc(t('reader.empty'))}</p>` : '');
+      read.innerHTML = place.kind === 'ask'
+        ? `<div class="ar-empty-read">${emptyState({ icon: 'comment', title: t('ask.readerTitle'), text: t('ask.readerEmpty') })}</div>`
+        : (rows.length ? `<div class="ar-empty-read">${emptyState({ icon: 'article', title: t('reader.emptyTitle'), text: t('reader.emptyHint') })}</div>` : '');
       return;
     }
     const index = rows.indexOf(item);
@@ -428,7 +477,7 @@ export function showArticles(root) {
     read.innerHTML = articleReader(item, {
       place: placeName(), index, total, topics: topicsById,
       canPrev: index > 0, canNext: index < rows.length - 1 || rows.length < total,
-      target: target ? target.name : null, offer: offers[0] || null, drive,
+      target: target ? target.name : null, offer: offers[0] || null, drive, sendOn: sendOn(),
     });
     read.scrollTop = 0;
     if (focus) read.focus({ preventScroll: true });
@@ -437,10 +486,10 @@ export function showArticles(root) {
   function setItem(id, { scroll = true, focus = false } = {}) {
     state.item = id ? String(id) : '';
     writeState(state);
-    rowsEl.querySelectorAll('.ar-row, .chat-src').forEach((row) => row.setAttribute('aria-current', String(row.dataset.id === state.item)));
+    rowsEl.querySelectorAll('.ar-row, .chat-src, .cal-row').forEach((row) => row.setAttribute('aria-current', String(row.dataset.id === state.item)));
     renderReader({ focus });
     if (!id) ar.classList.remove('reading');
-    const row = rowsEl.querySelector(`.ar-row[data-id="${state.item}"]`);
+    const row = rowsEl.querySelector(`.ar-row[data-id="${state.item}"], .cal-row[data-id="${state.item}"]`);
     if (row && scroll) row.scrollIntoView({ block: 'nearest' });
     seeLater(id);
   }
@@ -494,7 +543,7 @@ export function showArticles(root) {
     const was = state.item;
     ar.classList.remove('reading');
     const cited = [...rowsEl.querySelectorAll(`.chat-src[data-id="${was}"]`)].pop();
-    (rowsEl.querySelector(`.ar-row[data-id="${was}"]`) || cited)?.scrollIntoView({ block: 'center' });
+    (rowsEl.querySelector(`.ar-row[data-id="${was}"], .cal-row[data-id="${was}"]`) || cited)?.scrollIntoView({ block: 'center' });
   }
 
   async function loadList({ append = false, keep = null } = {}) {
@@ -503,9 +552,7 @@ export function showArticles(root) {
     const nextPage = append ? page + 1 : 1;
     rowsEl.setAttribute('aria-busy', 'true');
     try {
-      const params = { ...placeParams(place), sort: state.sort, page: nextPage, per_page: PER_PAGE };
-      if (state.q) params.q = state.q;
-      const data = await api.get('/api/items', params);
+      const data = await api.get(...listRequest(nextPage));
       if (mine !== latest) return false;
       page = nextPage;
       total = data.total;
@@ -538,8 +585,19 @@ export function showArticles(root) {
     }
   }
 
+  // The request for a page of the place's articles: a section's suggestions
+  // have an endpoint of their own.
+  function listRequest(pageNumber) {
+    if (place.kind === 'suggested') {
+      return ['/api/items/suggested', { section: place.section, page: pageNumber, per_page: PER_PAGE }];
+    }
+    const params = { ...placeParams(place), sort: state.sort, page: pageNumber, per_page: PER_PAGE };
+    if (state.q) params.q = state.q;
+    return ['/api/items', params];
+  }
+
   function goPlace(key) {
-    state = { ...state, place: key, item: '' };
+    state = { ...state, place: key, item: '', month: '' };
     place = parsePlace(key);
     tagLabel = null;
     rows = [];
@@ -562,7 +620,53 @@ export function showArticles(root) {
   function show(options = {}) {
     if (place.kind === 'topics') return loadTopics();
     if (place.kind === 'ask') return showAsk();
+    if (place.kind === 'events') return showCalendar(options);
     return loadList(options);
+  }
+
+  // ---------- Tapahtumakalenteri ----------
+
+  // The month in the address, or this one. Its events become the list, in
+  // the order of the days, so the reader and J and K work as anywhere; the
+  // one nearest today opens, on a wide screen.
+  async function showCalendar({ keep = null } = {}) {
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(state.month) ? state.month : thisMonth();
+    const mine = ++latest;
+    rowsEl.setAttribute('aria-busy', 'true');
+    let data;
+    try {
+      data = await api.get('/api/events', { month });
+    } catch (e) {
+      if (mine === latest && e.status !== 401) {
+        rowsEl.innerHTML = emptyState({ icon: 'error', title: t('error.load'), text: e.message, tone: 'is-problem',
+          actions: `<button type="button" class="btn ghost small" data-act="retry">${esc(t('error.retry'))}</button>` });
+      }
+      return;
+    } finally {
+      if (mine === latest) rowsEl.removeAttribute('aria-busy');
+    }
+    if (mine !== latest || place.kind !== 'events') return;
+    cal.month = data.month;
+    cal.items = data.items;
+    side.upcoming = data.upcoming;
+    rows = itemsInOrder(cal.items, cal.month);
+    total = rows.length;
+    renderHead();
+    renderRows();
+    const wanted = keep ?? state.item;
+    if (rows.some((r) => String(r.id) === String(wanted))) setItem(wanted, { scroll: false });
+    else if (!NARROW.matches && rows.length) {
+      const today = finnishDay();
+      const next = rows.find((r) => (r.event?.ends || r.event?.starts || r.event?.deadline || '') >= today) || rows[0];
+      setItem(next.id, { scroll: false });
+    } else setItem(null);
+  }
+
+  function moveMonth(step) {
+    state.month = step === 0 ? '' : addMonths(cal.month || thisMonth(), step);
+    state.item = '';
+    writeState(state);
+    showCalendar();
   }
 
   // ---------- asking the articles ----------
@@ -606,6 +710,10 @@ export function showArticles(root) {
   }
 
   function showAsk({ open = true } = {}) {
+    if (!recentAsked) {
+      recentAsked = true;
+      loadRecent();
+    }
     rows = askedRows();
     total = rows.length;
     renderHead();
@@ -663,6 +771,8 @@ export function showArticles(root) {
     asked.list = [...asked.list, turn].slice(-ASK_KEEP);
     saveAsked();
     if (place.kind === 'ask') showAsk();
+    if (typeof turn.answer === 'string' && turn.answer && turn.sources.length) loadFollowups(turn);
+    loadRecent();
   }
 
   // The answer's paragraphs, its [1], [2]… as buttons that open those
@@ -683,16 +793,125 @@ export function showArticles(root) {
     return `<div class="chat-q"><p>${esc(a.question)}</p>${whole}<small>${esc(t(`ask.days.${a.days}`))}</small></div>`;
   }
 
-  function sourceHtml(s, n) {
+  // An article an answer cites, and beside it the way to put it in the
+  // newsletter without opening it first.
+  function sourceHtml(s, n, turn) {
     const decided = s.decision === 'picked' ? t('ask.state.picked', { section: t(`section.${s.pick_section}`) })
       : (s.decision ? t(`ask.state.${s.decision}`) : '');
     const meta = [s.publisher || s.source, date(s.published_at || s.collected_at), decided].filter(Boolean).join(' · ');
-    const label = t('ask.cite', { n, title: s.title_fi || s.title });
-    return `<li><button type="button" class="chat-src" data-act="cite" data-id="${s.id}" aria-label="${esc(label)}"
+    const title = s.title_fi || s.title;
+    const label = t('ask.cite', { n, title });
+    const sent = s.decision === 'picked' && s.pick_issue_status === 'sent';
+    const picked = s.decision === 'picked' && !sent;
+    const add = sent
+      ? `<span class="chat-add is-sent">${esc(t('ask.sentPick'))}</span>`
+      : `<button type="button" class="chat-add${picked ? ' is-picked' : ''}" id="ask-add-${turn}-${n}" data-act="ask-add" data-id="${s.id}"
+          aria-label="${esc(picked ? t('ask.pickedLabel', { title, section: t(`section.${s.pick_section}`) }) : t('ask.addLabel', { title }))}">
+          ${icon(picked ? 'check' : 'plus', 15)}<span>${esc(picked ? t(`section.${s.pick_section}`) : t('ask.add'))}</span></button>`;
+    return `<li class="chat-src-row"><button type="button" class="chat-src" data-act="cite" data-id="${s.id}" aria-label="${esc(label)}"
         aria-current="${String(s.id) === state.item}">
         <span class="chat-src-n" aria-hidden="true">${n}</span>
-        <span class="chat-src-body"><span class="chat-src-t">${esc(s.title_fi || s.title)}</span><small>${esc(meta)}</small></span>
-      </button></li>`;
+        <span class="chat-src-body"><span class="chat-src-t">${esc(title)}</span><small>${esc(meta)}</small></span>
+      </button>${add}</li>`;
+  }
+
+  function askMenu(button) {
+    const item = rows.find((r) => String(r.id) === button.dataset.id);
+    if (!item) return;
+    const target = targetDraft();
+    const picked = item.decision === 'picked';
+    const suggested = item.decision ? null : item.suggested_section;
+    openMenu(button, [
+      { kind: 'head', title: t('ask.menuTitle'), sub: picked ? item.pick_issue_name : (target ? target.name : t('target.new')) },
+      { kind: 'group', label: t('ask.menuSection'), options: SECTIONS.map((section) => ({
+        label: section === suggested ? t('ask.suggestedOption', { section: t(`section.${section}`) }) : t(`section.${section}`),
+        checked: picked && item.pick_section === section,
+        onSelect: () => decideFromAsk(item, 'picked', section),
+      })) },
+      ...(picked ? [{ kind: 'separator' }, { kind: 'item', label: t('ask.removePick'), icon: 'close', onSelect: () => decideFromAsk(item, null) }] : []),
+    ]);
+  }
+
+  // A decision made from an answer: the conversation shows it where it is,
+  // and the toast can take it back.
+  async function decideFromAsk(item, decision, section = null) {
+    if (decision === 'picked' && item.decision === 'picked' && item.pick_section === section) return;
+    const before = { decision: item.decision, section: item.pick_section, issue: item.pick_issue_id };
+    const body = { decision, section };
+    if (decision === 'picked') {
+      const issue = item.decision === 'picked' ? item.pick_issue_id : side.target;
+      if (issue) body.issue_id = issue;
+    }
+    try {
+      const updated = await api.put(`/api/items/${item.id}/decision`, body);
+      putInAsk(updated);
+      toast(decision === 'picked' ? t('toast.picked', { section: t(`section.${section}`) }) : t('toast.cleared'),
+        async () => {
+          const back = before.decision
+            ? { decision: before.decision, section: before.section, issue_id: before.issue ?? undefined } : { decision: null };
+          try {
+            putInAsk(await api.put(`/api/items/${item.id}/decision`, back));
+            refreshSide();
+          } catch (e) {
+            toast(e.message);
+          }
+        });
+      refreshSide();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+
+  function putInAsk(updated) {
+    rows = rows.map((r) => (r.id === updated.id ? updated : r));
+    asked.list.forEach((a) => { a.sources = a.sources.map((x) => (x.id === updated.id ? updated : x)); });
+    const top = rowsEl.scrollTop;
+    renderRows();
+    rowsEl.scrollTop = top;
+    if (String(updated.id) === state.item) redrawOpen();
+    rowsEl.querySelector(`[data-act="ask-add"][data-id="${updated.id}"]`)?.focus({ preventScroll: true });
+  }
+
+  // Questions to ask next, once an answer is on the page: asked from the AI
+  // separately, so the answer never waits for them.
+  async function loadFollowups(turn) {
+    let found;
+    try {
+      found = await api.post('/api/ask/followups', {
+        question: (turn.asked_as || turn.question).slice(0, 300), answer: turn.answer.slice(0, 3000),
+        titles: turn.sources.slice(0, 8).map((x) => (x.title_fi || x.title || '').slice(0, 300)),
+      });
+    } catch {
+      return;
+    }
+    turn.followups = found.questions;
+    saveAsked();
+    if (place.kind === 'ask' && asked.list[asked.list.length - 1] === turn && !asked.busy) {
+      const top = rowsEl.scrollTop;
+      renderRows();
+      rowsEl.scrollTop = top;
+    }
+  }
+
+  async function loadRecent() {
+    try {
+      recent = await api.get('/api/ask/recent');
+    } catch {
+      recent = [];
+    }
+    if (place.kind === 'ask' && !asked.list.length && !asked.pending) renderRows();
+  }
+
+  async function forgetQuestion(id) {
+    try {
+      await api.del(`/api/ask/recent/${id}`);
+      recent = recent.filter((r) => String(r.id) !== String(id));
+      renderRows();
+      toast(t('ask.forgotten'));
+      rowsEl.querySelector('.chat-recent .chat-chip, .chat-try .chat-chip')?.focus({ preventScroll: true });
+    } catch (e) {
+      toast(e.message);
+    }
   }
 
   function turnHtml(a, n) {
@@ -708,14 +927,19 @@ export function showArticles(root) {
       const usage = aiUsage(a);
       answer = `<div class="chat-a">
         <div class="chat-a-text">${answerHtml(a)}</div>
-        <ol class="chat-sources" aria-label="${esc(t('ask.sources'))}">${a.sources.map((s, i) => sourceHtml(fresh(s), i + 1)).join('')}</ol>
+        <ol class="chat-sources" aria-label="${esc(t('ask.sources'))}">${a.sources.map((s, i) => sourceHtml(fresh(s), i + 1, n)).join('')}</ol>
         <div class="chat-a-foot">
           <span>${esc(tn('ask.meta', a.sources.length))}${usage ? ` · ${esc(usage)}` : ''}. ${esc(t('ask.check'))}</span>
           <button type="button" class="linkish" data-act="ask-copy" data-n="${n}">${esc(t('ask.copy'))}</button>
         </div>
       </div>`;
     }
-    return `<article class="chat-turn" data-n="${n}">${questionHtml(a)}${answer}</article>`;
+    const last = n === asked.list.length - 1 && !asked.pending;
+    const next = last && a.answer && Array.isArray(a.followups) && a.followups.length
+      ? `<div class="chat-next" role="group" aria-label="${esc(t('ask.next'))}"><span class="chat-next-k">${esc(t('ask.next'))}</span>
+          ${a.followups.map((q) => `<button type="button" class="chat-chip" data-act="ask-follow" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>`
+      : '';
+    return `<article class="chat-turn" data-n="${n}">${questionHtml(a)}${answer}${next}</article>`;
   }
 
   function chatHtml() {
@@ -727,6 +951,12 @@ export function showArticles(root) {
         <p>${esc(t('ask.intro'))}</p>
         <div class="chat-try" role="group" aria-label="${esc(t('ask.try'))}">${['ask.example1', 'ask.example2', 'ask.example3']
           .map((k) => `<button type="button" class="chat-chip" data-act="ask-example" data-q="${esc(t(k))}">${esc(t(k))}</button>`).join('')}</div>
+        ${recent.length ? `<div class="chat-recent">
+          <p class="chat-recent-k">${esc(t('ask.recent'))}</p>
+          <ul>${recent.map((r) => `<li><button type="button" class="chat-chip" data-act="ask-recent" data-q="${esc(r.question)}" data-days="${r.days}">${esc(r.question)}</button><button
+            type="button" class="chat-forget" data-act="ask-forget" data-id="${r.id}" aria-label="${esc(t('ask.forget', { q: r.question }))}"
+            title="${esc(t('ask.forget', { q: r.question }))}">${icon('close', 14)}</button></li>`).join('')}</ul>
+        </div>` : ''}
       </div>`;
     }
     out += asked.list.map(turnHtml).join('');
@@ -1122,9 +1352,9 @@ export function showArticles(root) {
 
   // What n8n and the other editors change shows here as it happens
   // (live.js). The articles on screen and the open one are asked for again
-  // and drawn where they stand, the numbers in the column catch up, and new
-  // articles wait above the list behind a button, so nothing moves under
-  // the editor's eyes. Nothing is redrawn while the editor types in the
+  // and drawn where they stand, the numbers in the column and above the page
+  // catch up, and new articles come into the list, without moving what the
+  // editor is looking at. Nothing is redrawn while the editor types in the
   // article; it is once the typing stops.
   const coming = (item) => item.tags_pending || item.status === 'new' || item.status === 'queued';
   const looks = (item) => JSON.stringify([item.status, item.summary?.text, item.title_fi, item.event,
@@ -1135,6 +1365,7 @@ export function showArticles(root) {
   const heard = { ids: new Set(), all: false, timer: null };
   let openStale = false;
   let draftsTimer = null;
+  let overviewTimer = null;
 
   // The open article drawn again as it is now, where the editor was in it.
   function redrawOpen() {
@@ -1203,38 +1434,163 @@ export function showArticles(root) {
     heard.all = false;
     heard.ids = new Set();
     refreshSide();
+    refreshOverview();
     if (place.kind === 'topics') return;
     const shown = rows.filter((r) => all || ids.has(Number(r.id))).map((r) => r.id);
     if (shown.length) await refreshRows(shown.slice(0, 100));
-    if (place.kind !== 'ask') lookForNew();
+    if (place.kind === 'events') refreshCalendar();
+    else if (place.kind !== 'ask') lookForNew();
   }
 
-  // New articles for this place wait above the list behind a button, so the
-  // list never moves while it is read. An empty list fills at once.
+  // The line above the page counts today's new articles, so it catches up
+  // as well; a check started from this page follows its own course.
+  function refreshOverview() {
+    clearTimeout(overviewTimer);
+    overviewTimer = setTimeout(() => {
+      if (!checking) loadOverview();
+    }, 1500);
+  }
+
+  // New articles for this place come into the list by themselves, where the
+  // list has them, and stand out for a moment. What the editor is looking
+  // at stays where it is on the screen: when they come in above it, out of
+  // sight, a button above the list counts them and leads up to them. An
+  // empty list fills at once.
   async function lookForNew() {
     const mine = latest;
-    const params = { ...placeParams(place), sort: state.sort, page: 1, per_page: PER_PAGE };
-    if (state.q) params.q = state.q;
     let data;
     try {
-      data = await api.get('/api/items', params);
+      data = await api.get(...listRequest(1));
     } catch {
       return;
     }
-    if (mine !== latest || place.kind === 'topics' || place.kind === 'ask') return;
+    if (mine !== latest || ['topics', 'ask', 'events'].includes(place.kind)) return;
     if (!rows.length) {
       if (data.items.length) loadList({ keep: state.item });
       return;
     }
+    const { list, arrived } = withNew(data.items);
+    if (!arrived.length) return;
+    const anchor = rowOnTop();
+    rows = list;
+    total = Math.max(data.total, rows.length);
+    renderHead();
+    renderRows();
+    const ids = new Set(arrived.map((x) => x.id));
+    rowsEl.querySelectorAll('.ar-row').forEach((row) => {
+      if (ids.has(Number(row.dataset.id))) row.classList.add('arrived');
+    });
+    if (anchor) {
+      const at = rows.findIndex((r) => r.id === anchor.id);
+      fresher += arrived.filter((x) => rows.indexOf(x) < at).length;
+      renderFresh();
+      keepInPlace(anchor);
+    }
+    renumberOpen();
+    say(tn('live.arrived', arrived.length, { n: number(arrived.length) }));
+  }
+
+  // Page 1 of the place as it is now, laid over the list: an article the
+  // list does not have goes in before the one that follows it there. One at
+  // the very end of page 1, with nothing the list has after it, came up from
+  // page 2 as another left the place: it is no news, and comes with Näytä
+  // lisää, unless the list already held every article of the place.
+  function withNew(items) {
     const known = new Set(rows.map((r) => r.id));
-    fresher = data.items.filter((x) => !known.has(x.id)).length;
+    const complete = rows.length >= total;
+    const list = [...rows];
+    const arrived = [];
+    items.forEach((item, at) => {
+      if (known.has(item.id)) return;
+      const next = items.slice(at + 1).find((x) => known.has(x.id));
+      if (!next && !complete) return;
+      list.splice(next ? list.findIndex((r) => r.id === next.id) : list.length, 0, item);
+      arrived.push(item);
+    });
+    return { list, arrived };
+  }
+
+  // The first article on the screen and how far down it is, so the list can
+  // keep it there; none while the list is at its top, where new articles
+  // are meant to be seen. On a phone the bar of places covers the top.
+  function rowOnTop() {
+    if (ar.classList.contains('reading')) return null;
+    const covered = NARROW.matches ? $('places').getBoundingClientRect().bottom : 0;
+    const top = Math.max(rowsEl.getBoundingClientRect().top, covered);
+    const row = [...rowsEl.querySelectorAll('.ar-row')].find((r) => r.getBoundingClientRect().bottom > top + 1);
+    if (!row || (rowsEl.scrollTop < 4 && row === rowsEl.querySelector('.ar-row'))) return null;
+    return { id: Number(row.dataset.id), top: row.getBoundingClientRect().top };
+  }
+
+  // The list scrolled by what came in above that article. A wide screen
+  // scrolls the list, a phone the page.
+  function keepInPlace(anchor) {
+    const row = rowsEl.querySelector(`.ar-row[data-id="${anchor.id}"]`);
+    const moved = row ? row.getBoundingClientRect().top - anchor.top : 0;
+    if (!moved) return;
+    if (getComputedStyle(rowsEl).overflowY === 'visible') window.scrollBy({ top: moved, behavior: 'instant' });
+    else rowsEl.scrollBy({ top: moved, behavior: 'instant' });
+  }
+
+  // Up to the new articles.
+  function toTop() {
+    fresher = 0;
     renderFresh();
+    rowsEl.scrollTo({ top: 0 });
+    if (NARROW.matches) window.scrollTo({ top: ar.getBoundingClientRect().top + window.scrollY - 8 });
+  }
+
+  // Scrolled up to them, the new articles need the button no more.
+  function sawTop() {
+    if (fresher && !rowOnTop()) {
+      fresher = 0;
+      renderFresh();
+    }
   }
 
   function renderFresh() {
     const button = $('fresh');
     button.hidden = !fresher;
-    if (fresher) button.innerHTML = `${esc(tn('live.fresh', fresher, { n: number(fresher) }))} <strong>${esc(t('live.freshShow'))}</strong>`;
+    if (fresher) button.innerHTML = `${icon('arrowUp', 16)}<span>${esc(tn('live.above', fresher, { n: number(fresher) }))}</span>`;
+  }
+
+  // The open article's place in the list, "3 / 25", once the list has grown
+  // around it. Only that, so nothing the editor is doing in it is disturbed.
+  function renumberOpen() {
+    const item = current();
+    if (!item) return;
+    const index = rows.indexOf(item);
+    const pos = read.querySelector('.rd-pos');
+    if (pos) pos.textContent = t('reader.position', { place: placeName(), n: number(index + 1), total: number(total) });
+    read.querySelector('[data-act="prev"]')?.toggleAttribute('disabled', index <= 0);
+    read.querySelector('[data-act="next"]')?.toggleAttribute('disabled', !(index < rows.length - 1 || rows.length < total));
+  }
+
+  // In the calendar: an article whose event the AI has just read comes into
+  // the month, and one whose event moved to another month leaves it.
+  async function refreshCalendar() {
+    const mine = latest;
+    let data;
+    try {
+      data = await api.get('/api/events', { month: cal.month || thisMonth() });
+    } catch {
+      return;
+    }
+    if (mine !== latest || place.kind !== 'events' || data.month !== cal.month) return;
+    if (data.upcoming !== side.upcoming) {
+      side.upcoming = data.upcoming;
+      renderSide();
+    }
+    const shape = (items) => JSON.stringify(items.map((i) => [i.id, i.event]));
+    if (shape(data.items) === shape(cal.items)) return;
+    const top = rowsEl.scrollTop;
+    cal.items = data.items;
+    rows = itemsInOrder(cal.items, cal.month);
+    total = rows.length;
+    renderHead();
+    renderRows();
+    rowsEl.scrollTop = top;
+    renumberOpen();
   }
 
   // A newsletter made, renamed or sent elsewhere changes the drafts in the
@@ -1250,13 +1606,21 @@ export function showArticles(root) {
         return;
       }
       const drafts = issues.filter((i) => i.status === 'draft');
-      const key = (list) => JSON.stringify(list.map((d) => [d.id, d.name, d.current]));
+      // Its day and its picks too: the events are measured against the day,
+      // and the column shows how full each section is.
+      const key = (list) => JSON.stringify(list.map((d) => [d.id, d.name, d.current, d.planned_for, d.sections]));
       if (key(drafts) === key(side.drafts)) return;
+      const daysBefore = sendOn();
       side.drafts = drafts;
       const saved = readTarget();
       const newest = drafts.find((d) => d.current) || drafts[0];
       side.target = drafts.some((d) => d.id === saved) ? saved : (newest ? newest.id : null);
       renderSide();
+      if (sendOn() !== daysBefore && !['topics', 'ask'].includes(place.kind)) {
+        const top = rowsEl.scrollTop;
+        renderRows();
+        rowsEl.scrollTop = top;
+      }
       if (current()) redrawOpen();
     }, 1500);
   }
@@ -1560,7 +1924,7 @@ export function showArticles(root) {
   // Drawn again only when something in it changed, keeping the focus on
   // the button that had it.
   function showStatus() {
-    const html = statusLines(overview, { checking: Boolean(checking), view: placeKey(place), failedOpen, note: statusNote });
+    const html = statusLines(overview, { checking: Boolean(checking), view: placeKey(place), failedOpen, note: statusNote, admin });
     if (html === statusHtml) return;
     const had = status.contains(document.activeElement) ? document.activeElement.dataset.act : null;
     statusHtml = html;
@@ -1735,7 +2099,18 @@ export function showArticles(root) {
     else if (act === 'failed') toggleFailed();
     else if (act === 'find-signals') findSignals(target);
     else if (act === 'view') goPlace(target.dataset.view);
-    else if (act === 'cite') openItem(target.dataset.id);
+    else if (act === 'cite' || act === 'cal-open') openItem(target.dataset.id);
+    else if (act === 'cal-prev') moveMonth(-1);
+    else if (act === 'cal-next') moveMonth(1);
+    else if (act === 'cal-this') moveMonth(0);
+    else if (act === 'cal-day') rowsEl.querySelector(`#cal-${CSS.escape(target.dataset.day)}`)?.scrollIntoView({ block: 'start' });
+    else if (act === 'ask-add') askMenu(target);
+    else if (act === 'ask-follow') askQuestion(target.dataset.q);
+    else if (act === 'ask-recent') {
+      const days = Number(target.dataset.days);
+      if (ASK_DAYS.includes(days)) $('ask-days').value = String(days);
+      askQuestion(target.dataset.q, days || undefined, { alone: true });
+    } else if (act === 'ask-forget') forgetQuestion(target.dataset.id);
     else if (act === 'ask-example') askQuestion(target.dataset.q);
     else if (act === 'ask-new') newConversation();
     else if (act === 'ask-copy') copyAnswer(Number(target.dataset.n));
@@ -1744,11 +2119,7 @@ export function showArticles(root) {
     else if (act === 'drive-save') saveToDrive();
     else if (act === 'list-drive') saveListToDrive();
     else if (act === 'drive-files') showDriveFiles();
-    else if (act === 'fresh') {
-      fresher = 0;
-      renderFresh();
-      loadList({ keep: state.item }).then(() => { rowsEl.scrollTop = 0; });
-    }
+    else if (act === 'fresh') toTop();
   });
 
   root.addEventListener('change', (event) => {
@@ -1756,6 +2127,7 @@ export function showArticles(root) {
       side.target = Number(event.target.value);
       saveTarget(side.target);
       renderSide();
+      if (!['topics', 'ask'].includes(place.kind)) renderRows();
       renderReader();
     } else if (event.target.id === 'tp-follow') {
       changeTopic({ followed: event.target.checked });
@@ -1888,7 +2260,7 @@ export function showArticles(root) {
 
   function onHash() {
     const next = readState();
-    if (next.place === state.place && next.q === state.q && next.sort === state.sort) {
+    if (next.place === state.place && next.q === state.q && next.sort === state.sort && next.month === state.month) {
       if (ar.classList.contains('reading') && next.item !== state.item) {
         // The phone's Back, or Takaisin: from the article to the list.
         readingStep = false;
@@ -1910,6 +2282,8 @@ export function showArticles(root) {
   }
   window.addEventListener('hashchange', onHash);
   window.addEventListener('resize', fit);
+  rowsEl.addEventListener('scroll', sawTop, { passive: true });
+  window.addEventListener('scroll', sawTop, { passive: true });
   NARROW.addEventListener('change', fit);
 
   // An open page keeps its status line and its numbers current, without
@@ -1930,6 +2304,7 @@ export function showArticles(root) {
       loadDriveFiles();
     }),
     onLive('topics', refreshSide),
+    onLive('sources', () => loadSide({ sources: true }).catch(() => {})),
     onLive('signals', refreshSide),
     onLive('issues', refreshDrafts),
     onLive('drive', () => {
@@ -1965,8 +2340,10 @@ export function showArticles(root) {
       unlisten.forEach((stop) => stop());
       clearTimeout(heard.timer);
       clearTimeout(draftsTimer);
+      clearTimeout(overviewTimer);
       clearInterval(signalPoll);
       window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('scroll', sawTop);
       window.removeEventListener('resize', fit);
       NARROW.removeEventListener('change', fit);
       document.removeEventListener('keydown', onKey);

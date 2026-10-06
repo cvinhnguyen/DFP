@@ -1,18 +1,21 @@
 // One newsletter, laid out like Mailchimp's campaign page: a list of what it
-// needs, each with a tick once done. The picked articles, the subject line
-// and preview text, the content from the editor (with what still needs a
-// look), and Mailchimp, where it goes to be sent. A preview sits beside it.
-// Jira: DM42-37
+// needs, each with a tick once done. The picked articles, with how full each
+// section is and what waits for it in Uudet, the subject line and preview
+// text, the content from the editor (with what still needs a look), and
+// Mailchimp, where it goes to be sent. A preview sits beside it. Above them
+// the day it is planned to go out, and under them what has been done to it.
+// Jira: DM42-37, DM42-32
 
 import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
-import { esc, safeUrl, when, date, number } from '../format.js';
-import { readDesign } from '../newsletter/model.js';
+import { esc, safeUrl, when, date, number, ago, daysUntil, finnishDay, inDays, weekdayDay } from '../format.js';
+import { articleIds, readDesign } from '../newsletter/model.js';
 import { checkDesign } from '../newsletter/checks.js';
 import { byteSize } from '../newsletter/render.js';
 import { openHandoff, describeCheck } from '../newsletter/handoff.js';
 import { icon } from '../ui/icons.js';
 import { toast, confirmDialog, promptDialog } from '../ui/dialogs.js';
+import { openMenu } from '../ui/menu.js';
 import { mailchimpLine } from './newsletters.js';
 import { suggestionsBox } from '../newsletter/writing.js';
 import { saveTarget } from './articles.js';
@@ -37,6 +40,10 @@ export function showNewsletter(root) {
   let next = null;
   const button = (key) => (key === next ? 'btn small' : 'btn ghost small');
   let suggestAttempt = 0;   // how many times the AI has suggested subject lines here
+  let activity = [];        // what has been done to it, newest first
+  let waiting = null;       // how many articles in Uudet each section is suggested for
+  let planning = false;     // the day is being chosen
+  let historyAll = false;   // the whole history, not only the latest
 
   // ---------- each line of the list ----------
 
@@ -56,27 +63,123 @@ export function showNewsletter(root) {
       </section>`;
   }
 
+  // How full each section is, and how many articles in Uudet are suggested
+  // for it: "3 waiting" opens them on Artikkelit, picking into this one.
+  // Nostoja kentältä is where everything else is suggested, so a count for
+  // it would only be the size of Uudet.
+  function fillHtml() {
+    const counts = issue.sections || {};
+    return `<ul class="nl-fill" aria-label="${esc(t('fill.label'))}">${SECTION_ORDER.map((key) => {
+      const n = counts[key] || 0;
+      const wait = issue.status === 'draft' && waiting && key !== 'highlights' ? waiting[key] || 0 : 0;
+      const link = wait ? `<a class="nl-fill-wait" href="#/?place=suggested:${key}" data-act="waiting"
+          aria-label="${esc(`${tn('fill.waiting', wait, { n: number(wait) })}. ${t('fill.waitingLabel', { section: t(`section.${key}`) })}`)}">${esc(tn('fill.waiting', wait, { n: number(wait) }))}</a>` : '';
+      return `<li class="nl-fill-sec${n ? ' has' : ''}"><span class="nl-fill-dot" aria-hidden="true"></span>
+        <span class="nl-fill-name">${esc(t(`section.${key}`))}</span>
+        <span class="nl-fill-n">${n ? number(n) : esc(t('fill.empty'))}</span>${link}</li>`;
+    }).join('')}</ul>`;
+  }
+
   function articlesLine() {
     const by = (key) => issue.articles.filter((a) => a.section === key);
-    const counts = SECTION_ORDER.map((k) => (by(k).length ? `${t(`section.${k}`)} ${by(k).length}` : '')).filter(Boolean).join(' · ');
-    const summary = issue.articles.length
-      ? `<p>${esc(tn('issue.articleCount', issue.articles.length))}${counts ? ` <span class="nl-meta">(${esc(counts)})</span>` : ''}</p>`
-      : `<p class="nl-meta">${esc(t('issue.noArticles'))}</p>`;
+    const summary = `${issue.articles.length
+      ? `<p>${esc(tn('issue.articleCount', issue.articles.length))}</p>`
+      : `<p class="nl-meta">${esc(t('issue.noArticles'))}</p>`}${fillHtml()}`;
+    // An article already in the email moves there, in the editor: saving
+    // the email puts its pick where the email has it.
+    const inEmail = design ? articleIds(design) : new Set();
     const list = !open.articles ? '' : `<div class="nl-line-body">${SECTION_ORDER.map((key) => {
       const items = by(key);
       if (!items.length) return '';
-      return `<h3>${esc(t(`section.${key}`))}</h3><ul class="nl-articles">${items.map((a) => {
+      return `<h3>${esc(t(`section.${key}`))} <span class="nl-h-n">${number(items.length)}</span></h3><ul class="nl-articles">${items.map((a) => {
         const url = safeUrl(a.url);
+        const title = a.title_fi || a.title;
+        const placed = inEmail.has(Number(a.id));
         return `<li>
-          <span class="nl-article-title">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>` : esc(a.title)}</span>
-          <span class="nl-meta">${esc(a.publisher || '')}${a.decided_by ? ` · ${esc(t('issue.pickedBy', { name: a.decided_by, when: when(a.decided_at) }))}` : ''}</span>
-          ${issue.status === 'draft' ? `<button type="button" class="linkish" data-act="unpick" data-id="${a.id}">${esc(t('issue.remove'))}</button>` : ''}
+          <span class="nl-article-title">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(title)}</a>` : esc(title)}</span>
+          <span class="nl-meta">${esc(a.publisher || '')}${a.decided_by ? ` · ${esc(t('issue.pickedBy', { name: a.decided_by, when: when(a.decided_at) }))}` : ''}${design
+            ? ` · ${esc(t(placed ? 'issue.inEmail' : 'issue.notInEmail'))}` : ''}</span>
+          ${issue.status === 'draft' ? `<span class="nl-article-acts">
+            ${placed ? '' : `<button type="button" class="linkish" id="nl-move-${a.id}" data-act="move" data-id="${a.id}"
+              aria-label="${esc(t('issue.moveLabel', { title }))}">${esc(t('issue.move'))}</button>`}
+            <button type="button" class="linkish" data-act="unpick" data-id="${a.id}">${esc(t('issue.remove'))}</button></span>` : ''}
         </li>`;
       }).join('')}</ul>`;
     }).join('')}</div>`;
     const action = `${issue.articles.length ? `<button type="button" class="btn ghost small" data-act="toggle" data-what="articles">${esc(open.articles ? t('issue.hide') : t('issue.show'))}</button>` : ''}
       ${issue.status === 'draft' ? `<a class="${button('articles')}" href="#/" data-act="pick-more">${esc(t('issue.pickMore'))}</a>` : ''}`;
     return line('articles', issue.articles.length > 0, t('issue.lineArticles'), summary, action, list);
+  }
+
+  // ---------- the day it goes out ----------
+
+  function planLine() {
+    if (issue.status !== 'draft') return '';
+    if (planning) {
+      return `<form class="nl-plan-form" data-form="plan">
+        <label for="nl-plan-day">${esc(t('plan.label'))}</label>
+        <input type="date" id="nl-plan-day" class="cf-input" name="day" required value="${esc(issue.planned_for || '')}" min="${finnishDay()}">
+        <button type="submit" class="btn small">${esc(t('dialog.save'))}</button>
+        <button type="button" class="btn ghost small" data-act="plan-cancel">${esc(t('dialog.cancel'))}</button>
+        ${issue.planned_for ? `<button type="button" class="linkish" data-act="plan-clear">${esc(t('plan.clear'))}</button>` : ''}
+        <p class="cf-hint">${esc(t('plan.hint'))}</p>
+      </form>`;
+    }
+    if (!issue.planned_for) {
+      return `<p class="nl-plan none">${icon('calendar', 16)}<span>${esc(t('plan.none'))}</span>
+        <button type="button" class="linkish" data-act="plan-edit">${esc(t('plan.set'))}</button></p>`;
+    }
+    const passed = daysUntil(issue.planned_for) < 0;
+    return `<p class="nl-plan${passed ? ' passed' : ''}">${icon('flag', 16)}<span><strong>${esc(t('plan.on', { day: weekdayDay(issue.planned_for) }))}</strong>
+      · ${esc(passed ? t('plan.passed') : inDays(issue.planned_for))}</span>
+      <button type="button" class="linkish" data-act="plan-edit">${esc(t('plan.change'))}</button></p>`;
+  }
+
+  // ---------- what has been done to it ----------
+
+  const HISTORY_SHOWN = 8;
+
+  function historyText(a) {
+    const who = a.who || t('hist.someone');
+    const section = a.section ? t(`section.${a.section}`) : '';
+    const from = a.from_section ? t(`section.${a.from_section}`) : '';
+    const whole = a.title || '';
+    const title = whole.length > 64 ? `${whole.slice(0, 62).trimEnd()}…` : whole;
+    switch (a.kind) {
+      case 'picked': return t('hist.picked', { who, title, section });
+      case 'moved': return t(a.in_editor ? 'hist.movedEditor' : 'hist.moved', { who, title, section, from });
+      case 'removed': return t('hist.removed', { who, title, section });
+      case 'planned': return a.detail ? t('hist.planned', { who, date: weekdayDay(a.detail) }) : t('hist.plannedNone', { who });
+      case 'subject': return a.detail ? t('hist.subject', { who, detail: a.detail }) : t('hist.subjectNone', { who });
+      case 'renamed': return t('hist.renamed', { who, detail: a.detail || '' });
+      case 'created': return t('hist.created', { who });
+      case 'saved': return `${t('hist.saved', { who })} (${t('hist.latest')})`;
+      case 'exported': return `${t('hist.exported', { who })} (${t('hist.latest')})`;
+      case 'sent': return a.detail ? t('hist.sent', { n: number(Number(a.detail)) }) : t('hist.sentNoCount');
+      case 'drive': return t('hist.drive', { who, detail: a.detail || '' });
+      case 'comment': return a.detail ? t('hist.comment', { who, detail: a.detail }) : t('hist.commentPlain', { who });
+      default: return a.kind;
+    }
+  }
+
+  function initials(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '?';
+    return (words.length > 1 ? words[0][0] + words[words.length - 1][0] : words[0].slice(0, 2)).toUpperCase();
+  }
+
+  function historyCard() {
+    if (!activity.length) return '';
+    const shown = historyAll ? activity : activity.slice(0, HISTORY_SHOWN);
+    return `<section class="card nl-history" aria-labelledby="nl-history-h">
+      <h2 id="nl-history-h">${icon('clock', 18)}<span>${esc(t('hist.title'))}</span></h2>
+      <ol class="nl-hist">${shown.map((a) => `<li class="nl-hist-row">
+        <span class="nl-hist-who" aria-hidden="true">${a.kind === 'sent' ? icon('mail', 14) : esc(initials(a.who))}</span>
+        <span class="nl-hist-text">${esc(historyText(a))}</span>
+        <time datetime="${esc(a.at)}" title="${esc(when(a.at))}">${esc(ago(a.at))}</time></li>`).join('')}</ol>
+      ${activity.length > HISTORY_SHOWN ? `<button type="button" class="linkish" data-act="history-all" aria-expanded="${historyAll}">${esc(historyAll
+        ? t('hist.less') : t('hist.more', { n: number(activity.length) }))}</button>` : ''}
+    </section>`;
   }
 
   function subjectLine() {
@@ -163,8 +266,10 @@ export function showNewsletter(root) {
           <span class="nl-status ${issue.status}">${esc(t(`list.status.${issue.status}`))}</span>
           ${issue.current && !sent ? `<span class="nl-current">${esc(t('list.current'))}</span>` : ''}
         </div>
+        ${planLine()}
       </div>
       <div class="nl-layout">
+        <div class="nl-main">
         <div class="card nl-checklist">
           ${sent ? `<p class="nl-sentnote">${icon('check', 18)} ${esc(t('issue.sentNote', { date: date(issue.sent_at) }))}</p>` : `
           <div class="nl-progress">
@@ -175,6 +280,8 @@ export function showNewsletter(root) {
           ${subjectLine()}
           ${contentLine()}
           ${mailchimpSection()}
+        </div>
+        ${historyCard()}
         </div>
         <aside class="card nl-side">
           <div class="nl-side-head">
@@ -194,8 +301,14 @@ export function showNewsletter(root) {
     try {
       issue = wanted ? await api.get(`/api/issues/${wanted}`) : await api.get('/api/issues/current');
       if (!wanted) history.replaceState(null, '', `#/newsletter?id=${issue.id}`);
-      const stored = issue.has_design ? await api.get(`/api/issues/${issue.id}/design`) : { design: null };
+      const [stored, done, suggested] = await Promise.all([
+        issue.has_design ? api.get(`/api/issues/${issue.id}/design`) : Promise.resolve({ design: null }),
+        api.get(`/api/issues/${issue.id}/activity`).catch(() => []),
+        issue.status === 'draft' ? api.get('/api/suggestions/waiting').catch(() => null) : Promise.resolve(null),
+      ]);
       design = readDesign(stored.design);
+      activity = done;
+      waiting = suggested;
       checks = design ? checkDesign(design, { issue, articles: issue.articles, size: issue.html ? byteSize(issue.html) : 0 }) : null;
       if (!gone) render();
     } catch (e) {
@@ -226,10 +339,35 @@ export function showNewsletter(root) {
     if (!target) return;
     const act = target.dataset.act;
     try {
-      if (act === 'pick-more') {
+      if (act === 'pick-more' || act === 'waiting') {
         // The articles page picks into this newsletter from now on; the link
         // itself goes there.
         saveTarget(issue.id);
+      } else if (act === 'plan-edit') {
+        planning = true;
+        render();
+        root.querySelector('#nl-plan-day')?.focus();
+      } else if (act === 'plan-cancel') {
+        planning = false;
+        render();
+        root.querySelector('[data-act="plan-edit"]')?.focus();
+      } else if (act === 'plan-clear') {
+        issue = await api.patch(`/api/issues/${issue.id}`, { planned_for: null });
+        planning = false;
+        refreshChecks();
+        render();
+        toast(t('plan.cleared'));
+      } else if (act === 'history-all') {
+        historyAll = !historyAll;
+        render();
+        root.querySelector('[data-act="history-all"]')?.focus();
+      } else if (act === 'move') {
+        const article = issue.articles.find((a) => String(a.id) === target.dataset.id);
+        if (!article) return;
+        openMenu(target, [{ kind: 'group', label: t('fill.label'), options: SECTION_ORDER.map((key) => ({
+          label: t(`section.${key}`), checked: key === article.section,
+          onSelect: () => movePick(article, key),
+        })) }], { align: 'left' });
       } else if (act === 'toggle') {
         open[target.dataset.what] = !open[target.dataset.what];
         render();
@@ -295,7 +433,38 @@ export function showNewsletter(root) {
     }
   });
 
+  // Moves a pick to another section of this newsletter, before it is in
+  // the email.
+  async function movePick(article, section) {
+    if (section === article.section) return;
+    try {
+      await api.put(`/api/items/${article.id}/decision`, { decision: 'picked', section, issue_id: issue.id });
+      issue = await api.get(`/api/issues/${issue.id}`);
+      refreshChecks();
+      render();
+      toast(t('issue.moved', { section: t(`section.${section}`) }));
+      root.querySelector(`#nl-move-${article.id}`)?.focus();
+    } catch (e) {
+      toast(e.message, 'warn');
+    }
+  }
+
   root.addEventListener('submit', async (event) => {
+    const plan = event.target.closest('[data-form="plan"]');
+    if (plan) {
+      event.preventDefault();
+      try {
+        issue = await api.patch(`/api/issues/${issue.id}`, { planned_for: plan.day.value || null });
+        planning = false;
+        refreshChecks();
+        render();
+        toast(t('plan.saved'));
+        root.querySelector('[data-act="plan-edit"]')?.focus();
+      } catch (e) {
+        toast(e.message, 'warn');
+      }
+      return;
+    }
     const form = event.target.closest('[data-form="subject"]');
     if (!form) return;
     event.preventDefault();

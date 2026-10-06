@@ -1,6 +1,6 @@
 """What the newsletter endpoints take and return."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -63,6 +63,8 @@ class IssueSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     sent_at: datetime | None
+    planned_for: date | None = Field(default=None, description="The day it is planned to go out, Finnish time")
+    sections: dict[str, int] = Field(default={}, description="How many picks each section has: {\"events\": 3}")
 
 
 class Issue(IssueSummary):
@@ -80,6 +82,7 @@ class Issue(IssueSummary):
 
 class IssueCreate(BaseModel):
     name: str | None = Field(default=None, max_length=120, description="Named after the month when left out")
+    planned_for: date | None = Field(default=None, description="The day it is planned to go out")
     template: str | None = Field(default=None, pattern=r"^(builtin:[a-z]{2,20}|saved:\d{1,9}|issue:\d{1,9})$",
                                  description="What it starts from: builtin:<key>, saved:<id> or issue:<id>")
 
@@ -88,6 +91,21 @@ class IssueUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     subject: str | None = Field(default=None, max_length=200)
     preheader: str | None = Field(default=None, max_length=200)
+    planned_for: date | None = Field(default=None, description="The day it is planned to go out; null takes it away")
+
+
+class ActivityEntry(BaseModel):
+    at: datetime
+    who: str | None = Field(description="Who did it; none for Mailchimp's own sending")
+    kind: str = Field(description="picked, moved, removed, planned, subject, renamed, created, saved, exported, "
+                                  "sent, drive or comment")
+    item_id: int | None = None
+    title: str | None = Field(default=None, description="The article's title at the time")
+    section: str | None = None
+    from_section: str | None = None
+    detail: str | None = Field(default=None, description="The new day, subject line or name; the Drive folder; "
+                                                         "the commented block; how many it was sent to")
+    in_editor: bool = Field(default=False, description="Moved by placing it in another section in the editor")
 
 
 class DesignOut(BaseModel):

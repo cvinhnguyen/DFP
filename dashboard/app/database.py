@@ -37,6 +37,9 @@ def run(sql, params=None):
 # new code without applying a migration is told which file to run, instead of
 # getting an error from deep inside a query.
 NEEDS = [
+    ("38-ask-history.sql", "SELECT to_regclass('public.ask_history') IS NOT NULL AS ok"),
+    ("37-planning.sql", "SELECT to_regclass('public.issue_activity') IS NOT NULL AS ok"),
+    ("36-sources.sql", "SELECT to_regclass('public.source_suggestions') IS NOT NULL AS ok"),
     ("35-live.sql", "SELECT to_regproc('public.live_send') IS NOT NULL AS ok"),
     ("34-drive-library.sql", "SELECT to_regclass('public.drive_saves') IS NOT NULL AS ok"),
     ("33-drive.sql", "SELECT to_regclass('public.drive_log') IS NOT NULL AS ok"),

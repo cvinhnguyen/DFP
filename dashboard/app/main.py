@@ -24,8 +24,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import database, errors, middleware
 from .dependencies import current_user
 from .routes import (archive, auth, brand, comments, costs, drive, images, issues, items, live, mailchimp,
-                     members, overview, pictures, retention, robots, signals, suggestions, telegram, templates,
-                     topics, writing)
+                     members, overview, pictures, retention, robots, signals, sources, suggestions, telegram,
+                     templates, topics, writing)
 from .services import live as live_service
 
 log = logging.getLogger("uvicorn.error")
@@ -78,17 +78,21 @@ private.include_router(brand.router)
 private.include_router(members.router)
 private.include_router(suggestions.router)
 private.include_router(pictures.admin_router)
+# After the pictures': /sources/pictures is theirs, not a source's number.
+private.include_router(sources.router)
 private.include_router(drive.router)
 private.include_router(live.router)
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(private)
 # Only n8n, with its token: the bot's account commands, the pictures it
-# finds on the articles' pages, and the hourly read of the Drive folder.
+# finds on the articles' pages, the read of the Drive folder every 15
+# minutes, and the pages watched for new articles.
 app.include_router(telegram.router, prefix="/api")
 app.include_router(pictures.router, prefix="/api")
 app.include_router(archive.token_router, prefix="/api")
 app.include_router(drive.token_router, prefix="/api")
+app.include_router(sources.token_router, prefix="/api")
 # Open to anyone with the address: newsletter images, for the readers.
 app.include_router(images.public)
 # Open to anyone: robots.txt, which keeps search engines and AI crawlers out.

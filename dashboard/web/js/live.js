@@ -28,6 +28,7 @@ let channel = null;
 let source = null;
 let release = null;
 let retryTimer = null;
+let heardBefore = false;  // the stream has said hello before: the next hello follows a break
 
 function deliver(change) {
   for (const key of [change.k, '*']) {
@@ -57,6 +58,11 @@ function connect(retries = 0) {
   source.addEventListener('hello', () => {
     retries = 0;
     pass({ status: true });
+    // Back after a break, such as the computer sleeping or the dashboard
+    // restarting: what changed meanwhile was never heard, so every page
+    // catches up once.
+    if (heardBefore) pass({ changes: [{ k: 'resync', ids: null }] });
+    heardBefore = true;
   });
   source.onmessage = (event) => {
     let changes;
@@ -99,6 +105,7 @@ function lead() {
 export function startLive() {
   if (started) return;
   started = true;
+  heardBefore = false;
   if ('BroadcastChannel' in window) {
     channel = new BroadcastChannel(NAME);
     channel.onmessage = (event) => {

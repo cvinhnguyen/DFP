@@ -43,7 +43,7 @@ docker compose up -d
 
 | Table | What it holds | Defined in |
 |---|---|---|
-| `sources` | the sites, feeds, journals and archives we follow, how each is read, what the pictures on its pages are (`picture_rights`: own, open, check or none), and the section the editors chose for its articles (`suggested_section`) | `02-schema.sql`, `07`, `11`, `14`, `20`, `28`, `30` |
+| `sources` | the sites, feeds, journals, archives and watched pages we follow, how each is read, what the pictures on its pages are (`picture_rights`: own, open, check or none), and the section the editors chose for its articles (`suggested_section`). Admins keep them on Asetukset → Lähteet, which records who added or last changed one | `02-schema.sql`, `07`, `11`, `14`, `20`, `28`, `30`, `36` |
 | `items` | one row per article or thesis, with what came of looking for the picture on its page | `02-schema.sql`, `10`, `11`, `20`, `25`, `28` |
 | `summaries` | the Finnish summaries, each carrying its source link and publisher, a Finnish title and, for an event, its dates, time, place and deadline | `02-schema.sql`, `12`, `15`, `21` |
 | `collection_runs` | one row each time a source is checked, with any error | `02-schema.sql` |
@@ -68,9 +68,13 @@ docker compose up -d
 | `retention_runs` | a line for each night's cleanup: the articles whose text went after `raw_text_retention_days`, the pictures from their pages that went with it, and the old ones kept because they are in use | `25-retention.sql`, `28` |
 | `members` | the association's member organisations from its members page, with their websites, so their articles are suggested for Jäsenkuulumisia; organisations only | `29-members.sql` |
 | `drive_files`, `drive_log` | what the Drive guard last listed in the association's one Drive folder and what it did with each file, and every action it took or refused; names, never contents (`docs/drive.md`) | `33-drive.sql`, `34` |
+| `watch_links` | the links a watched page has had, so only a new one becomes an article (a source of type `watch`, for a site without a feed) | `36-sources.sql` |
+| `source_suggestions` | what the dashboard found when it looked for a feed on a site the past newsletters linked to or a member's site, and the ones an admin said no to | `36-sources.sql` |
 | `drive_saves`, `drive_changes`, `drive_thumbs` | what the tool saved into the folder and who asked; a document that changed after its article went into a newsletter, until an editor has looked; small previews of the folder's pictures for Kuvapankki (`docs/drive.md`) | `34-drive-library.sql` |
 | `archive_issues`, `archive_entries` | the association's past newsletters and the links they chose, brought in from their public archive (`newsletter_archive_url` in `app_settings`) to check the system against (`docs/evaluation.md`) | `26-archive.sql`, `32` |
-| `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, and its draft in Mailchimp | `17-newsletter.sql`, `18` |
+| `issues` | newsletters: drafts and the ones sent, with the editor's design, the finished email, its draft in Mailchimp, and the day it is planned to go out | `17-newsletter.sql`, `18`, `37` |
+| `issue_activity` | what was done to a newsletter and by whom: a pick, a move to another section, a pick taken out, a new name, subject line or day | `37-planning.sql` |
+| `ask_history` | each editor's questions to the articles in Kysy artikkeleilta, the newest 30, so one can be asked again; the question only, never an answer | `38-ask-history.sql` |
 | `item_picks` | what the editors decided about each article: picked (for which issue and which section: the four, or Learning Factory), later, or not used, with the section the dashboard suggested at the time and why | `17-newsletter.sql`, `19`, `30`, `31` |
 | `images` | pictures uploaded in the newsletter editor, each article's picture from its own page, kept with the article's id, whose it is and its credit, and pictures brought in from the Drive folder, with their file's id | `17-newsletter.sql`, `28-article-pictures.sql`, `34` |
 | `newsletter_templates` | templates and sections the editors saved, to start a newsletter from | `18-editor-mailchimp.sql` |

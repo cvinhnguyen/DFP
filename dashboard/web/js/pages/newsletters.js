@@ -8,8 +8,9 @@
 
 import { api } from '../api.js';
 import { pageTitle, t, tn } from '../texts.js';
-import { esc, when, date } from '../format.js';
+import { esc, when, date, number, weekdayDay } from '../format.js';
 import { icon } from '../ui/icons.js';
+import { emptyState } from '../ui/empty.js';
 import { h } from '../ui/dom.js';
 import { promptDialog, confirmDialog, toast } from '../ui/dialogs.js';
 import { popover, closePopover } from '../ui/controls.js';
@@ -47,6 +48,7 @@ export function showNewsletters(root) {
             <a class="nl-name" href="${href}">${esc(i.name)}</a>
             <span class="nl-sub">${i.subject ? esc(t('list.subject', { subject: i.subject })) : `<em>${esc(t('list.noSubject'))}</em>`}</span>
             <span class="nl-meta">${esc(meta)}</span>
+            ${i.status === 'draft' && i.planned_for ? `<span class="nl-plan-mini">${icon('flag', 13)}${esc(t('list.planned', { day: weekdayDay(i.planned_for) }))}</span>` : ''}
             ${i.current ? `<span class="nl-current">${esc(t('list.current'))}</span>` : ''}
           </div>
         </div></td>
@@ -77,6 +79,7 @@ export function showNewsletters(root) {
   function render() {
     const shown = issues;
     const drafts = issues.filter((i) => i.status === 'draft').length;
+    const counts = { all: issues.length, draft: drafts, sent: issues.length - drafts };
     pageTitle(t('list.title'));
     root.innerHTML = `
       <div class="pagehead nl-listhead">
@@ -92,7 +95,7 @@ export function showNewsletters(root) {
       <div class="nl-filters">
         <input type="search" class="cf-input nl-search" value="${esc(query)}" placeholder="${esc(t('list.search'))}" aria-label="${esc(t('list.search'))}">
         <div class="cf-seg compact" role="radiogroup" aria-label="${esc(t('list.filter'))}">
-          ${['all', 'draft', 'sent'].map((f) => `<button type="button" role="radio" class="cf-seg-item" data-filter="${f}" aria-checked="${f === filter}">${esc(t(`list.filter.${f}`))}</button>`).join('')}
+          ${['all', 'draft', 'sent'].map((f) => `<button type="button" role="radio" class="cf-seg-item" data-filter="${f}" aria-checked="${f === filter}">${esc(t(`list.filter.${f}`))}<span class="cf-seg-n">${number(counts[f])}</span></button>`).join('')}
         </div>
       </div>
       ${issues.length ? `
@@ -108,12 +111,8 @@ export function showNewsletters(root) {
           <tbody>${shown.map(row).join('')}<tr class="nl-none-row" hidden><td colspan="5" class="nl-none">${esc(t('list.nothing'))}</td></tr></tbody>
         </table>
       </div>` : `
-      <div class="card nl-empty">
-        ${icon('template', 40)}
-        <h2>${esc(t('list.emptyTitle'))}</h2>
-        <p>${esc(t('list.emptyLead'))}</p>
-        <button type="button" class="btn" data-act="create">${esc(t('list.create'))}</button>
-      </div>`}
+      <div class="card">${emptyState({ icon: 'template', title: t('list.emptyTitle'), text: t('list.emptyLead'),
+        actions: `<button type="button" class="btn" data-act="create">${esc(t('list.create'))}</button>` })}</div>`}
       ${drafts > 1 ? `<p class="nl-hint">${esc(t('list.manyDrafts'))}</p>` : ''}`;
     applyFilter();
   }

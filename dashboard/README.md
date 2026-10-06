@@ -1,9 +1,13 @@
 # The dashboard
 
 The editors' web app, in Finnish with an English switch for the team. The
-menu under one's name in the top bar has the look (light, dark, or as the
+top bar is quiet, on the page's own surface, so the green keeps meaning
+"here" and "do this": the logo, the page in view, the main buttons and what
+is chosen. On a phone it is one row in the association's green, with its
+name, and the pages are a tab bar at the bottom. The menu under one's name has the look (light, dark, or as the
 computer has it), the language, and logging out; the look and the language
-are kept in that browser.
+are kept in that browser. An empty place says what goes there and what to
+do next, the same way on every page (`web/js/ui/empty.js`).
 
 - **Artikkelit**: everything the tool collected, read by topic. One quiet
   line above it says what came today and when the sources were checked,
@@ -20,10 +24,14 @@ are kept in that browser.
   section is suggested. "Myöhemmin" keeps it for later and "Ei käytetä"
   leaves it out. The next article opens by itself, and keys do the same as
   the buttons. Both editors see who decided what. Skipped and failed
-  articles say why, and can be summarised anyway.
+  articles say why, and can be summarised anyway. An event's day and the
+  last day to sign up show on its row too, marked as read by the AI, and
+  in amber when they fall before the newsletter goes out.
+  **Tapahtumakalenteri** in the column shows the events of a month.
 - **Uutiskirjeet**: every newsletter, drafts first, like Mailchimp's list of
   campaigns. Each one opens to a checklist: articles, subject line and
-  preview text, content, Mailchimp, with a preview beside it.
+  preview text, content, Mailchimp, with a preview beside it, the day it is
+  planned to go out above it, and its history under it.
 - **The editor**: an editor for the email itself, laid out like Mailchimp's
   so the editors find their way in both. Blocks, sections, styles, a check
   of everything that needs a look, a phone view, a preview, comments, and
@@ -32,16 +40,17 @@ are kept in that browser.
   comments: building an email is for a computer, as in Mailchimp.
 - **Asetukset**, for admins, in three groups with a list of them beside the
   page that marks the one in view (a row at the top on a phone). Yhteydet:
-  the Mailchimp connection and the association's Google Drive folder.
-  Kirjeiden sisältö: the banners and logo new emails start with, what each
-  source's pictures are, how often the suggested sections were right, and
-  the member organisations. Tekoäly ja tiedot: what the AI costs against its
-  monthly budget, and how long articles are kept. A section that needs an
-  admin's eye has a mark in the list.
+  how the sources are doing, with the way to **Lähteet**, where they are
+  kept (see Sources), the Mailchimp connection and the association's Google
+  Drive folder. Kirjeiden sisältö: the banners and logo new emails start
+  with, and the member organisations. Tekoäly ja tiedot: how often the
+  suggested sections were right, what the AI costs against its monthly
+  budget, and how long articles are kept. A section that needs an admin's
+  eye has a mark in the list.
 
 Jira: DM42-80, with DM42-31 for the article API, DM42-32 for decisions,
-DM42-33 for logging in, DM42-37 for the newsletter and DM42-39 for the AI
-costs.
+DM42-33 for logging in, DM42-37 for the newsletter, DM42-39 for the AI
+costs and DM42-29 for the sources.
 
 It is one service: a small Python API (FastAPI) that also serves the pages.
 The pages are plain HTML, CSS and JavaScript with no build step.
@@ -128,7 +137,9 @@ choose one with `/password` in the bot.
    another and opens its page, and "Valitse artikkeleita" there sends the
    next picks into it.
 2. Open the newsletter. Its checklist shows what is done: the articles, the
-   subject line and preview text, the content, and Mailchimp.
+   subject line and preview text, the content, and Mailchimp. See Planning a
+   newsletter for the day it goes out, how full each section is, and its
+   history.
 3. Open the editor. The first time, it asks for a template, grouped the way
    Mailchimp's gallery is: newsletters, events, announcements and surveys,
    membership, training, greetings, and basic layouts. The first two are the
@@ -348,7 +359,8 @@ their say-so (`services/suggestions.py`, `db/init/30-section-suggestions.sql`):
   whether to stop suggesting it.
 - Asetukset shows how often the suggestion was right, by reason and by
   source, with the sections chosen for sources, who chose them and when, and
-  removes one.
+  removes one. An admin can also choose a source's section straight away, in
+  its settings on Asetukset → Lähteet.
 
 Three picks are few, and a source's articles can be of many kinds, which is
 why it asks rather than changing the suggestion on its own. In the
@@ -375,6 +387,92 @@ starts with the event line.
 Each editor sees what is new to them: an article not opened yet has a dot,
 and Uudet says how many are unread. Opening one for a moment marks it read
 for that editor only.
+
+## Planning a newsletter
+
+A draft can have the day it is planned to go out: "Lähtee ti 20.10." at the
+top of its page, set or changed there. Everything about events is measured
+against the day of the draft picks go into: an event, or the last day to
+sign up for one, that falls before it shows in amber on Artikkelit ("ennen
+lähtöä"), in the reader, and in the calendar, which marks the day.
+
+Under the articles on the checklist each section has a row: how many are
+picked into it, "ei vielä" when none are, and how many articles in Uudet are
+suggested for it. "3 ehdotusta odottaa" opens them on Artikkelit as a list
+of their own, picking into this newsletter. Nostoja kentältä has no such
+count: it is where everything else is suggested.
+
+A picked article can move to another section from the list, until it is in
+the email. After that it moves in the editor: saving the email puts each
+pick where the email has it.
+
+**Historia** under the checklist says what has been done and by whom: a pick,
+a move (in the editor too), a pick taken out, a new name, subject line or
+day, and what the issue keeps itself, made, the last save in the editor,
+the export to Mailchimp, sending, saving into Drive and comments
+(`db/init/37-planning.sql`, `GET /api/issues/{id}/activity`). The side
+column of Artikkelit shows the draft's day and its picks by section in
+five small cells.
+
+### Tapahtumakalenteri
+
+A place on Artikkelit: the events and the last days to sign up that the AI
+read from the articles, a month at a time, with the day the newsletter goes
+out marked. Under the month the same as a list by day; one pressed opens in
+the reader like any article, and J and K go through them. An event the
+editors said no to stays out. On a phone the month shows marks and the list
+does the work. `GET /api/events?month=2026-10`.
+
+## Sources
+
+**Asetukset → Lähteet**, for admins, keeps the sources: every feed, journal,
+archive and watched page, how each is doing, and what comes in from it.
+Before it they were changed with SQL (`db/client/sources.sql`).
+
+Each source says how it is doing:
+
+- Toimii: the last check went well, and it brings articles
+- Haku epäonnistui: the last check ended in an error, said in plain words;
+  a feed that has moved (404) says to find its new address
+- Hiljainen: nothing new for 60 days, or nothing at all two weeks after its
+  first check
+- Ei lukijaa: switched on, but nothing reads it, a site without a feed
+- Ei vielä tarkistettu, Tarkistetaan…, Pois päältä
+
+The list shows new articles a week for twelve weeks; the chosen source shows
+its numbers, its newest articles, its last checks, and its settings: name,
+publisher, language, what comes in (every article, only with the keywords,
+or only on request), the section to suggest for its articles, what its
+pictures are, and a note. Tarkista nyt checks that one source at once.
+
+**Adding** starts from any address, or a journal's ISSN. The dashboard looks
+(`services/feeds.py`): the address itself, the feeds the page names, the
+usual places such as /feed/ and a blog's own /feed, and from a front page the
+site's news and events pages. It shows what it found with the newest
+articles and about how many come a month, before anything is saved. A
+journal is read through Crossref and never in full. A site with no feed can
+be watched instead: one of its listing pages is looked at in every check,
+and a link not seen before becomes an article (`services/watch.py`, type
+`watch`, through the ingest API like any collector). As agreed with the
+association, a site that answers 401 or 403, or whose robots.txt keeps the
+tool out, is not added, and articles are read in full only where robots.txt
+allows it. The dashboard never fetches an address inside its own network:
+the name is looked up first, after every redirect too.
+
+**Suggestions** on top of the page are the sites the past newsletters linked
+to at least twice and the member organisations' sites, that no source
+reads, each looked at for a feed in the background at most every two weeks.
+Lisää opens the same window with the address filled in; Ei kiinnosta hides
+one.
+
+A source that has brought articles is switched off, never deleted, so its
+articles keep where they came from. One added by mistake can be deleted.
+The Drive folder and the Telegram bot are shown with the rest but kept where
+they are set up.
+
+Files: `services/sources.py`, `services/feeds.py`, `services/watch.py`,
+`queries/sources.py`, `routes/sources.py`, `db/init/36-sources.sql`, and in
+n8n the collection schedule and `page-watcher.json`.
 
 ## What the AI costs
 
@@ -453,6 +551,16 @@ summary or the subject tags, with words about the asking itself
 ("kirjoitettu", "kerro") left out. `POST /api/ask` answers; in
 `llm_usage` it is `writing-ask`.
 
+Each article an answer cites has a Lisää button beside it: a menu of the
+sections, the suggested one marked, puts it in the newsletter without
+opening it first, and a toast can take it back. Under the newest answer
+the AI suggests two or three questions to ask next, asked for once the
+answer is on the page so the answer never waits for them
+(`POST /api/ask/followups`, `writing-followups` in `llm_usage`). Each
+editor's answered questions are kept, the newest 30, and the empty
+conversation offers them again under "Viimeksi kysytyt", each with a way to
+forget it (`db/init/38-ask-history.sql`). The shared demo login keeps none.
+
 There is no free chat with the model: one would only know what is typed
 into it, and the system keeps member data out. An answer is about the
 articles here, and says which.
@@ -482,9 +590,9 @@ source says what its pictures are (`sources.picture_rights`):
 A picture that needs permission is counted on the server too, so it holds
 the draft, the test and the files like an unchecked article does.
 
-An admin chooses what each source's pictures are on Asetukset, in the card
-Lähteiden kuvat (`GET /api/sources/pictures`, `PUT
-/api/sources/{id}/pictures`). The pictures already kept from the source say
+An admin chooses what each source's pictures are on Asetukset → Lähteet,
+in the source's settings (`PUT /api/sources/{id}/pictures`; every source's
+choice is in `GET /api/sources/pictures` too). The pictures already kept from the source say
 so too from the next newsletter on; an email in progress keeps what it has.
 With "Ei kuvia" n8n fetches no more, and the source's pictures that no
 picked or kept article, no email and no template uses are taken away; if
@@ -659,8 +767,11 @@ the others, so many open tabs never use up the six connections a browser
 keeps to one address. What each page does with a notice:
 
 - Artikkelit draws the open article and the changed rows again where they
-  stand, and new articles wait above the list behind a button, so nothing
-  moves under the editor's eyes;
+  stand, and new articles come into the list where they belong and stand
+  out for a moment. What the editor is looking at stays where it is on the
+  screen: articles that came in above it are counted in a button that leads
+  up to them. The calendar takes in an event the AI has just read, and the
+  line above the page counts today's new articles again;
 - the editor refreshes its picked articles and Tarkistus, its comments, and
   says when someone else saved the same newsletter;
 - Uutiskirjeet, a newsletter's page and Asetukset load again, but never while
@@ -669,7 +780,9 @@ keeps to one address. What each page does with a notice:
 The pages' own timers stay as they were, for when the stream is down. On a
 restart, uvicorn closes the open streams after three seconds
 (`UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN` in `docker-compose.yml`) and the pages
-connect again. Jira: DM42-80.
+connect again. Whenever a page connects again, after a restart or a
+computer that slept, it catches up once on everything, since what changed
+meanwhile was never heard. Jira: DM42-80.
 
 ## How the code is laid out
 
@@ -691,11 +804,16 @@ app/
   cli/archive.py   imports the association's past newsletters, for docs/evaluation.md
   services/drive*.py  the Google Drive folder and the guard around it
   services/live.py    passes what changes in the database to the open pages
+  services/sources.py, feeds.py, watch.py  Lähteet: how each source is doing,
+                      finding a feed at an address, and watching a page
 
 tests/
   test_drive_*.py  the Drive guard's rules, what it saves, and what it never touches
   test_live.py     which page hears which change
   test_issue_shapes.py  a newsletter's articles as the database gives them
+  test_sources.py  the addresses never fetched, feeds, a watched page's links,
+                   how a source is said to be doing
+  test_planning.py a newsletter's history, and Kysy's next questions
   fake_drive.py    a stand-in for Drive, for the tests and for trying the pages
 
 web/
@@ -717,7 +835,7 @@ web/
                    the menu from a button
   js/pages/        one file per page: what it shows and what each click does
   js/components/   how one piece is drawn: an article, the column of topics,
-                   the status bar
+                   the status bar, the calendar, a source
   js/newsletter/   the email itself, used by the editor and the pages alike:
     model.js         what an email is made of: sections, blocks, styles
     render.js        a design written out as email HTML

@@ -1,12 +1,17 @@
 // The column on the left of the articles page: the editors' own lists,
-// asking the articles a question, the topics with how many new articles each
-// has, the latest weak signals, the sources, the views by what the AI did,
-// and which newsletter the picks go into. It only turns data into HTML; the
-// page decides what a click does.
+// asking the articles a question, the events calendar, the topics with how
+// many new articles each has, the latest weak signals, the sources, the views
+// by what the AI did, and which newsletter the picks go into, with its day
+// and how full each section is. It only turns data into HTML; the page
+// decides what a click does.
 // Jira: DM42-80, DM42-31, DM42-40
 
 import { t, tn } from '../texts.js';
-import { date, esc, number } from '../format.js';
+import { date, esc, number, inDays, weekdayDay } from '../format.js';
+import { icon } from '../ui/icons.js';
+
+// The newsletter's sections in the order of the email (and of the keys 1 to 5).
+const ORDER = ['own_news', 'events', 'member_news', 'highlights', 'training'];
 
 // Eight topic colours, --topic-1 to --topic-8 in articles.css, given by the
 // topic's place in the list so a topic keeps its colour.
@@ -43,9 +48,25 @@ function targetCard(drafts, target) {
     <div class="side-card">
       <p class="side-card-k">${esc(t('target.label'))}</p>
       ${name}
-      ${chosen ? `<p class="side-card-n">${esc(tn('target.picked', chosen.picked))}</p>
+      ${chosen ? `${planLine(chosen)}<p class="side-card-n">${esc(tn('target.picked', chosen.picked))}</p>${fillBar(chosen)}
         <a class="side-card-open" href="#/newsletter?id=${chosen.id}">${esc(t('target.open'))} ›</a>` : ''}
     </div>`;
+}
+
+// The day the newsletter goes out, and how far off it is.
+function planLine(issue) {
+  if (!issue.planned_for) return '';
+  return `<p class="side-card-plan">${icon('flag', 14)}<span>${esc(t('target.planned', { day: weekdayDay(issue.planned_for), when: inDays(issue.planned_for) }))}</span></p>`;
+}
+
+// Its picks by section, five small cells in the order of the email.
+function fillBar(issue) {
+  const counts = issue.sections || {};
+  const said = ORDER.map((s) => `${t(`section.${s}`)} ${number(counts[s] || 0)}`).join(', ');
+  return `<p class="side-fill" role="img" aria-label="${esc(`${t('target.fill')}: ${said}`)}">${ORDER.map((s) => {
+    const n = counts[s] || 0;
+    return `<span class="side-fill-cell${n ? ' has' : ''}" title="${esc(`${t(`section.${s}`)}: ${number(n)}`)}">${number(n)}</span>`;
+  }).join('')}</p>`;
 }
 
 // The signals of the latest run, each with how many articles it came from.
@@ -85,8 +106,10 @@ function driveGroup(sources, c, current) {
     </div>`;
 }
 
-// current: the place shown, such as inbox or topic:3.
-export function sideHtml({ current, counts, topics, untopiced, sources, drafts, target, signals = [], signalsLatest = null }) {
+// current: the place shown, such as inbox or topic:3. upcoming: events still
+// to come, for the calendar. admin: may edit the sources.
+export function sideHtml({ current, counts, topics, untopiced, sources, drafts, target, signals = [], signalsLatest = null,
+  upcoming = null, admin = false }) {
   const c = counts || {};
   const followed = topics.filter((x) => x.followed);
   const other = topics.filter((x) => !x.followed);
@@ -106,6 +129,7 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
     <div class="side-group">
       ${entry('ask', current, `<span class="side-name">${esc(t('side.ask'))}</span>`, null, { extra: ' ask' })}
       <p class="side-hint">${esc(t('side.askHint'))}</p>
+      ${entry('events', current, `${icon('calendar', 16)}<span class="side-name">${esc(t('side.calendar'))}</span>`, upcoming, { muted: true, extra: ' cal-link' })}
     </div>
     <div class="side-group">
       <h2 class="side-h">${esc(t('side.followed'))}</h2>
@@ -123,6 +147,7 @@ export function sideHtml({ current, counts, topics, untopiced, sources, drafts, 
     <details class="side-group side-more"${sourceOpen ? ' open' : ''}>
       <summary class="side-h">${esc(t('side.sources'))}</summary>
       ${sources.map((s) => entry(`source:${s.id}`, current, `<span class="side-name" title="${esc(s.name)}">${esc(s.name)}</span>`, s.items, { muted: true })).join('')}
+      ${admin ? `<a class="side-item quiet" href="#/sources"><span class="side-name">${esc(t('side.editSources'))} ›</span></a>` : ''}
     </details>
     <details class="side-group side-more"${viewOpen ? ' open' : ''}>
       <summary class="side-h">${esc(t('side.more'))}</summary>

@@ -5,7 +5,7 @@ from .. import database
 
 def current(item_id):
     return database.row(
-        """SELECT p.decision, p.issue_id, iss.name AS issue_name, iss.status AS issue_status
+        """SELECT p.decision, p.issue_id, p.section, iss.name AS issue_name, iss.status AS issue_status
              FROM item_picks p
              LEFT JOIN issues iss ON iss.id = p.issue_id
             WHERE p.item_id = %s""",
@@ -29,15 +29,24 @@ def decide(item_id, decision, issue_id, section, user_id, suggested_section, sug
 
 def follow_design(issue_id, placed):
     """Moves each picked article of the issue to the section the email has it
-    in: placed is {item id: section}."""
+    in: placed is {item id: section}. Returns the ones moved, with where they
+    were: [{item_id, from_section, section}]."""
     if not placed:
-        return
-    database.run(
-        """UPDATE item_picks p
-              SET section = x.section
-             FROM unnest(%(ids)s::bigint[], %(sections)s::text[]) AS x(item_id, section)
-            WHERE p.item_id = x.item_id AND p.issue_id = %(issue)s
-              AND p.decision = 'picked' AND p.section IS DISTINCT FROM x.section""",
+        return []
+    return database.rows(
+        """WITH moved AS (
+               SELECT p.item_id, p.section AS from_section, x.section
+                 FROM item_picks p
+                 JOIN unnest(%(ids)s::bigint[], %(sections)s::text[]) AS x(item_id, section)
+                   ON x.item_id = p.item_id
+                WHERE p.issue_id = %(issue)s AND p.decision = 'picked'
+                  AND p.section IS DISTINCT FROM x.section
+           )
+           UPDATE item_picks p
+              SET section = m.section
+             FROM moved m
+            WHERE p.item_id = m.item_id
+        RETURNING p.item_id, m.from_section, m.section""",
         {"issue": issue_id, "ids": list(placed), "sections": list(placed.values())})
 
 

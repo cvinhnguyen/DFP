@@ -7,6 +7,10 @@ newest draft is the current one, which new picks go into; one is made, named
 after the month, the first time someone picks an article with no draft
 there. Sending happens in Mailchimp, by a person; marking an issue sent
 here, by hand or when Mailchimp says so, records that it went out.
+
+A draft can have the day it is planned to go out (37-planning.sql), and
+what is done to it, a pick, a move, a new name, subject line or day, is
+written down for its page to show (activity below).
 """
 
 import base64
@@ -31,7 +35,8 @@ WEB = Path(__file__).resolve().parent.parent.parent / "web"
 MONTHS = ["Tammikuu", "Helmikuu", "Maaliskuu", "Huhtikuu", "Toukokuu", "Kesäkuu",
           "Heinäkuu", "Elokuu", "Syyskuu", "Lokakuu", "Marraskuu", "Joulukuu"]
 
-EDITABLE = ("name", "subject", "preheader")
+EDITABLE = ("name", "subject", "preheader", "planned_for")
+TEXTS = ("name", "subject", "preheader")
 
 
 class NotFound(Exception):
@@ -111,10 +116,10 @@ def summaries():
     return [IssueSummary(**s, current=s["id"] == current) for s in queries.summaries()]
 
 
-def create(name, template, user_id):
+def create(name, template, user_id, planned_for=None):
     """A new draft, which becomes the current one."""
     name = (name or "").strip() or default_name()
-    return get(queries.create(name, user_id, template))
+    return get(queries.create(name, user_id, template, planned_for))
 
 
 def remove(issue_id):
@@ -136,11 +141,38 @@ def _draft(issue_id):
 
 
 def update(issue_id, changes, user_id):
-    _draft(issue_id)
-    changes = {k: v.strip() for k, v in changes.items() if k in EDITABLE and v is not None}
-    if changes:
-        queries.update(issue_id, changes, user_id)
+    found = _draft(issue_id)
+    clean = {}
+    for key, value in changes.items():
+        if key in TEXTS and value is not None:
+            clean[key] = value.strip()
+        elif key == "planned_for":
+            clean[key] = value      # a day, or None to take it away
+    clean = {k: v for k, v in clean.items() if v != found.get(k)}
+    if clean:
+        queries.update(issue_id, clean, user_id)
+        queries.log(issue_id, user_id, changed_entries(clean))
     return get(issue_id)
+
+
+def changed_entries(changes):
+    """What a change to a draft's name, subject line or day says in its
+    history. The preview text is left out: it changes with the subject."""
+    entries = []
+    if "name" in changes:
+        entries.append({"kind": "renamed", "detail": changes["name"]})
+    if "subject" in changes:
+        entries.append({"kind": "subject", "detail": changes["subject"] or None})
+    if "planned_for" in changes:
+        day = changes["planned_for"]
+        entries.append({"kind": "planned", "detail": day.isoformat() if day else None})
+    return entries
+
+
+def activity(issue_id):
+    if not queries.one(issue_id):
+        raise NotFound()
+    return queries.activity(issue_id)
 
 
 def design(issue_id):
@@ -159,7 +191,12 @@ def save_design(issue_id, design, html, user_id, based_on, force):
     # An article moved to another section in the email is picked into that
     # section: where it ends up is where the editors put it, and what the
     # suggestions learn from (services/suggestions.py).
-    pick_queries.follow_design(issue_id, _placed(design))
+    moved = pick_queries.follow_design(issue_id, _placed(design))
+    if moved:
+        names = queries.titles([m["item_id"] for m in moved])
+        queries.log(issue_id, user_id, [{"kind": "moved", "item_id": m["item_id"], "title": names.get(m["item_id"]),
+                                         "section": m["section"], "from_section": m["from_section"], "in_editor": True}
+                                        for m in moved])
     return saved_at
 
 

@@ -36,7 +36,9 @@ GATHER = 0.3
 # More ids than this for one kind is "many": the page refreshes what it shows.
 MAX_IDS = 200
 # resync is the hub's own: notices may have been missed, refresh everything.
-KINDS = {"items", "picks", "issues", "comments", "signals", "topics", "images", "drive", "resync"}
+# sources is a source changed or checked, or a suggested one looked at
+# (36-sources.sql).
+KINDS = {"items", "picks", "issues", "comments", "signals", "topics", "images", "drive", "sources", "resync"}
 # Kinds the shared demo login hears without ids, and kinds it does not hear.
 DEMO_NO_IDS = {"items", "picks"}
 DEMO_NEVER = {"drive"}

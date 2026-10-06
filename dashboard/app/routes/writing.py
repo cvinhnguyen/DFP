@@ -3,12 +3,13 @@ suggestion: the pages show it for an editor to choose, edit and check.
 Jira: DM42-25, DM42-37, DM42-40
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from ..dependencies import current_user, is_demo
 from ..errors import ApiError
 from ..schemas.auth import User
-from ..schemas.writing import AskAnswer, AskIn, Attempt, Draft, Subjects, TrendDraft
+from ..schemas.writing import (AskAnswer, AskIn, Attempt, Draft, Followups, FollowupsIn, RecentQuestion, Subjects,
+                               TrendDraft)
 from ..services import writing
 
 router = APIRouter(tags=["writing help"])
@@ -58,4 +59,25 @@ def ask(body: AskIn, user: User = Depends(current_user)):
     the answer is null and the AI is not asked. With the question before
     it, a follow-up is first written out whole, and the articles are found
     for that."""
-    return _run(writing.ask, body.question, body.days, user.id, body.previous, is_demo(user))
+    # The shared demo login's questions are the whole room's: none is kept.
+    return _run(writing.ask, body.question, body.days, user.id, body.previous, is_demo(user), not is_demo(user))
+
+
+@router.post("/ask/followups", response_model=Followups, responses=PROBLEMS,
+             summary="Questions to ask next, after an answer")
+def followups(body: FollowupsIn):
+    """Up to three, about the same articles or subject. Nothing is kept;
+    the same answer gives the same questions from the AI's cache."""
+    return _run(writing.followups, body.question, body.answer, body.titles)
+
+
+@router.get("/ask/recent", response_model=list[RecentQuestion], summary="The questions you have asked, newest first")
+def recent(user: User = Depends(current_user)):
+    return writing.recent(user.id)
+
+
+@router.delete("/ask/recent/{history_id}", status_code=204, summary="Forget one of your questions")
+def forget(history_id: int, user: User = Depends(current_user)):
+    if not writing.forget(user.id, history_id):
+        raise ApiError(404, "no_such_question", "There is no question of yours with that number.")
+    return Response(status_code=204)

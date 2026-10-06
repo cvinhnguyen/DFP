@@ -90,6 +90,13 @@ OPH's events, and Learning Factory. Several of them have no feed and would be
 read the way the association's own pages are. Which of them to follow is for
 the client to say.
 
+Since 6 October 2026 the client can say it in the dashboard: Asetukset →
+Lähteet suggests the sites the past newsletters linked to at least twice,
+and the member organisations' sites, with what was found on each. Learning
+Factory, Kansanvalistusseura, Digikilta and eOppiva have feeds, and ITK's news
+blog has one too. A site without a feed can be watched instead, one of its
+listing pages looked at in every check (`dashboard/README.md`, Sources).
+
 The October newsletter is the first fair test: by the time it goes out every
 source will have been read for a month. Import the archive again after it is
 sent and compare.

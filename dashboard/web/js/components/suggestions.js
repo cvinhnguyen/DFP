@@ -39,13 +39,13 @@ export function suggestionsCard(state) {
         ? t('sugg.kept', { kept: number(state.kept), picks: number(state.picks), pct: percent(state.kept, state.picks) })
         : t('sugg.none'))}</p>
       ${state.reasons.length ? `
-        <h3>${esc(t('sugg.reasons'))}</h3>
-        <div class="cost-scroll"><table class="cost-table sugg-table">
+        <h3 id="sugg-reasons-h">${esc(t('sugg.reasons'))}</h3>
+        <div class="cost-scroll" tabindex="0" role="region" aria-labelledby="sugg-reasons-h"><table class="cost-table sugg-table">
           ${head(['sugg.reason', 'sugg.picks', 'sugg.hit', 'sugg.movedTo'])}
           <tbody>${state.reasons.map(reasonRow).join('')}</tbody></table></div>` : ''}
       ${state.sources.length ? `
-        <h3>${esc(t('sugg.sources'))}</h3>
-        <div class="cost-scroll"><table class="cost-table sugg-table">
+        <h3 id="sugg-sources-h">${esc(t('sugg.sources'))}</h3>
+        <div class="cost-scroll" tabindex="0" role="region" aria-labelledby="sugg-sources-h"><table class="cost-table sugg-table">
           ${head(['sugg.source', 'sugg.picks', 'sugg.hit', 'sugg.movedTo', 'sugg.chosen'])}
           <tbody>${state.sources.map(sourceRow).join('')}</tbody></table></div>` : ''}
     </section>`;

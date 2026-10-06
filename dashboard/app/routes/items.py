@@ -13,7 +13,7 @@ from ..dependencies import current_user, is_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.issues import DecisionIn
-from ..schemas.items import FilterOptions, Item, ItemBatch, ItemPage, Section, Sort, View
+from ..schemas.items import EventMonth, FilterOptions, Item, ItemBatch, ItemPage, Section, Sort, View
 from ..schemas.topics import TagIn
 from ..services import issues, items, picks, topics, yso
 
@@ -53,6 +53,22 @@ def items_batch(ids: Annotated[str, Query(pattern=r"^\d{1,12}(,\d{1,12}){0,99}$"
     folder, is not in the answer."""
     wanted = list(dict.fromkeys(int(x) for x in ids.split(",")))
     return ItemBatch(items=items.items_by_ids(wanted, user.id, hide_drive=is_demo(user)))
+
+
+@router.get("/items/suggested", response_model=ItemPage, summary="The articles in Uudet suggested for a section")
+def suggested(section: Section, page: Annotated[int, Query(ge=1, le=10000)] = 1,
+              per_page: Annotated[int, Query(ge=1, le=100)] = 50, user: User = Depends(current_user)):
+    """What a newsletter's page opens from "3 waiting": the articles nobody
+    has decided about whose suggested section is this one."""
+    return items.list_suggested(section, page, per_page, user.id, hide_drive=is_demo(user))
+
+
+@router.get("/events", response_model=EventMonth, summary="The events of a month, for the calendar")
+def calendar(month: Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="2026-10")],
+             user: User = Depends(current_user)):
+    """Every article whose event days are in the month, or whose last day
+    to sign up is, as the AI read them from it; none the editors said no to."""
+    return items.calendar(month, user.id, hide_drive=is_demo(user))
 
 
 @router.get("/items/{item_id}", response_model=Item, summary="One article")

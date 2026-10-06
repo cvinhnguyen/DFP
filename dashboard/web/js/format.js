@@ -55,6 +55,48 @@ export function when(value) {
   return t('when.at', { day, time: timeFormats[currentLanguage()].format(new Date(value)) });
 }
 
+// "juuri nyt", "12 min sitten", "3 t sitten", and after that as when()
+// says it: what was just done on a newsletter.
+export function ago(value) {
+  const minutes = Math.floor((Date.now() - new Date(value)) / 60000);
+  if (minutes < 1) return t('ago.now');
+  if (minutes < 60) return t('ago.minutes', { n: minutes });
+  if (minutes < 6 * 60) return t('ago.hours', { n: Math.floor(minutes / 60) });
+  return when(value);
+}
+
+// Whole days from today, Finnish time, to a day such as 2026-11-19: 0 for
+// today, 1 for tomorrow, -1 for yesterday.
+export function daysUntil(day) {
+  return Math.round((Date.parse(String(day).slice(0, 10)) - Date.parse(finnishDay())) / 86400000);
+}
+
+// "tänään", "huomenna", "6 pv päästä", "eilen", "3 pv sitten".
+export function inDays(day) {
+  const n = daysUntil(day);
+  if (n === 0) return t('days.today');
+  if (n === 1) return t('days.tomorrow');
+  if (n === -1) return t('days.yesterday');
+  return n > 0 ? t('days.in', { n }) : t('days.ago', { n: -n });
+}
+
+// 19.11. in this year, 19.11.2027 in another, from 2027-11-19.
+export function shortDay(day) {
+  const [y, m, d] = String(day || '').slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return y === Number(finnishDay().slice(0, 4)) ? `${d}.${m}.` : `${d}.${m}.${y}`;
+}
+
+// "ti 7.10." in Finnish, "Tue 7.10." in English.
+const weekdayNames = {};
+export function weekdayDay(day) {
+  const lang = currentLanguage();
+  weekdayNames[lang] ??= new Intl.DateTimeFormat(lang === 'fi' ? 'fi-FI' : 'en-GB', { weekday: 'short', timeZone: 'UTC' });
+  const [y, m, d] = String(day || '').slice(0, 10).split('-').map(Number);
+  if (!y) return '';
+  return `${weekdayNames[lang].format(new Date(Date.UTC(y, m - 1, d)))} ${shortDay(day)}`;
+}
+
 // 6 000 in Finnish, 6,000 in English.
 export function number(n) {
   return Number(n).toLocaleString(currentLanguage() === 'fi' ? 'fi-FI' : 'en-GB');

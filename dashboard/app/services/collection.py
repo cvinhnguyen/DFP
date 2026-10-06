@@ -1,8 +1,10 @@
 """Collecting is n8n's job. The dashboard asks it to check every source now,
-the same as /check in Telegram, through the webhook the collection schedule
-already has. It also works out when the next scheduled check is.
+the same as /check in Telegram, or one source from Asetukset → Lähteet,
+through the webhook the collection schedule already has. It also works out
+when the next scheduled check is.
 """
 
+import json
 import urllib.error
 import urllib.request
 from datetime import timedelta
@@ -54,15 +56,17 @@ def next_check(times, now):
     return None
 
 
-def start_check():
-    """Starts the check and returns at once. The check takes about a minute;
-    collection_runs shows it running until it is done."""
+def start_check(source_id=None):
+    """Starts the check of every source, or of the one source, and returns
+    at once. The check takes about a minute; collection_runs shows it
+    running until it is done."""
     if queries.check_running():
         raise CheckRunning("check_running", "A check is already running.")
     if not config.INGEST_TOKEN:
         raise CheckNotSetUp("check_not_set_up", "Check now is not set up: INGEST_TOKEN is missing from .env.")
+    body = json.dumps({"source_id": source_id} if source_id else {}).encode()
     request = urllib.request.Request(
-        f"{config.N8N_URL}/webhook/collect", data=b"{}", method="POST",
+        f"{config.N8N_URL}/webhook/collect", data=body, method="POST",
         headers={"Content-Type": "application/json", "X-Ingest-Token": config.INGEST_TOKEN})
     try:
         with urllib.request.urlopen(request, timeout=10):

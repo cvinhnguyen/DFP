@@ -17,6 +17,9 @@ Asking the articles a question works the same way: the dashboard finds the
 articles that fit (queries/ask.py), and the AI answers from their summaries
 only, saying which article each thing is from. A follow-up is first written
 out whole from the question before it, and the articles are found for that.
+Each answered question is kept for the editor who asked it, so the monthly
+one is a click away (38-ask-history.sql), and once the answer is on the page
+the AI suggests what to ask next (followups below).
 """
 
 import json
@@ -79,7 +82,7 @@ def trend(signal_id, attempt=1):
     return {"text": answer.get("text") or "", "signal": signal, **_usage(answer)}
 
 
-def ask(question, days, user_id=None, previous=None, hide_drive=False):
+def ask(question, days, user_id=None, previous=None, hide_drive=False, keep=True):
     """The answer to an editor's question from the articles that fit it, and
     those articles, as the list shows them, numbered as the answer cites
     them. None as the answer when no article fits: then nothing is asked.
@@ -107,8 +110,47 @@ def ask(question, days, user_id=None, previous=None, hide_drive=False):
         "summary": _short(s.summary or s.excerpt, 700),
     } for s in sources]
     answer = _ask({"task": "ask", "attempt": 1, "question": asked_as, "articles": articles})
+    if keep and user_id:
+        # As it was searched: a follow-up such as "Entä lukioissa?" means
+        # nothing on its own later.
+        ask_queries.remember(user_id, asked_as[:300], days)
     return {"answer": answer.get("text") or "", "sources": sources, "asked_as": rewritten,
             **_usage_of([*spent, answer])}
+
+
+FOLLOWUPS = 3
+
+
+def followups(question, answer, titles):
+    """Up to three short questions to ask next about the same articles or
+    subject, in Finnish; none when the AI gives nothing usable."""
+    found = _ask({"task": "followups", "attempt": 1, "question": question, "answer": answer[:2500],
+                  "titles": titles[:ASK_ARTICLES]})
+    return {"questions": clean_questions(found.get("questions"), question), **_usage(found)}
+
+
+def clean_questions(questions, asked):
+    """The AI's questions as the page shows them: one line each, at most 120
+    characters, none twice and not the one just asked."""
+    seen = {" ".join(str(asked or "").lower().split())}
+    out = []
+    for q in questions if isinstance(questions, list) else []:
+        text = " ".join(str(q or "").split()).strip(" -•\"'")[:120]
+        key = text.lower()
+        if len(text) >= 8 and key not in seen:
+            seen.add(key)
+            out.append(text if text.endswith("?") else text + "?")
+        if len(out) == FOLLOWUPS:
+            break
+    return out
+
+
+def recent(user_id):
+    return ask_queries.recent(user_id)
+
+
+def forget(user_id, history_id):
+    return ask_queries.forget(user_id, history_id)
 
 
 def _standalone(question, previous):

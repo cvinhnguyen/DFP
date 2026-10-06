@@ -15,6 +15,7 @@ import { showNewsletters } from './pages/newsletters.js';
 import { showNewsletter } from './pages/newsletter.js';
 import { showSettings } from './pages/settings.js';
 import { showArchive } from './pages/archive.js';
+import { showSources } from './pages/sources.js';
 
 // The pages, by the part of the address between # and ?. Each one keeps its
 // own settings after the ?, so a reload or a copied link opens the same view.
@@ -25,6 +26,7 @@ const PAGES = {
   newsletter: { path: '/newsletter', show: showNewsletter, nav: 'newsletters' },
   settings: { path: '/settings', show: showSettings, nav: 'settings' },
   archive: { path: '/archive', show: showArchive, nav: 'newsletters' },
+  sources: { path: '/sources', show: showSources, nav: 'settings' },
 };
 
 // A login link from the bot: http://…/#/link/<token>

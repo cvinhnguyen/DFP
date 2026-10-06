@@ -70,6 +70,18 @@ const P = {
   cursor: '<path d="M6 4l12 7-5.5 1.5L10 18z"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   refresh: '<path d="M19.2 14.6a7.5 7.5 0 1 1-1.9-7.9L20 9.3"/><path d="M20 4.8v4.5h-4.5"/>',
+  // Lähteet, the calendar and planning: what kind a source is, what the AI
+  // worked out, the day a newsletter goes out.
+  sparkle: '<path d="M11 3.5l1.8 4.9 4.9 1.8-4.9 1.8L11 16.9l-1.8-4.9L4.3 10.2l4.9-1.8z"/><path d="M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+  feed: '<path d="M5 5a14 14 0 0 1 14 14"/><path d="M5 10.5a8.5 8.5 0 0 1 8.5 8.5"/><circle cx="6" cy="18" r="1.6" class="f"/>',
+  journal: '<path d="M5.5 4.5h10a2 2 0 0 1 2 2V20H7.5a2 2 0 0 1-2-2z"/><path d="M5.5 18a2 2 0 0 1 2-2h10"/><path d="M9 8.5h5"/>',
+  archive: '<rect x="3.5" y="4.5" width="17" height="4.5" rx="1"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>',
+  globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.6 3.6 5.4 3.6 8.5s-1.2 5.9-3.6 8.5c-2.4-2.6-3.6-5.4-3.6-8.5s1.2-5.9 3.6-8.5z"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>',
+  flag: '<path d="M6 21V4.5"/><path d="M6 5h11l-2.2 3.5L17 12H6"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M4.5 7l7.5 6 7.5-6"/>',
+  swap: '<path d="M7 7h12M15.5 3.5L19 7l-3.5 3.5M17 17H5M8.5 13.5L5 17l3.5 3.5"/>',
   // The user menu: the look the page has, and leaving.
   sun: '<circle cx="12" cy="12" r="3.8"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>',
   moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/>',

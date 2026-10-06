@@ -5,11 +5,11 @@ Jira: DM42-32
 
 from fastapi import APIRouter, Depends
 
-from ..dependencies import current_user
+from ..dependencies import current_user, is_demo
 from ..errors import ApiError
 from ..schemas.auth import User
 from ..schemas.suggestions import Offers, SourceSection, SourceSectionIn, SuggestionStats
-from ..services import suggestions
+from ..services import items, suggestions
 
 router = APIRouter(tags=["suggestions"])
 
@@ -19,6 +19,14 @@ NO_SUCH_SOURCE = (404, "no_such_source", "There is no source with that number.")
 @router.get("/suggestions", response_model=SuggestionStats, summary="How often the suggested section was the one chosen")
 def stats():
     return suggestions.stats()
+
+
+@router.get("/suggestions/waiting", response_model=dict[str, int],
+            summary="How many articles in Uudet each section is suggested for")
+def waiting(user: User = Depends(current_user)):
+    """What a newsletter's page shows beside a section with nothing picked
+    yet: {"events": 3, "member_news": 0, …}."""
+    return items.waiting_by_section(hide_drive=is_demo(user))
 
 
 @router.get("/suggestions/offers", response_model=Offers,

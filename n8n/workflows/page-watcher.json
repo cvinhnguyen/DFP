@@ -1,0 +1,92 @@
+{
+  "id": "pageWatcher2026a",
+  "name": "Page watcher",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "6a7e1c2d-4b8f-4e1a-9c3d-2f5b8e9a0001",
+      "name": "Start",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        100
+      ],
+      "notes": "From the collection schedule, for a source of type watch: a site without a feed, read by watching one of its listing pages. Gets the source as the schedule's Mark started gives it: source_id, url, fetch_full_text, publisher."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://dashboard:8000/api/sources/{{ $json.source_id }}/watch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "6a7e1c2d-4b8f-4e1a-9c3d-2f5b8e9a0002",
+      "name": "Look for new links",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "The dashboard reads the page, as its robots.txt allows, remembers every link it has had, and sends the new ones to the ingest API like any collector, so the same checks apply. It holds the rules for what counts as an article's link: dashboard/app/services/watch.py, db/init/36-sources.sql.",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Fo73UZAkynBDWk09",
+          "name": "DFP ingest token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// What the schedule writes to collection_runs for this source. A page that\n// could not be read, or a dashboard that did not answer, is the run's error,\n// so the check of the other sources goes on.\nconst r = $json;\nconst body = r.body && typeof r.body === 'object' ? r.body : {};\nif (r.statusCode === 200 && typeof body.items_found === 'number') {\n  return [{ json: { items_found: body.items_found, items_new: body.items_new || 0, error: body.error || null } }];\n}\nconst why = body.detail || (r.error && (r.error.message || r.error)) || `the dashboard answered ${r.statusCode}`;\nreturn [{ json: { items_found: 0, items_new: 0, error: String(why).slice(0, 300) } }];"
+      },
+      "id": "6a7e1c2d-4b8f-4e1a-9c3d-2f5b8e9a0003",
+      "name": "Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        100
+      ]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Look for new links",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look for new links": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

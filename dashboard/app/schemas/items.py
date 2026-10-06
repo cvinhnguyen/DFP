@@ -185,3 +185,9 @@ class FilterOptions(BaseModel):
     sources: list[SourceOption]
     languages: list[LanguageOption]
     signals: list[SignalOption]
+
+
+class EventMonth(BaseModel):
+    month: str = Field(description="2026-10")
+    items: list[Item] = Field(description="Its events: their days are in the month, or the last day to sign up is")
+    upcoming: int = Field(description="Events still to come from today, in any month")

@@ -103,12 +103,17 @@ SELECT i.id,
                    FROM items c
                    LEFT JOIN sources cs ON cs.id = c.source_id
                   WHERE c.duplicate_of = i.id), '[]'::jsonb) AS copies,
-       coalesce((SELECT jsonb_agg(jsonb_build_object('id', g.id, 'topic', g.topic, 'reason', g.reason)
-                                  ORDER BY g.topic)
-                   FROM signal_items si
-                   JOIN signals g ON g.id = si.signal_id
-                  WHERE si.item_id = i.id
-                    AND g.status <> 'dismissed'), '[]'::jsonb) AS signals,
+       -- Each topic once, from the newest run: every run looks back a month,
+       -- so the same article brings the same topic again each week, and the
+       -- side column lists only the newest run's signals.
+       coalesce((SELECT jsonb_agg(jsonb_build_object('id', x.id, 'topic', x.topic, 'reason', x.reason)
+                                  ORDER BY x.topic)
+                   FROM (SELECT DISTINCT ON (lower(g.topic)) g.id, g.topic, g.reason
+                           FROM signal_items si
+                           JOIN signals g ON g.id = si.signal_id
+                          WHERE si.item_id = i.id
+                            AND g.status <> 'dismissed'
+                          ORDER BY lower(g.topic), g.detected_on DESC, g.id DESC) x), '[]'::jsonb) AS signals,
        -- The tags an editor sees: signal words first, then the editors' own,
        -- the source's in its order, and Finto AI's by score. Hidden ones are
        -- too general to say anything, and taken-off ones are gone.
@@ -339,3 +344,54 @@ def filter_options(hide_drive=False):
 def tag_name(tag_id):
     found = database.row("SELECT label FROM tags WHERE id = %s", (tag_id,))
     return found["label"] if found else None
+
+
+# ---------- for the suggested sections and the calendar ----------
+
+def suggestion_inputs(hide_drive=False):
+    """What suggesting a section reads (services/suggest.py), for every
+    article in Uudet, the newest first."""
+    where = [NOT_WITHDRAWN, INBOX] + ([f"({NOT_DRIVE})"] if hide_drive else [])
+    return database.rows(
+        """SELECT i.id, i.title, i.source_url AS url, i.section, i.details,
+                  CASE WHEN coalesce(i.source_language, s.language) IS DISTINCT FROM 'fi'
+                        AND lower(btrim(sm.title)) <> lower(btrim(i.title))
+                       THEN nullif(btrim(sm.title), '') END AS title_fi,
+                  CASE WHEN sm.id IS NOT NULL THEN jsonb_build_object('text', sm.text) END AS summary,
+                  sm.event_starts, sm.event_ends, sm.event_deadline,
+                  coalesce(nullif(btrim(i.publisher), ''), s.publisher) AS publisher,
+                  s.suggested_section AS source_section, s.type AS source_type"""
+        + FROM + where_sql(where) + " ORDER BY i.created_at DESC, i.id DESC")
+
+
+# An event in the calendar: its days overlap the month, or the last day to
+# sign up is in it. One the editors said no to stays out.
+EVENTS = """
+SELECT i.id
+  FROM items i
+  JOIN summaries sm      ON sm.item_id = i.id AND sm.language = 'fi'
+  LEFT JOIN sources s    ON s.id = i.source_id
+  LEFT JOIN item_picks p ON p.item_id = i.id
+ WHERE i.withdrawn_at IS NULL
+   AND i.duplicate_of IS NULL
+   AND p.decision IS DISTINCT FROM 'dismissed'
+   AND NOT (%(hide_drive)s AND coalesce(s.type, '') = 'drive')
+"""
+
+
+def event_ids(first, last, hide_drive=False):
+    return [r["id"] for r in database.rows(
+        EVENTS + """
+   AND ((sm.event_starts IS NOT NULL AND sm.event_starts <= %(last)s
+         AND coalesce(sm.event_ends, sm.event_starts) >= %(first)s)
+        OR sm.event_deadline BETWEEN %(first)s AND %(last)s)
+ ORDER BY coalesce(sm.event_starts, sm.event_deadline), i.id
+ LIMIT 300""", {"first": first, "last": last, "hide_drive": hide_drive})]
+
+
+def upcoming_events(hide_drive=False):
+    """Events still to come, from today, Finnish time."""
+    return database.row(
+        "SELECT count(*)::int AS n FROM (" + EVENTS + """
+   AND coalesce(sm.event_ends, sm.event_starts) >= (now() AT TIME ZONE 'Europe/Helsinki')::date) x""",
+        {"hide_drive": hide_drive})["n"]

@@ -18,16 +18,17 @@ to is on the Confluence page "Workflow and data conventions" (DM42-41).
 
 | Workflow | What it does |
 |---|---|
-| `collection-schedule.json` | checks the sources at the times the editors set with /schedule or /reschedule, or straight away with /check or the dashboard's "check now" |
+| `collection-schedule.json` | checks the sources at the times the editors set with /schedule or /reschedule, or straight away with /check or the dashboard's "check now"; one source alone when an admin checks it on Asetukset → Lähteet (`source_id` in the webhook's body) |
 | `eoppimiskeskus-crawler.json` | reads the association's own website |
 | `feed-collector.json` | reads RSS feeds and Crossref for the other sources |
+| `page-watcher.json` | for a site without a feed (a source of type `watch`): asks the dashboard to look at the listing page and send its new links to the ingest API (`dashboard/app/services/watch.py`) |
 | `archive-collector.json` | reads an archive through its DSpace API: Theseus, the theses of the universities of applied sciences |
 | `ingest-api.json` | the only way new articles enter the database |
 | `summarisation.json` | runs the filter every 15 minutes, then summarises what passed. When the month's AI budget is used up, only what editors asked for. A document from the association's Drive gets the Drive guard's rules for the AI on top of the summary instruction (`docs/drive.md`) |
 | `llm-call.json` | the only workflow that talks to an AI model |
 | `mailchimp.json` | the only workflow that talks to Mailchimp: creates and updates the dashboard's draft campaigns, and never sends |
 | `signal-detection.json` | finds topics that keep coming up in the news, every Monday at 6.00 (see Missed times below), or now from the dashboard's "Hae signaalit nyt" (`POST /webhook/signals`). Paused when the month's AI budget is used up |
-| `writing-help.json` | writes for the editors when they ask, through the LLM call: subject lines and preview texts, the greeting, why a trend matters, and answers to questions about the articles, a follow-up first written out whole (`POST /webhook/writing`) |
+| `writing-help.json` | writes for the editors when they ask, through the LLM call: subject lines and preview texts, the greeting, why a trend matters, answers to questions about the articles, a follow-up first written out whole, and the questions to ask next after an answer (`POST /webhook/writing`) |
 | `tagging.json` | gives every article subject tags from YSO, every 15 minutes, five minutes after each round of summaries (at 5, 20, 35 and 50 past the hour), so a new summary has its tags a few minutes later: Finto AI reads each summary, and the theses' own terms and the signal words are matched to YSO |
 | `telegram-capture.json` | the editors' bot: saves links, answers /check, /schedule, /reschedule and /help, and passes /login, /password, /adduser, /people, /remove and /alerts to the dashboard. It answers in Finnish when the person's Telegram is in Finnish, and in English otherwise |
 | `bot-commands.json` | the list Telegram suggests when someone types / to the bot, as BotFather's /setcommands would set it: the everyday commands for everyone, and the admin commands too in each admin's own chat. Every morning at 5.00, or Run now after a change |

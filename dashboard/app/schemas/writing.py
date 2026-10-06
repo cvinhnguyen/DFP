@@ -1,5 +1,7 @@
 """Help from the AI with the newsletter's own text."""
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 from .items import Item
@@ -50,3 +52,21 @@ class AskAnswer(Usage):
     sources: list[Item] = Field(description="The articles it read, in the order the numbers cite them")
     asked_as: str | None = Field(default=None, description="A follow-up as the AI wrote it out whole to find its "
                                  "articles, when that differs from the question asked")
+
+
+class FollowupsIn(BaseModel):
+    question: str = Field(min_length=3, max_length=300, description="The question as it was answered")
+    answer: str = Field(min_length=1, max_length=3000)
+    titles: list[str] = Field(default=[], max_length=8, description="The titles of the articles the answer cites")
+
+
+class Followups(Usage):
+    questions: list[str] = Field(description="Up to three questions to ask next, in Finnish")
+
+
+class RecentQuestion(BaseModel):
+    id: int
+    question: str
+    days: int
+    times: int = Field(description="How often the editor has asked it")
+    asked_at: datetime

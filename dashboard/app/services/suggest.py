@@ -148,6 +148,11 @@ def _members():
     return _cache["members"]
 
 
+def member_hosts():
+    """The member organisations' own sites, example.fi without www."""
+    return [member["host"] for member in _members()]
+
+
 def suggest(found, today=None):
     """(section, reason, detail): the section, a code for why, and what the
     reason names, a member or a day. The reason is None for Nostoja

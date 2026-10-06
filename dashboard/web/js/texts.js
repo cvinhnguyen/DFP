@@ -11,6 +11,7 @@
 import { fi as editorFi, en as editorEn } from './texts/editor.js';
 import { fi as newsletterFi, en as newsletterEn } from './texts/newsletter.js';
 import { fi as articlesFi, en as articlesEn } from './texts/articles.js';
+import { fi as sourcesFi, en as sourcesEn } from './texts/sources.js';
 
 const fi = {
   'app.title': 'Uutiskirje · Suomen eOppimiskeskus',
@@ -118,6 +119,14 @@ const fi = {
   'when.yesterday': 'eilen',
   'when.tomorrow': 'huomenna',
   'when.at': '{day} klo {time}',
+  'ago.now': 'juuri nyt',
+  'ago.minutes': '{n} min sitten',
+  'ago.hours': '{n} t sitten',
+  'days.today': 'tänään',
+  'days.tomorrow': 'huomenna',
+  'days.yesterday': 'eilen',
+  'days.in': '{n} pv päästä',
+  'days.ago': '{n} pv sitten',
 
   'page.articles': 'Artikkelit',
   'issue.subject': 'Aiherivi',
@@ -367,6 +376,14 @@ const en = {
   'when.yesterday': 'yesterday',
   'when.tomorrow': 'tomorrow',
   'when.at': '{day} at {time}',
+  'ago.now': 'just now',
+  'ago.minutes': '{n} min ago',
+  'ago.hours': '{n} h ago',
+  'days.today': 'today',
+  'days.tomorrow': 'tomorrow',
+  'days.yesterday': 'yesterday',
+  'days.in': 'in {n} days',
+  'days.ago': '{n} days ago',
 
   'page.articles': 'Articles',
   'issue.subject': 'Subject line',
@@ -510,10 +527,10 @@ const en = {
   'details.copies': 'The same story elsewhere',
 };
 
-// The editor's, the newsletter pages' and the articles page's words live in
-// files of their own, added here.
-Object.assign(fi, editorFi, newsletterFi, articlesFi);
-Object.assign(en, editorEn, newsletterEn, articlesEn);
+// The editor's, the newsletter pages', the articles page's and the sources'
+// words live in files of their own, added here.
+Object.assign(fi, editorFi, newsletterFi, articlesFi, sourcesFi);
+Object.assign(en, editorEn, newsletterEn, articlesEn, sourcesEn);
 
 const DICTIONARIES = { fi, en };
 const STORE = 'dfp.lang';

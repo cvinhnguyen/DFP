@@ -14,8 +14,9 @@ import { icon } from '../ui/icons.js';
 // a check started from this page is still running. view: the view on
 // screen, so "needs attention" does not offer to show what is shown.
 // failedOpen: the failed sources' details are open. note: { kind, text }, a
-// line under the bar, such as a finished check.
-export function statusLines(overview, { checking = false, view = '', failedOpen = false, note = null } = {}) {
+// line under the bar, such as a finished check. admin: the details lead to
+// Lähteet, where a source is mended.
+export function statusLines(overview, { checking = false, view = '', failedOpen = false, note = null, admin = false } = {}) {
   const o = overview;
   const notes = [];
   if (note) notes.push(noteLine(note.kind, note.text));
@@ -42,9 +43,10 @@ export function statusLines(overview, { checking = false, view = '', failedOpen 
     chips.push(`<button type="button" class="sb-chip" data-act="view" data-view="attention">
       ${icon('info', 16)}<span>${esc(tn('status.attentionChip', o.needs_attention))}</span>${icon('chevronRight', 16)}</button>`);
   }
+  // On a phone only its icon shows, so its name is given to it as well.
   const check = busy
-    ? `<button type="button" class="btn ghost small sb-check" data-act="check" aria-disabled="true"><span class="spinner" aria-hidden="true"></span><span>${esc(t('status.checkingShort'))}</span></button>`
-    : `<button type="button" class="btn ghost small sb-check" data-act="check">${icon('refresh', 16)}<span>${esc(t('status.checkNow'))}</span></button>`;
+    ? `<button type="button" class="btn ghost small sb-check" data-act="check" aria-disabled="true" aria-label="${esc(t('status.checkingShort'))}"><span class="spinner" aria-hidden="true"></span><span class="sb-check-word">${esc(t('status.checkingShort'))}</span></button>`
+    : `<button type="button" class="btn ghost small sb-check" data-act="check" aria-label="${esc(t('status.checkNow'))}" title="${esc(t('status.checkNow'))}">${icon('refresh', 16)}<span class="sb-check-word">${esc(t('status.checkNow'))}</span></button>`;
 
   const bar = `
     <div class="sb-bar">
@@ -54,7 +56,7 @@ export function statusLines(overview, { checking = false, view = '', failedOpen 
   const panel = failed.length ? `
     <div class="sb-panel" id="sb-failed"${failedOpen ? '' : ' hidden'}>
       <ul>${failed.map((f) => `<li><strong>${esc(f.source)}</strong><span class="sb-at">${esc(when(f.at))}</span><span class="sb-err">${esc(f.error)}</span></li>`).join('')}</ul>
-      <p>${esc(tn('status.failedAgain', failed.length))}</p>
+      <p>${esc(tn('status.failedAgain', failed.length))}${admin ? ` <a href="#/sources">${esc(t('status.openSources'))} ›</a>` : ''}</p>
     </div>` : '';
 
   if (b && b.state === 'over') {

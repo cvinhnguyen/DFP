@@ -6,11 +6,16 @@ from .. import database
 
 SUMMARY = """
 SELECT iss.id, iss.name, iss.status, iss.subject, iss.template, iss.created_at, iss.updated_at, iss.sent_at,
-       iss.design IS NOT NULL AS has_design, iss.design_saved_at,
+       iss.planned_for, iss.design IS NOT NULL AS has_design, iss.design_saved_at,
        du.display_name AS design_saved_by, uu.display_name AS updated_by,
        iss.mailchimp_status, iss.mailchimp_exported_at, iss.mailchimp_web_id,
        (SELECT count(*) FROM item_picks p WHERE p.issue_id = iss.id) AS picked,
-       (SELECT count(*) FROM issue_comments c WHERE c.issue_id = iss.id AND c.resolved_at IS NULL) AS open_comments
+       (SELECT count(*) FROM issue_comments c WHERE c.issue_id = iss.id AND c.resolved_at IS NULL) AS open_comments,
+       -- how many picks each section has, {"events": 3}
+       coalesce((SELECT jsonb_object_agg(x.section, x.n)
+                   FROM (SELECT p.section, count(*) AS n FROM item_picks p
+                          WHERE p.issue_id = iss.id AND p.decision = 'picked' GROUP BY p.section) x),
+                '{}'::jsonb) AS sections
   FROM issues iss
   LEFT JOIN users du ON du.id = iss.design_saved_by
   LEFT JOIN users uu ON uu.id = iss.updated_by
@@ -18,14 +23,19 @@ SELECT iss.id, iss.name, iss.status, iss.subject, iss.template, iss.created_at, 
 
 FULL = """
 SELECT iss.id, iss.name, iss.status, iss.subject, iss.preheader, iss.template, iss.html,
-       iss.created_at, iss.updated_at, iss.sent_at,
+       iss.created_at, iss.updated_at, iss.sent_at, iss.planned_for,
        iss.design IS NOT NULL AS has_design, iss.design_saved_at,
        du.display_name AS design_saved_by, uu.display_name AS updated_by,
        iss.mailchimp_campaign_id, iss.mailchimp_web_id, iss.mailchimp_status, iss.mailchimp_exported_at,
        eu.display_name AS mailchimp_exported_by, iss.mailchimp_exported_hash, iss.mailchimp_checked_at,
        iss.mailchimp_send_time, iss.mailchimp_emails_sent,
        (SELECT count(*) FROM item_picks p WHERE p.issue_id = iss.id) AS picked,
-       (SELECT count(*) FROM issue_comments c WHERE c.issue_id = iss.id AND c.resolved_at IS NULL) AS open_comments
+       (SELECT count(*) FROM issue_comments c WHERE c.issue_id = iss.id AND c.resolved_at IS NULL) AS open_comments,
+       -- how many picks each section has, {"events": 3}
+       coalesce((SELECT jsonb_object_agg(x.section, x.n)
+                   FROM (SELECT p.section, count(*) AS n FROM item_picks p
+                          WHERE p.issue_id = iss.id AND p.decision = 'picked' GROUP BY p.section) x),
+                '{}'::jsonb) AS sections
   FROM issues iss
   LEFT JOIN users du ON du.id = iss.design_saved_by
   LEFT JOIN users uu ON uu.id = iss.updated_by
@@ -88,10 +98,11 @@ def name_taken(name):
     return database.row("SELECT EXISTS (SELECT 1 FROM issues WHERE lower(name) = lower(%s)) AS taken", (name,))["taken"]
 
 
-def create(name, user_id, template=None):
+def create(name, user_id, template=None, planned_for=None):
     return database.row(
-        "INSERT INTO issues (name, template, created_by, updated_by) VALUES (%s, %s, %s, %s) RETURNING id",
-        (name, template, user_id, user_id))["id"]
+        """INSERT INTO issues (name, template, planned_for, created_by, updated_by)
+           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+        (name, template, planned_for, user_id, user_id))["id"]
 
 
 def remove(issue_id):
@@ -110,7 +121,8 @@ def articles(issue_id):
 
 
 def update(issue_id, changes, user_id):
-    """changes holds only name, subject and preheader, checked by the caller."""
+    """changes holds only name, subject, preheader and planned_for, checked
+    by the caller."""
     columns = ", ".join(f"{name} = %({name})s" for name in changes)
     database.run(
         f"UPDATE issues SET {columns}, updated_by = %(user_id)s, updated_at = now() WHERE id = %(id)s",
@@ -179,3 +191,74 @@ def drive_flags(item_ids):
                            WHERE dc.item_id = i.id AND dc.seen_at IS NULL) AS changed
              FROM items i
             WHERE i.id = ANY(%s)""", (list(item_ids),))}
+
+
+# ---------- what has been done to it (37-planning.sql) ----------
+
+def log(issue_id, user_id, entries):
+    """entries: [{kind, item_id, title, section, from_section, detail,
+    in_editor}], each written as one row."""
+    if not entries:
+        return
+    with database.pool.connection() as conn, conn.transaction():
+        for e in entries:
+            conn.execute(
+                """INSERT INTO issue_activity (issue_id, user_id, kind, item_id, title, section, from_section,
+                                               detail, in_editor)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (e.get("issue_id") or issue_id, user_id, e["kind"], e.get("item_id"), e.get("title"),
+                 e.get("section"), e.get("from_section"), e.get("detail"), bool(e.get("in_editor"))))
+
+
+def titles(item_ids):
+    """The articles' titles as the newsletter's page shows them: the AI's
+    Finnish one for an article in another language."""
+    if not item_ids:
+        return {}
+    return {r["id"]: r["title"] for r in database.rows(
+        """SELECT i.id,
+                  CASE WHEN coalesce(i.source_language, s.language) IS DISTINCT FROM 'fi'
+                        AND nullif(btrim(sm.title), '') IS NOT NULL THEN sm.title ELSE i.title END AS title
+             FROM items i
+             LEFT JOIN sources s    ON s.id = i.source_id
+             LEFT JOIN summaries sm ON sm.item_id = i.id AND sm.language = 'fi'
+            WHERE i.id = ANY(%s)""", (list(item_ids),))}
+
+
+# What was done, newest first: the rows written above, and what the issue
+# and the tables around it keep themselves, made, the last save in the
+# editor, the export to Mailchimp, sending, saving into Drive and comments.
+ACTIVITY = """
+SELECT a.at, u.display_name AS who, a.kind, a.item_id, a.title, a.section, a.from_section, a.detail, a.in_editor
+  FROM issue_activity a LEFT JOIN users u ON u.id = a.user_id
+ WHERE a.issue_id = %(id)s
+UNION ALL
+SELECT iss.created_at, u.display_name, 'created', NULL, NULL, NULL, NULL, NULL, FALSE
+  FROM issues iss LEFT JOIN users u ON u.id = iss.created_by WHERE iss.id = %(id)s
+UNION ALL
+SELECT iss.design_saved_at, u.display_name, 'saved', NULL, NULL, NULL, NULL, NULL, FALSE
+  FROM issues iss LEFT JOIN users u ON u.id = iss.design_saved_by
+ WHERE iss.id = %(id)s AND iss.design_saved_at IS NOT NULL
+UNION ALL
+SELECT iss.mailchimp_exported_at, u.display_name, 'exported', NULL, NULL, NULL, NULL, NULL, FALSE
+  FROM issues iss LEFT JOIN users u ON u.id = iss.mailchimp_exported_by
+ WHERE iss.id = %(id)s AND iss.mailchimp_exported_at IS NOT NULL
+UNION ALL
+SELECT coalesce(iss.mailchimp_send_time, iss.sent_at), NULL, 'sent', NULL, NULL, NULL, NULL,
+       iss.mailchimp_emails_sent::text, FALSE
+  FROM issues iss WHERE iss.id = %(id)s AND iss.status = 'sent'
+UNION ALL
+SELECT ds.saved_at, u.display_name, 'drive', NULL, NULL, NULL, NULL, ds.folder, FALSE
+  FROM drive_saves ds LEFT JOIN users u ON u.id = ds.saved_by
+ WHERE ds.issue_id = %(id)s AND ds.kind = 'newsletter'
+UNION ALL
+SELECT c.created_at, u.display_name, 'comment', NULL, NULL, NULL, NULL, c.block_label, FALSE
+  FROM issue_comments c LEFT JOIN users u ON u.id = c.created_by
+ WHERE c.issue_id = %(id)s
+ ORDER BY 1 DESC
+ LIMIT %(limit)s
+"""
+
+
+def activity(issue_id, limit=60):
+    return database.rows(ACTIVITY, {"id": issue_id, "limit": limit})
