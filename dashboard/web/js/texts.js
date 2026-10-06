@@ -17,6 +17,7 @@ const fi = {
   'app.title': 'Uutiskirje · Suomen eOppimiskeskus',
   'app.name': 'Uutiskirje',
   'app.org': 'Suomen eOppimiskeskus ry',
+  'app.loading': 'Ladataan…',
   'nav.label': 'Sivut',
   'nav.articles': 'Artikkelit',
 
@@ -275,6 +276,7 @@ const en = {
   'app.title': 'Newsletter desk · Suomen eOppimiskeskus',
   'app.name': 'Newsletter desk',
   'app.org': 'Suomen eOppimiskeskus ry',
+  'app.loading': 'Loading…',
   'nav.label': 'Pages',
   'nav.articles': 'Articles',
 

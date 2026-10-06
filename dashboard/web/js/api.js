@@ -22,10 +22,21 @@ async function call(method, path, body) {
     options.body = JSON.stringify(body);
   }
   let response;
+  const started = Date.now();
   try {
     response = await fetch(path, options);
   } catch {
-    throw new ApiError(0, t('error.network'));
+    // A phone back from sleep, or on another network, may first try a
+    // connection that has died: that fails at once, and the next try works.
+    // So once more after a moment, but only when it failed at once, since a
+    // request that failed after a while may have arrived.
+    if (Date.now() - started > 3000) throw new ApiError(0, t('error.network'));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    try {
+      response = await fetch(path, options);
+    } catch {
+      throw new ApiError(0, t('error.network'));
+    }
   }
   let data = null;
   try {

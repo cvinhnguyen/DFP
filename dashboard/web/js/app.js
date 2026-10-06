@@ -131,7 +131,61 @@ function forgetLinks() {
 function loggedIn(next) {
   forgetLinks();
   setUser(next);
+  showSplash();
   render();
+  splashUntilReady(900);
+}
+
+// The association's logo while the app starts, and for a moment after
+// logging in (at least `least` ms), until the page shown first has what it
+// shows: something in it and nothing in it busy any more. At most six
+// seconds, so a slow page is never hidden behind it.
+const splash = document.getElementById('splash');
+
+function showSplash() {
+  splash.hidden = false;
+  splash.classList.remove('out');
+}
+
+function hideSplash() {
+  if (splash.hidden) return;
+  splash.classList.add('out');
+  setTimeout(() => {
+    if (splash.classList.contains('out')) splash.hidden = true;
+  }, 260);
+}
+
+function pageReady(most) {
+  const ready = () => {
+    const page = document.getElementById('view');
+    return page && page.children.length > 0 && !page.querySelector('[aria-busy="true"], p.loading');
+  };
+  return new Promise((resolve) => {
+    let observer = null;
+    let timer = null;
+    const done = () => {
+      clearTimeout(timer);
+      if (observer) observer.disconnect();
+      resolve();
+    };
+    if (ready()) {
+      done();
+      return;
+    }
+    timer = setTimeout(done, most);
+    observer = new MutationObserver(() => {
+      if (ready()) done();
+    });
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-busy'] });
+  });
+}
+
+async function splashUntilReady(least = 0) {
+  const started = Date.now();
+  await pageReady(6000);
+  const left = least - (Date.now() - started);
+  if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
+  hideSplash();
 }
 
 // Every page listens for clicks on the element it draws into. Each page gets
@@ -219,10 +273,13 @@ async function start() {
   } catch (e) {
     if (e.status !== 401) {
       view.innerHTML = `<p class="problem">${esc(e.message)}</p>`;
+      hideSplash();
       return;
     }
   }
   render();
+  if (user) splashUntilReady();
+  else hideSplash();
 }
 
 start();
